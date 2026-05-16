@@ -38,5 +38,19 @@ describe("watch types", () => {
       finding_count: 0,
     };
     expect(ok.exit_code).toBe(0);
+
+    const fail: ActionResult = {
+      action_id: "act_2",
+      rule_id: "review-on-commit",
+      skill: "/review",
+      args: ["--quick"],
+      started_at: "2026-05-16T12:00:00Z",
+      ended_at: "2026-05-16T12:01:00Z",
+      exit_code: 1,
+      stdout_truncated: "",
+      error: "action timeout after 300000ms",
+    };
+    expect(fail.exit_code).toBe(1);
+    expect(fail.error).toContain("timeout");
   });
 });

@@ -19,11 +19,9 @@ export interface RepoState {
 
 export type ActionType = "auto-run" | "suggest" | "notify" | "record";
 
-export interface Action {
-  type: ActionType;
-  skill?: string;                  // required for auto-run/suggest
-  args?: string[];
-}
+export type Action =
+  | { type: "auto-run" | "suggest"; skill: string; args?: string[] }
+  | { type: "notify" | "record" };
 
 export type NotifyPolicy =
   | "off"
@@ -41,6 +39,7 @@ export interface Rule {
   record?: boolean;
 }
 
+/** JSONL wire format — snake_case keys are intentional for log compatibility. */
 export interface ActionResult {
   action_id: string;
   rule_id: string;
