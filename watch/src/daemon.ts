@@ -47,55 +47,73 @@ export async function startDaemon(cfg: DaemonConfig): Promise<DaemonHandle> {
   let fileWatcher: FileWatcher | null = null;
   let scheduler: Scheduler | null = null;
 
-  async function handleSignal(sig: Signal) {
-    const repoState = await getRepoState(sig.repo);
-    const actions = engine.evaluate(sig, repoState);
-    for (const action of actions) {
-      // Narrow the discriminated union once for use throughout the loop body.
-      const isRunnable =
-        action.action.type === "auto-run" || action.action.type === "suggest";
-      const skill = isRunnable ? action.action.skill : "(unknown)";
+  let inFlightCount = 0;
+  const drainListeners: (() => void)[] = [];
 
-      if (action.action.type !== "auto-run") {
-        if (action.action.type === "suggest") {
+  async function handleSignal(sig: Signal) {
+    inFlightCount++;
+    try {
+      const repoState = await getRepoState(sig.repo);
+      const actions = engine.evaluate(sig, repoState);
+      for (const action of actions) {
+        // Narrow the discriminated union once for use throughout the loop body.
+        const isRunnable =
+          action.action.type === "auto-run" || action.action.type === "suggest";
+        const skill = isRunnable ? action.action.skill : "(unknown)";
+
+        if (action.action.type !== "auto-run") {
+          if (action.action.type === "suggest") {
+            emit(formatNotification({
+              kind: "suggestion",
+              rule_id: action.rule_id,
+              skill,
+              reason: `signal ${sig.type}`,
+            }, action.notify));
+          }
+          // notify / record types are no-ops in Phase 1 beyond what the engine already did.
+          continue;
+        }
+
+        if (!limiter.tryAcquire(sig.repo)) {
+          emit(`[watch] rate/concurrency limit hit; deferring ${skill}`);
+          continue;
+        }
+
+        try {
+          const result = cfg.executorOverride
+            ? await cfg.executorOverride(action, sig.repo)
+            : await executor.run(action, sig.repo);
           emit(formatNotification({
-            kind: "suggestion",
+            kind: "auto-run-complete",
             rule_id: action.rule_id,
             skill,
-            reason: `signal ${sig.type}`,
+            finding_count: result.finding_count,
+            exit_code: result.exit_code,
           }, action.notify));
+        } catch (err) {
+          emit(formatNotification({
+            kind: "action-failed",
+            rule_id: action.rule_id,
+            skill,
+            error: String((err as Error)?.message ?? err),
+          }, action.notify));
+        } finally {
+          limiter.release(sig.repo);
         }
-        // notify / record types are no-ops in Phase 1 beyond what the engine already did.
-        continue;
       }
-
-      if (!limiter.tryAcquire(sig.repo)) {
-        emit(`[watch] rate/concurrency limit hit; deferring ${skill}`);
-        continue;
-      }
-
-      try {
-        const result = cfg.executorOverride
-          ? await cfg.executorOverride(action, sig.repo)
-          : await executor.run(action, sig.repo);
-        emit(formatNotification({
-          kind: "auto-run-complete",
-          rule_id: action.rule_id,
-          skill,
-          finding_count: result.finding_count,
-          exit_code: result.exit_code,
-        }, action.notify));
-      } catch (err) {
-        emit(formatNotification({
-          kind: "action-failed",
-          rule_id: action.rule_id,
-          skill,
-          error: String((err as Error)?.message ?? err),
-        }, action.notify));
-      } finally {
-        limiter.release(sig.repo);
+    } catch (err) {
+      console.error("[watch] handleSignal threw:", err);
+    } finally {
+      inFlightCount--;
+      if (inFlightCount === 0) {
+        drainListeners.splice(0).forEach(fn => fn());
       }
     }
+  }
+
+  async function drain(): Promise<void> {
+    if (inFlightCount === 0) return;
+    await new Promise<void>(resolve => drainListeners.push(resolve));
   }
 
   if (cfg.socketPath) {
@@ -111,8 +129,10 @@ export async function startDaemon(cfg: DaemonConfig): Promise<DaemonHandle> {
   return {
     async injectSignal(s) { await handleSignal(s); },
     async stop() {
-      await socketSrv?.close();
-      await fileWatcher?.close();
+      await drain();
+      await Promise.allSettled(
+        [socketSrv?.close(), fileWatcher?.close()].filter(Boolean) as Promise<void>[],
+      );
       scheduler?.close();
     },
   };
