@@ -30,4 +30,29 @@ describe("git hooks installer", () => {
     await uninstallGitHooks(repo);
     expect(existsSync(join(repo, ".git", "hooks", "post-commit"))).toBe(false);
   });
+
+  test("preserves existing user hook via backup", async () => {
+    const userHook = "#!/bin/sh\necho user-custom-hook\n";
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(join(repo, ".git", "hooks", "post-commit"), userHook);
+    await installGitHooks(repo, "/tmp/test.sock");
+    expect(existsSync(join(repo, ".git", "hooks", "post-commit.gstack.bak"))).toBe(true);
+    expect(readFileSync(join(repo, ".git", "hooks", "post-commit.gstack.bak"), "utf8")).toBe(userHook);
+  });
+
+  test("uninstall restores backed-up user hook", async () => {
+    const userHook = "#!/bin/sh\necho user-custom-hook\n";
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(join(repo, ".git", "hooks", "post-commit"), userHook);
+    await installGitHooks(repo, "/tmp/test.sock");
+    await uninstallGitHooks(repo);
+    expect(readFileSync(join(repo, ".git", "hooks", "post-commit"), "utf8")).toBe(userHook);
+  });
+
+  test("hook body JSON-escapes backslashes for Windows paths", async () => {
+    await installGitHooks(repo, "/tmp/test.sock");
+    const body = readFileSync(join(repo, ".git", "hooks", "post-commit"), "utf8");
+    expect(body).toContain("json_escape");
+    expect(body).toContain("REPO_E=");
+  });
 });

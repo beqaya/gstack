@@ -14,14 +14,32 @@ REPO="$(git rev-parse --show-toplevel 2>/dev/null)"
 SHA="$(git rev-parse HEAD 2>/dev/null)"
 BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 FILES="$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | tr '\\n' ',' | sed 's/,$//')"
-PAYLOAD=$(printf '{"source":"git","type":"%s","repo":"%s","metadata":{"sha":"%s","branch":"%s","files":"%s"}}\\n' "$HOOK" "$REPO" "$SHA" "$BRANCH" "$FILES")
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g'
+}
+
+REPO_E=$(json_escape "$REPO")
+SHA_E=$(json_escape "$SHA")
+BRANCH_E=$(json_escape "$BRANCH")
+FILES_E=$(json_escape "$FILES")
+
+PAYLOAD=$(printf '{"source":"git","type":"%s","repo":"%s","metadata":{"sha":"%s","branch":"%s","files":"%s"}}\\n' "$HOOK" "$REPO_E" "$SHA_E" "$BRANCH_E" "$FILES_E")
 
 # Try Unix socket via nc; fall back to silently dropping if unavailable.
+# TODO(T14): on Windows where nc is unavailable, write to ~/.gstack/watch/inbox/<ts>-<pid>.json instead.
 if command -v nc >/dev/null 2>&1; then
-  printf '%s' "$PAYLOAD" | nc -U "$SOCKET" -w 1 2>/dev/null || true
+  printf '%s' "$PAYLOAD" | nc -U -w 1 "$SOCKET" 2>/dev/null || true
 fi
 exit 0
 `;
+}
+
+async function isGstackHook(path: string): Promise<boolean> {
+  if (!existsSync(path)) return false;
+  const { readFile } = await import("node:fs/promises");
+  const body = await readFile(path, "utf8");
+  return body.includes("# Installed by gstack-watch");
 }
 
 export async function installGitHooks(repoRoot: string, socketPath: string): Promise<void> {
@@ -29,6 +47,11 @@ export async function installGitHooks(repoRoot: string, socketPath: string): Pro
   await mkdir(hooksDir, { recursive: true });
   for (const h of HOOKS) {
     const path = join(hooksDir, h);
+    if (existsSync(path) && !(await isGstackHook(path))) {
+      const backup = `${path}.gstack.bak`;
+      const { rename } = await import("node:fs/promises");
+      await rename(path, backup);
+    }
     await writeFile(path, hookBody(socketPath, h), { encoding: "utf8" });
     if (process.platform !== "win32") {
       await chmod(path, 0o755);
@@ -42,6 +65,11 @@ export async function uninstallGitHooks(repoRoot: string): Promise<void> {
     const path = join(hooksDir, h);
     if (existsSync(path)) {
       await rm(path);
+    }
+    const backup = `${path}.gstack.bak`;
+    if (existsSync(backup)) {
+      const { rename } = await import("node:fs/promises");
+      await rename(backup, path);
     }
   }
 }
