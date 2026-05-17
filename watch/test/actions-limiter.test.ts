@@ -20,10 +20,13 @@ describe("action limiter", () => {
     expect(lim.tryAcquire("/r")).toBe(false);
   });
 
-  test("per-repo isolation", () => {
-    const lim = createLimiter({ maxConcurrent: 1, maxActionsPerHour: 2 });
-    expect(lim.tryAcquire("/r1")).toBe(true);
+  test("per-repo rate isolation", () => {
+    const lim = createLimiter({ maxConcurrent: 100, maxActionsPerHour: 2 });
+    // /r1 uses up its rate quota
+    expect(lim.tryAcquire("/r1")).toBe(true); lim.release("/r1");
+    expect(lim.tryAcquire("/r1")).toBe(true); lim.release("/r1");
+    expect(lim.tryAcquire("/r1")).toBe(false); // /r1 rate-limited
+    // /r2 is unaffected by /r1's rate quota
     expect(lim.tryAcquire("/r2")).toBe(true);
-    expect(lim.tryAcquire("/r1")).toBe(false); // /r1 at concurrency cap
   });
 });
