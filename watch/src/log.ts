@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -12,14 +12,17 @@ function todayFilename(): string {
 }
 
 export function createLogWriter(dir: string): LogWriter {
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true });
 
   let pending: Promise<void> = Promise.resolve();
 
   return {
     async write(entry: object) {
       const line = JSON.stringify(entry) + "\n";
-      pending = pending.then(() => appendFile(join(dir, todayFilename()), line, "utf8"));
+      pending = pending.then(
+        () => appendFile(join(dir, todayFilename()), line, "utf8"),
+        () => appendFile(join(dir, todayFilename()), line, "utf8"),  // recover from prior rejection
+      );
       await pending;
     },
     async close() {
