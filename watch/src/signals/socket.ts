@@ -16,6 +16,7 @@ export async function createSocketServer(path: string, handler: SignalHandler): 
   }
 
   const server: Server = createServer(socket => {
+    socket.on("error", err => console.error("[watch] socket client error:", err));
     let buf = "";
     socket.on("data", chunk => {
       buf += chunk.toString();
@@ -46,7 +47,10 @@ export async function createSocketServer(path: string, handler: SignalHandler): 
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(path, () => resolve());
+    server.listen(path, () => {
+      server.on("error", err => console.error("[watch] socket server error:", err));
+      resolve();
+    });
   });
 
   return {
