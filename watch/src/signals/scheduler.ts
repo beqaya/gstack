@@ -29,14 +29,18 @@ export function startDailyScheduler(
     const ms = msUntilNextDaily(hhmm);
     timer = setTimeout(() => {
       for (const repo of repos) {
-        handler({
-          id: `sig_${randomUUID()}`,
-          source: "time",
-          type: "daily",
-          repo,
-          timestamp: new Date().toISOString(),
-          metadata: { hhmm },
-        });
+        try {
+          handler({
+            id: `sig_${randomUUID()}`,
+            source: "time",
+            type: "daily",
+            repo,
+            timestamp: new Date().toISOString(),
+            metadata: { hhmm },
+          });
+        } catch (err) {
+          console.error(`[watch] daily scheduler handler threw for ${repo}:`, err);
+        }
       }
       schedule();
     }, ms);
