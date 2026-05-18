@@ -22,4 +22,15 @@ describe("configure provider", () => {
     expect(result.ok).toBe(false);
     expect(await kc.getSecret("gstack-runtime", "gcp:credentials")).toBeNull();
   });
+
+  test("does NOT persist credential when health probe throws", async () => {
+    const kc = createMockKeychain();
+    const result = await configureProvider("gcp", "bad-token", {
+      keychain: kc,
+      probe: async () => { throw new Error("network unreachable"); },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("network unreachable");
+    expect(await kc.getSecret("gstack-runtime", "gcp:credentials")).toBeNull();
+  });
 });

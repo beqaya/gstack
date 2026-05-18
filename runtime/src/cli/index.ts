@@ -84,6 +84,16 @@ export async function main(argv: string[]): Promise<void> {
       result.logs = redact.redactArray(result.logs);
       result.incidents = redact.redactArray(result.incidents);
       result.deployments = redact.redactArray(result.deployments);
+      // Endpoint strings (e.g. "GET /tenants/1234567890") can leak PII from request paths.
+      result.latency_by_provider = result.latency_by_provider.map(d => ({
+        ...d,
+        per_endpoint: d.per_endpoint.map(b => ({ ...b, endpoint: redact.redactString(b.endpoint) })),
+      }));
+      // SDK error messages can leak URL fragments containing PII / partial tokens.
+      result.adapter_failures = result.adapter_failures.map(f => ({
+        ...f,
+        error: redact.redactString(f.error),
+      }));
       const summary = renderObserveSummary(result, {
         region: cfg.region, projectName: cfg.project_id,
       });

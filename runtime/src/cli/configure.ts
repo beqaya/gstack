@@ -21,7 +21,16 @@ export async function configureProvider(
   const kc = opts.keychain ?? createRealKeychain();
   await kc.setSecret("gstack-runtime", `${provider}:credentials`, credential);
   const probe = opts.probe ?? defaultProbe(provider);
-  const health = await probe();
+  // Probe may throw (network error, SDK bug). Treat any throw as "probe failed" and
+  // roll back the credential — otherwise a bad token stays in keychain after the user
+  // sees the failure.
+  let health: AdapterHealth;
+  try {
+    health = await probe();
+  } catch (err) {
+    await kc.deleteSecret("gstack-runtime", `${provider}:credentials`);
+    return { ok: false, provider, message: `health probe threw: ${(err as Error).message}` };
+  }
   if (!health.ok) {
     await kc.deleteSecret("gstack-runtime", `${provider}:credentials`);
     return { ok: false, provider, message: health.message ?? "health check failed" };
