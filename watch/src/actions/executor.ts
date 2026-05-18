@@ -65,19 +65,30 @@ function truncate(s: string, limit: number): string {
   return s.slice(0, limit) + TRAIL_MARKER;
 }
 
+// Build the slash-command prompt passed to `claude -p` via stdin. Matches gstack's pattern:
+// the prompt body is the slash command itself (e.g. "/review --quick").
+export function formatSkillPrompt(skill: string, args: string[]): string {
+  const slash = skill.startsWith("/") ? skill : `/${skill}`;
+  return args.length > 0 ? `${slash} ${args.join(" ")}` : slash;
+}
+
 function defaultRunner(timeoutMs: number) {
   return async (skill: string, args: string[], cwd: string) => {
-    // Phase 1: spawn `claude` CLI with the skill name. Adjust to gstack's actual invocation form.
+    // gstack invokes Claude in headless mode: `claude -p --output-format json` with the
+    // slash command written to stdin. Honors GSTACK_CLAUDE_BIN override (cross-platform).
+    const claudeBin = process.env.GSTACK_CLAUDE_BIN || "claude";
+    const prompt = formatSkillPrompt(skill, args);
     return new Promise<{ exitCode: number; stdout: string; stderr: string }>((resolve, reject) => {
-      const child = spawn("claude", ["--skill", skill, ...args], { cwd });
+      const child = spawn(claudeBin, ["-p", "--output-format", "json"], { cwd });
       let stdout = "", stderr = "";
       const timer = setTimeout(() => {
         child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), 30_000);
+        const killTimer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+        killTimer.unref();
         reject(new Error(`action timeout after ${timeoutMs}ms`));
       }, timeoutMs);
-      child.stdout.on("data", d => (stdout += d.toString()));
-      child.stderr.on("data", d => (stderr += d.toString()));
+      child.stdout?.on("data", d => (stdout += d.toString()));
+      child.stderr?.on("data", d => (stderr += d.toString()));
       child.on("close", code => {
         clearTimeout(timer);
         resolve({ exitCode: code ?? -1, stdout, stderr });
@@ -86,6 +97,7 @@ function defaultRunner(timeoutMs: number) {
         clearTimeout(timer);
         reject(err);
       });
+      child.stdin?.end(prompt);
     });
   };
 }

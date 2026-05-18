@@ -2,8 +2,20 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createExecutor } from "../src/actions/executor";
+import { createExecutor, formatSkillPrompt } from "../src/actions/executor";
 import type { ResolvedAction } from "../src/rules/engine";
+
+describe("formatSkillPrompt", () => {
+  test("renders slash command with args", () => {
+    expect(formatSkillPrompt("/review", ["--quick"])).toBe("/review --quick");
+  });
+  test("renders slash command with no args", () => {
+    expect(formatSkillPrompt("/health", [])).toBe("/health");
+  });
+  test("normalizes skill name missing leading slash", () => {
+    expect(formatSkillPrompt("review", ["--quick"])).toBe("/review --quick");
+  });
+});
 
 describe("action executor", () => {
   let logDir: string;
