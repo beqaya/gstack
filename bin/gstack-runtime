@@ -1,0 +1,5 @@
+#!/usr/bin/env bun
+import("../runtime/src/cli/index.ts").then(m => m.main(process.argv.slice(2))).catch(err => {
+  console.error("[gstack-runtime]", err);
+  process.exit(1);
+});
