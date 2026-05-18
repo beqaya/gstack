@@ -1,0 +1,4 @@
+name: national_id_ksa
+pattern: '\b[12]\d{9}\b'
+flags: g
+replacement: '<national_id_ksa>'

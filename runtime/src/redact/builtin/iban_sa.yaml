@@ -1,0 +1,4 @@
+name: iban_sa
+pattern: '\bSA\d{22}\b'
+flags: g
+replacement: '<iban_sa>'

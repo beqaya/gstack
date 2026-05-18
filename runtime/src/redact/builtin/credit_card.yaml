@@ -1,0 +1,4 @@
+name: credit_card
+pattern: '\b\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4}\b'
+flags: g
+replacement: '<credit_card>'
