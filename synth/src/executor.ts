@@ -20,8 +20,10 @@ export async function executePlan(plan: Plan, ctx: ExecutorCtx): Promise<Executi
   const node_results: NodeResult[] = [];
 
   let status: ExecutionResult["status"] = "completed";
+  let failedAt = -1;
 
-  for (const node of sorted) {
+  for (let i = 0; i < sorted.length; i++) {
+    const node = sorted[i];
     const node_started = new Date().toISOString();
     try {
       const out = ctx.runner
@@ -39,7 +41,20 @@ export async function executePlan(plan: Plan, ctx: ExecutorCtx): Promise<Executi
         error: (err as Error)?.message ?? String(err),
       });
       status = "failed";
+      failedAt = i;
       break;
+    }
+  }
+
+  // After a failure, emit `skipped` records for the remaining nodes so traces/replays
+  // show the full topology instead of a silent gap.
+  if (failedAt >= 0) {
+    const ts = new Date().toISOString();
+    for (let i = failedAt + 1; i < sorted.length; i++) {
+      node_results.push({
+        node_id: sorted[i].id, status: "skipped",
+        started_at: ts, ended_at: ts,
+      });
     }
   }
 

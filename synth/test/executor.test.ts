@@ -34,4 +34,24 @@ describe("plan executor", () => {
     expect(result.status).toBe("failed");
     expect(result.node_results.find(r => r.node_id === "c")?.error).toContain("boom");
   });
+
+  test("emits skipped records for nodes downstream of a failure", async () => {
+    const planWithTail: Plan = {
+      plan_id: "p_skip", goal: "g", created_at: "x",
+      nodes: [
+        { id: "a", primitive: { op: "read_file", path: "/a" }, depends_on: [] },
+        { id: "b", primitive: { op: "read_file", path: "/b" }, depends_on: ["a"] },
+        { id: "c", primitive: { op: "read_file", path: "/c" }, depends_on: ["b"] },
+      ],
+    };
+    const runner = async (node: PlanNode): Promise<PrimitiveOutput> => {
+      if (node.id === "a") throw new Error("boom");
+      return { kind: "text", value: "ok" };
+    };
+    const result = await executePlan(planWithTail, { cwd: "/tmp", runner });
+    expect(result.status).toBe("failed");
+    expect(result.node_results.find(r => r.node_id === "a")?.status).toBe("failed");
+    expect(result.node_results.find(r => r.node_id === "b")?.status).toBe("skipped");
+    expect(result.node_results.find(r => r.node_id === "c")?.status).toBe("skipped");
+  });
 });

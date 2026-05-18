@@ -64,7 +64,8 @@ export async function cliSynth(opts: SynthCliOpts, cwd: string = process.cwd()):
   console.log("");
   console.log(`Execution: ${execResult.status}`);
   for (const nr of execResult.node_results) {
-    const tag = nr.status === "completed" ? "✓" : "✗";
+    const tag = nr.status === "completed" ? "✓" : nr.status === "skipped" ? "↷" : "✗";
     console.log(`  ${tag} ${nr.node_id}${nr.error ? ` — ${nr.error}` : ""}`);
   }
+  if (execResult.status !== "completed") process.exit(1);
 }

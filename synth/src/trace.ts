@@ -17,8 +17,11 @@ export function createTraceLogger(planId: string, dir: string): TraceLogger {
 
   function write(kind: string, payload: object): Promise<void> {
     const line = JSON.stringify({ kind, ts: new Date().toISOString(), ...payload }) + "\n";
-    // Chain writes serially with error recovery so one failure doesn't poison subsequent appends.
-    pending = pending.then(() => appendFile(path, line, "utf8")).catch(() => undefined);
+    // Serialize writes; recover from transient errors so one failure doesn't poison
+    // the chain — but surface the error so the user knows their trace is incomplete.
+    pending = pending
+      .then(() => appendFile(path, line, "utf8"))
+      .catch(err => console.error(`[synth/trace] write failed for ${planId}: ${(err as Error)?.message ?? err}`));
     return pending;
   }
 
