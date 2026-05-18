@@ -17,8 +17,9 @@ export function formatStatus(s: StatusSnapshot): string {
   const lines = [
     `gstack watch: running (pid ${s.pid})`,
     `  rules: ${s.ruleCount} rules loaded`,
-    `  watched repos:`,
-    ...s.watchedRepos.map(r => `    - ${r}`),
+    s.watchedRepos.length > 0
+      ? `  watched repos:\n${s.watchedRepos.map(r => `    - ${r}`).join("\n")}`
+      : `  watched repos: (not persisted in Phase 1 — repo list lives in daemon memory)`,
     `  recent actions (24h): ${s.recentActionCount}`,
   ];
   return lines.join("\n");
