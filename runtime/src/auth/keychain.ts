@@ -22,11 +22,11 @@ interface KeytarLike {
 
 let keytarWarned = false;
 
-export async function createRealKeychain(): Promise<Keychain> {
+export function createRealKeychain(): Keychain {
   let keytar: KeytarLike | null = null;
   try {
-    const mod = await import("keytar");
-    keytar = (mod.default ?? mod) as unknown as KeytarLike;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+    keytar = require("keytar") as KeytarLike;
   } catch {
     if (!keytarWarned) {
       console.warn("[runtime] keytar not available — secrets will live in process memory only. Install keytar or use env-var fallback.");
