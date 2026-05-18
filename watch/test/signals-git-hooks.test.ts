@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, existsSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { installGitHooks, uninstallGitHooks } from "../src/signals/git-hooks";
+import { installGitHooks, uninstallGitHooks, assertSafeSocketPath } from "../src/signals/git-hooks";
 
 describe("git hooks installer", () => {
   let repo: string;
@@ -54,5 +54,47 @@ describe("git hooks installer", () => {
     const body = readFileSync(join(repo, ".git", "hooks", "post-commit"), "utf8");
     expect(body).toContain("json_escape");
     expect(body).toContain("REPO_E=");
+  });
+});
+
+describe("assertSafeSocketPath", () => {
+  test("accepts standard Unix socket path", () => {
+    expect(() => assertSafeSocketPath("/tmp/gstack-watch.sock")).not.toThrow();
+  });
+  test("accepts Windows named-pipe path", () => {
+    expect(() => assertSafeSocketPath("\\\\.\\pipe\\gstack-watch")).not.toThrow();
+  });
+  test("accepts path with dashes, dots, underscores", () => {
+    expect(() => assertSafeSocketPath("/var/run/gstack-watch_v2.sock")).not.toThrow();
+  });
+  test("rejects double-quote (would break out of shell string)", () => {
+    expect(() => assertSafeSocketPath('/tmp/a"; rm -rf /; "')).toThrow(/unsafe socket path/);
+  });
+  test("rejects dollar sign (variable expansion / command substitution)", () => {
+    expect(() => assertSafeSocketPath("/tmp/$(rm -rf /).sock")).toThrow(/unsafe/);
+  });
+  test("rejects backtick (command substitution)", () => {
+    expect(() => assertSafeSocketPath("/tmp/`whoami`.sock")).toThrow(/unsafe/);
+  });
+  test("rejects embedded newline", () => {
+    expect(() => assertSafeSocketPath("/tmp/a.sock\nrm -rf /")).toThrow(/unsafe/);
+  });
+  test("rejects NUL byte", () => {
+    expect(() => assertSafeSocketPath("/tmp/a\0.sock")).toThrow(/unsafe/);
+  });
+});
+
+describe("installGitHooks validates socketPath", () => {
+  let repo2: string;
+  beforeEach(() => {
+    repo2 = mkdtempSync(join(tmpdir(), "repo2-"));
+    mkdirSync(join(repo2, ".git", "hooks"), { recursive: true });
+  });
+  afterEach(() => { rmSync(repo2, { recursive: true, force: true }); });
+
+  test("refuses to install when socketPath contains shell metacharacters", async () => {
+    await expect(installGitHooks(repo2, '/tmp/x"; touch pwned; "')).rejects.toThrow(/unsafe socket path/);
+    // Hook should NOT have been written.
+    expect(existsSync(join(repo2, ".git", "hooks", "post-commit"))).toBe(false);
   });
 });

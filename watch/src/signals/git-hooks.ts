@@ -4,6 +4,23 @@ import { join } from "node:path";
 
 const HOOKS = ["post-commit", "post-merge"] as const;
 
+/**
+ * Validate a socket path before interpolating into a shell hook script.
+ * Rejects characters that would let an attacker (or accidental config) break
+ * out of the shell double-quoted SOCKET="..." context: ", $, `, and newlines.
+ * Backslash is permitted (Windows named-pipe paths contain it; Windows hook
+ * path is currently unused but we don't want to break it for Phase 2).
+ */
+export function assertSafeSocketPath(socketPath: string): void {
+  // eslint-disable-next-line no-control-regex
+  const forbidden = /["$`\r\n\x00]/;
+  if (forbidden.test(socketPath)) {
+    throw new Error(
+      `unsafe socket path: contains shell metacharacters that would break out of the hook script (\", $, \`, NUL, or newline): ${JSON.stringify(socketPath)}`,
+    );
+  }
+}
+
 function hookBody(socketPath: string, hookName: string): string {
   // POSIX shell script; Git on Windows runs hooks under Git Bash, so this works cross-platform.
   return `#!/usr/bin/env bash
@@ -43,6 +60,7 @@ async function isGstackHook(path: string): Promise<boolean> {
 }
 
 export async function installGitHooks(repoRoot: string, socketPath: string): Promise<void> {
+  assertSafeSocketPath(socketPath);
   const hooksDir = join(repoRoot, ".git", "hooks");
   await mkdir(hooksDir, { recursive: true });
   for (const h of HOOKS) {
