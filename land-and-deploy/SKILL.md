@@ -9,7 +9,6 @@ allowed-tools:
   - Write
   - Glob
   - AskUserQuestion
-sensitive: true
 triggers:
   - merge and deploy
   - land the pr

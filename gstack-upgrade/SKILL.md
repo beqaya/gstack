@@ -1,7 +1,15 @@
 ---
 name: gstack-upgrade
 version: 1.1.0
-description: Upgrade gstack to the latest version.
+description: |
+  Upgrade gstack to the latest version. Detects global vs vendored install,
+  runs the upgrade, and shows what's new. Use when asked to "upgrade gstack",
+  "update gstack", or "get latest version".
+voice-triggers:
+  - "upgrade the tools"
+  - "update the tools"
+  - "gee stack upgrade"
+  - "g stack upgrade"
 triggers:
   - upgrade gstack
   - update gstack version
@@ -14,15 +22,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-Detects global vs vendored install,
-runs the upgrade, and shows what's new. Use when asked to "upgrade gstack",
-"update gstack", or "get latest version".
-
-Voice triggers (speech-to-text aliases): "upgrade the tools", "update the tools", "gee stack upgrade", "g stack upgrade".
 
 # /gstack-upgrade
 
