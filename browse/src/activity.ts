@@ -21,7 +21,7 @@ import { CircularBuffer } from './buffers';
 export interface ActivityEntry {
   id: number;
   timestamp: number;
-  type: 'command_start' | 'command_end' | 'navigation' | 'error';
+  type: 'command_start' | 'command_end' | 'navigation' | 'error' | 'webhook';
   command?: string;
   args?: string[];
   url?: string;
@@ -32,6 +32,12 @@ export interface ActivityEntry {
   tabs?: number;
   mode?: string;
   clientId?: string;
+  /** Webhook-only: opaque identifier for the emitting tool ("ci", "deploy", "vitest"). */
+  source?: string;
+  /** Webhook-only: free-form event name ("test_passed", "build_started"). */
+  event?: string;
+  /** Webhook-only: arbitrary structured payload. Sanitized before egress. */
+  data?: unknown;
 }
 
 // ─── Buffer & Subscribers ───────────────────────────────────────

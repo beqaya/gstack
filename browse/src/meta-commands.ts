@@ -20,7 +20,311 @@ import * as path from 'path';
 import { writeSecureFile, mkdirSecure } from './file-permissions';
 import { TEMP_DIR } from './platform';
 import { resolveConfig } from './config';
-import type { Frame } from 'playwright';
+import type { Frame, Page } from 'playwright';
+
+// ─── Record / Replay helpers ────────────────────────────────
+//
+// RECORDER_INIT_SCRIPT runs on every page in the context (added via
+// context.addInitScript). It installs delegated event listeners that
+// serialize user interactions into window.__gstack_record. RECORDER_BOOTSTRAP_INPAGE
+// re-runs the same setup on the CURRENT page, since init scripts only fire
+// on next navigation — without it, `record start` would miss everything until
+// the user navigates.
+//
+// Selector strategy: prefer ARIA role + accessible name (Playwright's
+// getByRole replays this faithfully). Fall back to text content, then
+// nth-child CSS path. Stored as multiple fields so replay can try them in
+// order if the page DOM has shifted between record and replay.
+const RECORDER_INIT_SCRIPT = `(${function () {
+  if ((window as any).__gstack_record_installed) return;
+  (window as any).__gstack_record_installed = true;
+  (window as any).__gstack_record = (window as any).__gstack_record || [];
+  (window as any).__gstack_recording = true;
+
+  function computeAccessibleName(el: any): string {
+    // ARIA-label > labelledby > input label > text content > placeholder > alt
+    const aria = el.getAttribute && el.getAttribute('aria-label');
+    if (aria) return aria;
+    const lblBy = el.getAttribute && el.getAttribute('aria-labelledby');
+    if (lblBy) {
+      const ref = document.getElementById(lblBy);
+      if (ref && ref.textContent) return ref.textContent.trim();
+    }
+    if (el.tagName === 'INPUT' && el.id) {
+      const lbl = document.querySelector('label[for="' + el.id + '"]');
+      if (lbl && lbl.textContent) return lbl.textContent.trim();
+    }
+    if (el.tagName === 'INPUT') {
+      const ph = el.placeholder;
+      if (ph) return ph;
+    }
+    if (el.alt) return el.alt;
+    const txt = (el.innerText || el.textContent || '').trim().slice(0, 80);
+    return txt;
+  }
+
+  function computeRole(el: any): string {
+    const explicit = el.getAttribute && el.getAttribute('role');
+    if (explicit) return explicit;
+    const tag = el.tagName;
+    if (tag === 'BUTTON') return 'button';
+    if (tag === 'A' && el.href) return 'link';
+    if (tag === 'INPUT') {
+      const t = (el.type || 'text').toLowerCase();
+      if (t === 'checkbox') return 'checkbox';
+      if (t === 'radio') return 'radio';
+      if (t === 'submit' || t === 'button') return 'button';
+      return 'textbox';
+    }
+    if (tag === 'TEXTAREA') return 'textbox';
+    if (tag === 'SELECT') return 'combobox';
+    return '';
+  }
+
+  function computeCssPath(el: any): string {
+    const parts: string[] = [];
+    let cur = el;
+    while (cur && cur !== document.documentElement) {
+      const p = cur.parentElement;
+      if (!p) break;
+      const idx = Array.from(p.children).indexOf(cur) + 1;
+      parts.unshift(cur.tagName.toLowerCase() + ':nth-child(' + idx + ')');
+      cur = p;
+    }
+    return parts.join(' > ');
+  }
+
+  function buildDescriptor(el: any) {
+    return {
+      role: computeRole(el),
+      name: computeAccessibleName(el),
+      tag: el.tagName ? el.tagName.toLowerCase() : '',
+      css: computeCssPath(el),
+    };
+  }
+
+  document.addEventListener('click', (e: any) => {
+    if (!(window as any).__gstack_recording) return;
+    const t = e.target;
+    if (!t) return;
+    (window as any).__gstack_record.push(Object.assign({
+      type: 'click',
+      timestamp: Date.now(),
+    }, buildDescriptor(t)));
+  }, true);
+
+  // Listen on 'input' (fires when value changes, including via Playwright's
+  // fill()) — 'change' alone would miss programmatic fills that don't
+  // blur the field. Dedupe by element identity: if the immediately-previous
+  // record entry is a fill for the same descriptor, overwrite its value.
+  document.addEventListener('input', (e: any) => {
+    if (!(window as any).__gstack_recording) return;
+    const t = e.target;
+    if (!t) return;
+    const tag = t.tagName;
+    if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') return;
+    const desc = buildDescriptor(t);
+    const arr = (window as any).__gstack_record;
+    const last = arr[arr.length - 1];
+    if (last && last.type === 'fill' && last.css === desc.css) {
+      last.value = t.value;
+      last.timestamp = Date.now();
+    } else {
+      arr.push(Object.assign({ type: 'fill', timestamp: Date.now(), value: t.value }, desc));
+    }
+  }, true);
+
+  document.addEventListener('keydown', (e: any) => {
+    if (!(window as any).__gstack_recording) return;
+    // Only record special keys; regular typing is captured by 'change'.
+    const special = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+    if (special.indexOf(e.key) < 0) return;
+    (window as any).__gstack_record.push(Object.assign({
+      type: 'press',
+      timestamp: Date.now(),
+      key: e.key,
+    }, buildDescriptor(e.target)));
+  }, true);
+
+  // Track navigation start. The recorder is reinstalled on the new page via
+  // the context-level init script — but THIS push gets the source URL of the
+  // departure, which is what replay needs.
+  window.addEventListener('beforeunload', () => {
+    if (!(window as any).__gstack_recording) return;
+    (window as any).__gstack_record.push({
+      type: 'navigate',
+      timestamp: Date.now(),
+      url: location.href,
+    });
+  });
+}.toString()})()`;
+
+// Bootstrap script for the page that's already loaded when 'record start'
+// runs. It just executes the same recorder body inline.
+const RECORDER_BOOTSTRAP_INPAGE = RECORDER_INIT_SCRIPT;
+
+// ─── Recording schema versioning ───────────────────────────
+//
+// Recording files (recording.json) carry a `version` integer. The current
+// LATEST_RECORDING_VERSION is the format `record stop` writes today; older
+// recordings still on disk are forward-migrated by `migrateRecording()`
+// before replay touches them. New shape changes go through one and only one
+// thing: bump LATEST_RECORDING_VERSION + add a migrator to RECORDING_MIGRATORS.
+//
+// Pattern follows gbrain's v0.18-0.35 compat shim (see CHANGELOG v1.42.0.0):
+// detect-and-migrate at the boundary, never branch on version in the consumer.
+
+export const LATEST_RECORDING_VERSION = 1;
+
+export interface RecordedAction {
+  type: 'click' | 'fill' | 'press' | 'navigate';
+  timestamp: number;
+  // Locator descriptor (all optional — at least one of role+name, name, or css required)
+  role?: string;
+  name?: string;
+  tag?: string;
+  css?: string;
+  // Type-specific fields
+  value?: string;        // fill
+  key?: string;          // press
+  url?: string;          // navigate
+}
+
+export interface Recording {
+  version: number;
+  startedAt: string;
+  stoppedAt: string;
+  startUrl: string;
+  actions: RecordedAction[];
+}
+
+/**
+ * Map from version N to a function that produces version N+1.
+ * Migrations are pure, fully synchronous, and idempotent.
+ *
+ * To add a v2 migration: add `1: (v1) => v2Recording` here, then bump
+ * LATEST_RECORDING_VERSION to 2. Old v1 recordings will auto-migrate on
+ * next replay; no user action required.
+ *
+ * Example future migration (kept as a comment to make the pattern obvious):
+ *
+ *   1: (rec: any) => ({
+ *     ...rec,
+ *     version: 2,
+ *     // v2 adds a screenshots array: default to empty for v1 recordings.
+ *     screenshots: [],
+ *     // v2 renamed `name` → `accessibleName` on each action.
+ *     actions: rec.actions.map((a: any) => {
+ *       if (a.name === undefined) return a;
+ *       const { name, ...rest } = a;
+ *       return { ...rest, accessibleName: name };
+ *     }),
+ *   }),
+ */
+const RECORDING_MIGRATORS: Record<number, (rec: any) => any> = {
+  // No entries yet — v1 is the latest. First entry will be `1: (rec) => ({...})`.
+};
+
+/**
+ * Forward-migrate a recording to the latest schema. Walks
+ * `RECORDING_MIGRATORS` from the input version to LATEST in order. Throws
+ * with a clear message on three failure modes:
+ *
+ *   - missing/non-numeric `version`     -> treat as 0, migrate from there
+ *   - version > LATEST                  -> "your gstack is older than this file"
+ *   - version < LATEST and no migrator  -> internal bug, migrator missing
+ *
+ * Returns a Recording typed at the latest schema.
+ */
+export function migrateRecording(raw: any): Recording {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Invalid recording file: not a JSON object.');
+  }
+  let current: any = { ...raw };
+  // Normalize missing version to 0 — predates the version field. The v0->v1
+  // migrator (added the day v2 ships) would just set version=1; until then
+  // we synthesize the field.
+  if (typeof current.version !== 'number' || !Number.isFinite(current.version)) {
+    current.version = 0;
+  }
+  if (current.version === 0 && LATEST_RECORDING_VERSION === 1) {
+    // Special-case: no v0->v1 migrator exists yet because v1 is the original
+    // version we shipped. Just stamp the field and pass through.
+    current.version = 1;
+  }
+  if (current.version > LATEST_RECORDING_VERSION) {
+    throw new Error(
+      `Recording schema v${current.version} is newer than this gstack supports (max v${LATEST_RECORDING_VERSION}). Upgrade gstack.`
+    );
+  }
+  while (current.version < LATEST_RECORDING_VERSION) {
+    const migrator = RECORDING_MIGRATORS[current.version];
+    if (!migrator) {
+      throw new Error(
+        `Internal: no migrator from recording schema v${current.version} to v${current.version + 1}. ` +
+        `Add one in RECORDING_MIGRATORS or bump LATEST_RECORDING_VERSION back down.`
+      );
+    }
+    current = migrator(current);
+  }
+  // Final shape check — protect downstream code from a malformed migrator.
+  if (!Array.isArray(current.actions)) {
+    throw new Error('Recording is missing `actions` array after migration.');
+  }
+  return current as Recording;
+}
+
+/**
+ * Replay a single recorded action by mapping it to a Playwright API call.
+ * Locator preference: getByRole(role, {name}) > getByText > CSS path.
+ */
+async function replayAction(page: Page, action: any): Promise<void> {
+  if (action.type === 'navigate') {
+    if (action.url && action.url !== page.url()) {
+      await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    }
+    return;
+  }
+
+  // Build a locator with progressive fallbacks.
+  const locators: Array<() => any> = [];
+  if (action.role && action.name) {
+    locators.push(() => page.getByRole(action.role, { name: action.name, exact: false }).first());
+  }
+  if (action.name && action.name.length > 0 && action.name.length < 80) {
+    locators.push(() => page.getByText(action.name, { exact: false }).first());
+  }
+  if (action.css) {
+    locators.push(() => page.locator(action.css).first());
+  }
+  if (locators.length === 0) {
+    throw new Error('no usable selector in recorded action');
+  }
+
+  let lastErr: any = null;
+  for (const make of locators) {
+    try {
+      const loc = make();
+      if (action.type === 'click') {
+        await loc.click({ timeout: 5000 });
+        return;
+      }
+      if (action.type === 'fill') {
+        await loc.fill(String(action.value ?? ''), { timeout: 5000 });
+        return;
+      }
+      if (action.type === 'press') {
+        await loc.press(action.key, { timeout: 5000 });
+        return;
+      }
+      throw new Error(`unknown action type: ${action.type}`);
+    } catch (err: any) {
+      lastErr = err;
+      continue;
+    }
+  }
+  throw lastErr || new Error('all locator strategies failed');
+}
 
 /** Tokenize a pipe segment respecting double-quoted strings. */
 function tokenizePipeSegment(segment: string): string[] {
@@ -432,6 +736,128 @@ export async function handleMetaCommand(
       return 'Restarting...';
     }
 
+    // ─── Record / Replay ────────────────────────────────
+    // Capture user interactions on every page in the current context and
+    // serialize them so a future `replay` can re-issue the same flow. Uses
+    // an injected init script that records clicks/fills/keys/navigations
+    // into `window.__gstack_record`. Selector strategy prefers ARIA
+    // role+accessible-name (matches our snapshot @eN locator strategy) for
+    // resilience to DOM churn; falls back to text-content then CSS path.
+    case 'record': {
+      const sub = args[0];
+      if (sub === 'start') {
+        const outIdx = args.indexOf('--out');
+        const outArg = outIdx >= 0 ? args[outIdx + 1] : undefined;
+        let outPath: string;
+        if (outArg) {
+          // validateOutputPath throws on unsafe paths; resolve to absolute
+          // before storing so `record stop` doesn't depend on the CLI's cwd.
+          validateOutputPath(outArg);
+          outPath = path.isAbsolute(outArg) ? outArg : path.resolve(process.cwd(), outArg);
+        } else {
+          outPath = path.join(process.cwd(), `recording-${Date.now()}.json`);
+        }
+        const page = bm.getPage();
+        const startUrl = bm.getCurrentUrl();
+        // Stash recording state on the BrowserManager so `stop` can find it.
+        (bm as any).__recording = { outPath, startUrl, startedAt: new Date().toISOString() };
+        // Install the recorder. Init script persists for future navigations
+        // and new tabs within the same context.
+        await page.context().addInitScript({ content: RECORDER_INIT_SCRIPT });
+        // Apply to current page too (init scripts only fire on next navigation).
+        await page.evaluate(RECORDER_BOOTSTRAP_INPAGE);
+        return `Recording started. Interact with the browser; run \`browse record stop\` to save to:\n  ${outPath}`;
+      }
+      if (sub === 'stop') {
+        const state = (bm as any).__recording;
+        if (!state) return 'No recording in progress. Run `browse record start` first.';
+        const page = bm.getPage();
+        let actions: any[] = [];
+        try {
+          actions = await page.evaluate(() => {
+            const arr = (window as any).__gstack_record || [];
+            (window as any).__gstack_record = [];
+            (window as any).__gstack_recording = false;
+            return arr;
+          });
+        } catch (err: any) {
+          // Page may have navigated away; some events may be lost.
+          return `[browse] Could not read recording buffer from current page: ${err.message}`;
+        }
+        const recording: Recording = {
+          version: LATEST_RECORDING_VERSION,
+          startedAt: state.startedAt,
+          stoppedAt: new Date().toISOString(),
+          startUrl: state.startUrl,
+          actions,
+        };
+        writeSecureFile(state.outPath, JSON.stringify(recording, null, 2));
+        delete (bm as any).__recording;
+        return `Recording saved: ${state.outPath}\n  Actions captured: ${actions.length}`;
+      }
+      return 'Usage: browse record start [--out <file.json>]  |  browse record stop';
+    }
+
+    case 'replay': {
+      const file = args[0];
+      if (!file) return 'Usage: browse replay <file.json> [--speed <n>]';
+      const resolved = path.isAbsolute(file) ? file : path.resolve(process.cwd(), file);
+      if (!fs.existsSync(resolved)) return `File not found: ${resolved}`;
+      const speedFlagIdx = args.indexOf('--speed');
+      const speedMultiplier = speedFlagIdx >= 0 ? parseFloat(args[speedFlagIdx + 1] || '1') : 1;
+      const noDelay = args.includes('--no-delay');
+
+      let rawRecording: any;
+      try {
+        rawRecording = JSON.parse(fs.readFileSync(resolved, 'utf-8'));
+      } catch (err: any) {
+        return `Invalid recording file: ${err.message}`;
+      }
+      // Forward-migrate the recording to the latest schema. v1 → v1 is a
+      // no-op today; future shape changes (screenshots, network expectations)
+      // will register their migrator in RECORDING_MIGRATORS and old files
+      // will replay without user intervention.
+      let recording: Recording;
+      let migrationNote = '';
+      try {
+        const originalVersion = typeof rawRecording.version === 'number' ? rawRecording.version : 0;
+        recording = migrateRecording(rawRecording);
+        if (originalVersion !== recording.version) {
+          migrationNote = `Migrated recording: schema v${originalVersion} -> v${recording.version}.\n`;
+        }
+      } catch (err: any) {
+        return err.message;
+      }
+
+      const page = bm.getPage();
+      if (recording.startUrl && recording.startUrl !== 'about:blank') {
+        await page.goto(recording.startUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      }
+
+      const summary: string[] = [];
+      let prevTimestamp = recording.actions[0]?.timestamp || 0;
+      for (let i = 0; i < recording.actions.length; i++) {
+        const action = recording.actions[i];
+        // Preserve approximate inter-action delay (capped at 5s to avoid long
+        // pauses if the user paused mid-recording).
+        if (!noDelay && action.timestamp && prevTimestamp) {
+          const wait = Math.min(5000, Math.max(0, (action.timestamp - prevTimestamp) / speedMultiplier));
+          if (wait > 50) await new Promise(r => setTimeout(r, wait));
+        }
+        prevTimestamp = action.timestamp || prevTimestamp;
+        try {
+          await replayAction(page, action);
+          summary.push(`  ${(i + 1).toString().padStart(3)}. ${action.type}${action.role ? ` [${action.role}]` : ''}${action.name ? ` "${action.name}"` : ''}${action.value !== undefined ? ` = ${JSON.stringify(action.value).slice(0, 40)}` : ''} OK`);
+        } catch (err: any) {
+          summary.push(`  ${(i + 1).toString().padStart(3)}. ${action.type}${action.name ? ` "${action.name}"` : ''} FAIL: ${err.message.split('\n')[0]}`);
+          // First failure: stop, don't compound errors against a wrong page state.
+          summary.push(`  (stopped at step ${i + 1} of ${recording.actions.length})`);
+          break;
+        }
+      }
+      return `${migrationNote}Replay of ${resolved}:\n${summary.join('\n')}`;
+    }
+
     // ─── Visual ────────────────────────────────────────
     case 'screenshot': {
       // Parse priority: flags (--viewport, --clip, --base64) → selector (@ref, CSS) → output path
@@ -780,13 +1206,20 @@ export async function handleMetaCommand(
     }
 
     case 'disconnect': {
-      if (bm.getConnectionMode() !== 'headed') {
-        return 'Not in headed mode — nothing to disconnect.';
+      const mode = bm.getConnectionMode();
+      if (mode === 'headed') {
+        console.log('[browse] Disconnecting headed browser. Restarting in headless mode.');
+        await shutdown();
+        return 'Disconnected. Server will restart in headless mode on next command.';
       }
-      // Signal that we want a restart in headless mode
-      console.log('[browse] Disconnecting headed browser. Restarting in headless mode.');
-      await shutdown();
-      return 'Disconnected. Server will restart in headless mode on next command.';
+      if (mode === 'attached') {
+        // Attached mode: detach the CDP connection but the user's Chrome
+        // survives. browser-manager.close() handles the no-kill-Chrome path.
+        console.log('[browse] Detaching from user-owned Chrome (Chrome itself is left running).');
+        await shutdown();
+        return 'Detached from Chrome. Chrome continues running.';
+      }
+      return 'Not in headed/attached mode — nothing to disconnect.';
     }
 
     case 'focus': {
@@ -795,25 +1228,71 @@ export async function handleMetaCommand(
       }
       try {
         const { execSync } = await import('child_process');
-        // Try common Chromium-based browser app names to bring to foreground
-        const appNames = ['Comet', 'Google Chrome', 'Arc', 'Brave Browser', 'Microsoft Edge'];
         let activated = false;
-        for (const appName of appNames) {
-          try {
-            execSync(`osascript -e 'tell application "${appName}" to activate'`, { stdio: 'pipe', timeout: 3000 });
-            activated = true;
-            break;
-          } catch (err: any) {
-            // Try next browser — osascript fails if app not found or AppleScript errors
-            if (err?.status === undefined && !err?.message?.includes('Command failed')) throw err;
+        let lastErr: any = null;
+
+        if (process.platform === 'darwin') {
+          // macOS: AppleScript activate by app name.
+          const appNames = ['Comet', 'Google Chrome', 'Arc', 'Brave Browser', 'Microsoft Edge', 'Chromium'];
+          for (const appName of appNames) {
+            try {
+              execSync(`osascript -e 'tell application "${appName}" to activate'`, { stdio: 'pipe', timeout: 3000 });
+              activated = true;
+              break;
+            } catch (err: any) {
+              lastErr = err;
+              if (err?.status === undefined && !err?.message?.includes('Command failed')) throw err;
+            }
+          }
+        } else if (process.platform === 'win32') {
+          // Windows: PowerShell AppActivate matches by window title prefix.
+          // Try the gstack-branded title first, then Chromium fallbacks.
+          const titles = ['GStack Browser', 'Chromium', 'Google Chrome', 'Microsoft Edge', 'Brave'];
+          for (const title of titles) {
+            try {
+              const ps = `$w = New-Object -ComObject WScript.Shell; if ($w.AppActivate('${title}')) { exit 0 } else { exit 1 }`;
+              execSync(`powershell -NoProfile -NonInteractive -Command "${ps.replace(/"/g, '\\"')}"`, { stdio: 'pipe', timeout: 3000 });
+              activated = true;
+              break;
+            } catch (err: any) {
+              lastErr = err;
+              // exit 1 (not activated) is a normal "try next"; only rethrow on unexpected errors.
+              if (err?.status !== 1 && err?.status !== undefined) {
+                // continue trying other titles
+              }
+            }
+          }
+        } else if (process.platform === 'linux') {
+          // Linux: prefer wmctrl, fall back to xdotool. Match by window class
+          // first (more reliable), then by title substring.
+          const tryCmds: string[] = [
+            'wmctrl -x -a Chromium',
+            'wmctrl -x -a chromium-browser',
+            'wmctrl -a "GStack Browser"',
+            'xdotool search --class Chromium windowactivate',
+            'xdotool search --name "GStack Browser" windowactivate',
+          ];
+          for (const cmd of tryCmds) {
+            try {
+              execSync(cmd, { stdio: 'pipe', timeout: 3000 });
+              activated = true;
+              break;
+            } catch (err: any) {
+              lastErr = err;
+            }
           }
         }
 
         if (!activated) {
-          return 'Could not bring browser to foreground. macOS only.';
+          const hint = process.platform === 'linux'
+            ? ' Install wmctrl or xdotool: `sudo apt install wmctrl`.'
+            : process.platform === 'win32'
+              ? ' Confirm the window title contains "GStack Browser" or "Chromium".'
+              : '';
+          return `Could not bring browser to foreground on ${process.platform}.${hint}${lastErr ? ' Last error: ' + lastErr.message : ''}`;
         }
 
-        // If a ref was passed, scroll it into view
+        // If a ref was passed, scroll it into view (platform-independent).
         if (args.length > 0 && args[0].startsWith('@')) {
           try {
             const resolved = await bm.resolveRef(args[0]);
@@ -822,14 +1301,13 @@ export async function handleMetaCommand(
               return `Browser activated. Scrolled ${args[0]} into view.`;
             }
           } catch (err: any) {
-            // Ref not found or element gone — still activated the browser
             if (!err?.message?.includes('not found') && !err?.message?.includes('closed') && !err?.message?.includes('Target') && !err?.message?.includes('timeout')) throw err;
           }
         }
 
         return 'Browser window activated.';
       } catch (err: any) {
-        return `focus failed: ${err.message}. macOS only.`;
+        return `focus failed: ${err.message}`;
       }
     }
 

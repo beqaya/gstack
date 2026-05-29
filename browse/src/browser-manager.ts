@@ -120,6 +120,70 @@ export async function handleChromiumDisconnect(browser: Browser | null): Promise
   process.exit(1);
 }
 
+/**
+ * Chromium derives an extension's ID from the absolute path of its directory.
+ * Algorithm: SHA-256(path bytes) → take first 16 bytes (32 hex chars) →
+ * map each hex char 0..f to letters a..p. We reproduce this so the gstack
+ * extension can be auto-pinned without having to launch Chromium first to
+ * discover its assigned ID.
+ *
+ * Sources: chromium/src/components/crx_file/id_util.cc — `GenerateId`.
+ */
+export function computeChromeExtensionId(extensionPath: string): string {
+  const crypto = require('crypto');
+  const path = require('path');
+  // Chrome normalizes the path before hashing. On Windows this includes drive
+  // casing — we follow Node's path.resolve which gives a canonical absolute
+  // form. Edge cases (UNC paths, symlinks) may still differ from Chrome's,
+  // in which case the seeded pin is a no-op and the user pins manually.
+  const normalized = path.resolve(extensionPath);
+  const hash: string = crypto.createHash('sha256').update(normalized).digest('hex');
+  return hash.slice(0, 32).split('').map((c: string) =>
+    String.fromCharCode('a'.charCodeAt(0) + parseInt(c, 16))
+  ).join('');
+}
+
+/**
+ * Pre-write a Preferences file in the Chromium user-data-dir that pins the
+ * gstack extension to the toolbar. Merges with any existing Preferences so
+ * user customizations are preserved. Idempotent.
+ *
+ * If the deterministic extension ID Chrome computes differs from ours (rare —
+ * usually only when launching from a different drive letter or via a UNC
+ * path), the seed becomes inert and the user pins manually. Worst-case is a
+ * no-op, never an error.
+ */
+export function seedExtensionPin(userDataDir: string, extensionPath: string): void {
+  const fs = require('fs');
+  const path = require('path');
+  const extensionId = computeChromeExtensionId(extensionPath);
+  const defaultDir = path.join(userDataDir, 'Default');
+  fs.mkdirSync(defaultDir, { recursive: true });
+  const prefsFile = path.join(defaultDir, 'Preferences');
+
+  let prefs: any = {};
+  if (fs.existsSync(prefsFile)) {
+    try { prefs = JSON.parse(fs.readFileSync(prefsFile, 'utf-8')); } catch {
+      // Corrupt Prefs — leave alone; Chromium will rewrite on launch.
+      return;
+    }
+  }
+
+  prefs.extensions = prefs.extensions || {};
+  const pinned: string[] = Array.isArray(prefs.extensions.pinned_extensions)
+    ? prefs.extensions.pinned_extensions : [];
+  if (!pinned.includes(extensionId)) {
+    pinned.push(extensionId);
+    prefs.extensions.pinned_extensions = pinned;
+    // Disable Chromium's "you have a new extension!" puzzle-piece popover for
+    // our auto-pinned extension. Without this, users see the toast on every
+    // launch even though the extension was pre-pinned by us.
+    prefs.extensions.ui = prefs.extensions.ui || {};
+    prefs.extensions.ui.developer_mode = false;
+    fs.writeFileSync(prefsFile, JSON.stringify(prefs));
+  }
+}
+
 export type { RefEntry };
 
 // Re-export TabSession for consumers
@@ -194,7 +258,7 @@ export class BrowserManager {
   private watchStartTime: number = 0;
 
   // ─── Headed State ────────────────────────────────────────
-  private connectionMode: 'launched' | 'headed' = 'launched';
+  private connectionMode: 'launched' | 'headed' | 'attached' = 'launched';
   private intentionalDisconnect = false;
 
   // ─── Tab Count Guardrail (D5 + Codex single-tab flag) ───────
@@ -252,7 +316,7 @@ export class BrowserManager {
   // pipeline so process supervisors (gbrowser's gbd) read the right signal.
   public onDisconnect: ((exitCode?: number) => void | Promise<void>) | null = null;
 
-  getConnectionMode(): 'launched' | 'headed' { return this.connectionMode; }
+  getConnectionMode(): 'launched' | 'headed' | 'attached' { return this.connectionMode; }
 
   // ─── Watch Mode Methods ─────────────────────────────────
   isWatching(): boolean { return this.watching; }
@@ -487,6 +551,19 @@ export class BrowserManager {
     // single-instance CLI check for gstack.
     cleanSingletonLocks(userDataDir);
 
+    // Auto-pin the gstack extension to the toolbar on first launch. Computes
+    // the deterministic extension ID Chrome derives from the absolute extension
+    // path, then merges `extensions.pinned_extensions` into the Preferences
+    // file. No-op if a Preferences file already has the pin (user override
+    // wins) or if the extension path is missing.
+    if (extensionPath) {
+      try {
+        seedExtensionPin(userDataDir, extensionPath);
+      } catch (err: any) {
+        console.warn(`[browse] could not seed extension pin: ${err.message}`);
+      }
+    }
+
     // Support custom Chromium binary via GSTACK_CHROMIUM_PATH env var.
     // Used by GStack Browser.app to point at the bundled Chromium.
     const executablePath = process.env.GSTACK_CHROMIUM_PATH || undefined;
@@ -554,6 +631,11 @@ export class BrowserManager {
       }
     }
 
+    // HAR recording: enabled when BROWSE_HAR_PATH is set in env. The file is
+    // written on context close (disconnect, stop, shutdown). Path is validated
+    // upstream by the CLI flag handler to live under a safe directory.
+    const harPath = process.env.BROWSE_HAR_PATH;
+
     this.context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       // Match the sandbox policy used by launch() above. Without this,
@@ -565,6 +647,7 @@ export class BrowserManager {
       userAgent: this.customUserAgent || customUA,
       ...(executablePath ? { executablePath } : {}),
       ...(this.proxyConfig ? { proxy: this.proxyConfig } : {}),
+      ...(harPath ? { recordHar: { path: harPath, content: 'embed' as const, mode: 'full' as const } } : {}),
       // Playwright adds flags that block extension loading
       ignoreDefaultArgs: [
         '--disable-extensions',
@@ -736,6 +819,73 @@ export class BrowserManager {
     this.consecutiveFailures = 0;
   }
 
+  /**
+   * Attach to a Chrome instance the user started themselves (with
+   * --remote-debugging-port=<n>). Uses Playwright's connectOverCDP so we
+   * inherit the user's real profile — cookies, logged-in sessions,
+   * extensions — instead of launching a fresh Chromium.
+   *
+   * Limitations vs. launchHeaded():
+   *   - No gstack sidebar extension (Chrome was already running without it)
+   *   - No anti-bot stealth patches (already-existing pages won't get them)
+   *   - On close(): we DON'T kill Chrome. The user owns its lifecycle.
+   *
+   * @param cdpUrl  HTTP or WS endpoint to Chrome's DevTools, e.g.
+   *                "http://127.0.0.1:9222" or
+   *                "ws://127.0.0.1:9222/devtools/browser/<id>"
+   */
+  async attachOverCDP(cdpUrl: string): Promise<void> {
+    if (this.browser) {
+      throw new Error('attachOverCDP: a browser session is already active. Call close() first.');
+    }
+    const { chromium } = await import('playwright');
+    this.browser = await chromium.connectOverCDP(cdpUrl);
+    // connectOverCDP returns the existing browser. Its first context holds
+    // all the user's open tabs. We pick the first context that has at least
+    // one page; if none have pages, we open one in the default context.
+    const contexts = this.browser.contexts();
+    let attachedContext = contexts.find(c => c.pages().length > 0) || contexts[0];
+    if (!attachedContext) {
+      // Highly unusual — connectOverCDP normally returns at least one context.
+      throw new Error('attachOverCDP: target browser has no contexts. Is Chrome actually running?');
+    }
+    this.context = attachedContext;
+
+    // Surface the existing pages as tabs. If none exist, open a fresh blank
+    // tab so the user can drive it. TabSession's constructor takes (page);
+    // we pass that and let nextTabId allocate IDs the same way newTab() does.
+    // activeTabId starts at 0 (not -1) — so we explicitly track first-id and
+    // overwrite, rather than gating on a sentinel.
+    const existingPages = attachedContext.pages();
+    if (existingPages.length > 0) {
+      let firstId: number | null = null;
+      for (const p of existingPages) {
+        const id = this.nextTabId++;
+        this.pages.set(id, p);
+        this.tabSessions.set(id, new TabSession(p));
+        if (firstId === null) firstId = id;
+      }
+      if (firstId !== null) this.activeTabId = firstId;
+    } else {
+      await this.newTab();
+    }
+
+    this.connectionMode = 'attached';
+    this.intentionalDisconnect = false;
+    this.isHeaded = true;
+    this.dialogAutoAccept = false;
+
+    // If the user closes Chrome from their side, the browser disconnects.
+    // We treat that as a clean shutdown (no exit code 2 panic), since the
+    // user owns Chrome's lifecycle in attach mode.
+    this.browser.on('disconnected', () => {
+      if (this.intentionalDisconnect) return;
+      // No onDisconnect callback — just clear our handles.
+      this.browser = null;
+      this.context = null;
+    });
+  }
+
   async close() {
     if (this.browser || (this.connectionMode === 'headed' && this.context)) {
       if (this.connectionMode === 'headed') {
@@ -746,6 +896,18 @@ export class BrowserManager {
           this.context ? this.context.close() : Promise.resolve(),
           new Promise(resolve => setTimeout(resolve, 5000)),
         ]).catch(() => {});
+      } else if (this.connectionMode === 'attached') {
+        // Attached mode: the user owns Chrome's lifecycle. Detach the CDP
+        // connection but do NOT close the browser — that would kill all
+        // their open tabs and lose their session.
+        this.intentionalDisconnect = true;
+        this.browser.removeAllListeners('disconnected');
+        await Promise.race([
+          (this.browser as any).close ? (this.browser as any).close() : Promise.resolve(),
+          new Promise(resolve => setTimeout(resolve, 3000)),
+        ]).catch(() => {});
+        // browser.close() on a connectOverCDP target only closes the WS, not
+        // the browser process itself (Playwright spec). User's Chrome lives on.
       } else {
         // Launched mode: close the browser we spawned
         this.browser.removeAllListeners('disconnected');

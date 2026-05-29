@@ -159,16 +159,16 @@ touch ~/.gstack/.writing-style-prompted
 
 Skip if `WRITING_STYLE_PENDING` is `no`.
 
-If `LAKE_INTRO` is `no`: say "gstack follows the **Boil the Lake** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
+If `LAKE_INTRO` is `no` AND `~/.gstack/.onboarding-deferred` does NOT exist: say "gstack follows the **Boil the Lake** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
 
 ```bash
 open https://garryslist.org/posts/boil-the-ocean
 touch ~/.gstack/.completeness-intro-seen
 ```
 
-Only run `open` if yes. Always run `touch`.
+Only run `open` if yes. Always run `touch`. If the deferred sentinel exists, skip this section entirely.
 
-If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes`: ask telemetry once via AskUserQuestion:
+If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask telemetry once via AskUserQuestion:
 
 > Help gstack get better. Share usage data only: skill, duration, crashes, stable device ID. No code, file paths, or repo names.
 
@@ -196,7 +196,7 @@ touch ~/.gstack/.telemetry-prompted
 
 Skip if `TEL_PROMPTED` is `yes`.
 
-If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes`: ask once:
+If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask once:
 
 > Let gstack proactively suggest skills, like /qa for "does this work?" or /investigate for bugs?
 
@@ -214,7 +214,7 @@ touch ~/.gstack/.proactive-prompted
 
 Skip if `PROACTIVE_PROMPTED` is `yes`.
 
-If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes`:
+If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist:
 Check if a CLAUDE.md file exists in the project root. If it does not exist, create it.
 
 Use AskUserQuestion:
@@ -918,6 +918,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 | `inspect [selector] [--all] [--history]` | Deep CSS inspection via CDP — full rule cascade, box model, computed styles |
 | `is <prop> <sel|@ref>` | State check on element. Valid <prop> values: visible, hidden, enabled, disabled, checked, editable, focused (case-sensitive). <sel> accepts a CSS selector OR an @ref token from a prior snapshot (e.g. @e3, @c1) — refs are interchangeable with selectors anywhere a selector is expected. |
 | `js <expr>` | Run inline JavaScript expression in the page context and return result as string. Same JS sandbox as eval; the only difference is js takes an inline expr while eval reads from a file. |
+| `lighthouse <url> [--out report.html] [--mobile] [--json]` | Run Google Lighthouse audit (performance, accessibility, best-practices, SEO). Spawns its own headless Chrome. |
 | `network [--clear]` | Network requests |
 | `perf` | Page load timings |
 | `storage  |  storage set <key> <value>` | Read both localStorage and sessionStorage as JSON. With "set <key> <value>", write to localStorage only (sessionStorage is read-only via this command — set it with `js sessionStorage.setItem(...)`). |
@@ -944,6 +945,8 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 | `domain-skill save|list|show|edit|promote-to-global|rollback|rm <host?>` | Per-site notes the agent writes for itself. Host is derived from the active tab. Lifecycle: `save` adds a quarantined note → after N=3 successful uses without the prompt-injection classifier flagging it, the note auto-promotes to "active" → `promote-to-global` lifts it to the global tier (machine-wide, all projects). The classifier flag is set automatically by the L4 prompt-injection scan; agents do not set it manually. Use `list` / `show` to inspect, `edit` to revise, `rollback` to demote, `rm` to tombstone. |
 | `frame <sel|@ref|--name n|--url pattern|main>` | Switch to iframe context (or main to return) |
 | `inbox [--clear]` | List messages from sidebar scout inbox |
+| `record start [--out <file.json>]  |  record stop` | Record clicks/fills/keys/navigations into a JSON file for later replay |
+| `replay <file.json> [--speed <n>] [--no-delay]` | Replay a previously-recorded flow against the current browser. Preserves inter-action delays unless --no-delay. |
 | `skill list|show|run|test|rm <name?> [--arg k=v]... [--timeout=Ns]` | Run a browser-skill: deterministic Playwright script that drives the daemon over loopback HTTP. 3-tier lookup (project > global > bundled). Spawned scripts get a per-spawn scoped token (read+write only) — never the daemon root token. |
 | `watch [stop]` | Passive observation — periodic snapshots while user browses |
 
@@ -959,9 +962,11 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 ### Server
 | Command | Description |
 |---------|-------------|
+| `attach <port-or-url>` | Attach to a user-owned Chrome via CDP (chrome --remote-debugging-port=<n>). Inherits real cookies/sessions. Does NOT kill Chrome on disconnect. |
 | `connect` | Launch headed Chromium with Chrome extension |
 | `disconnect` | Disconnect headed browser, return to headless mode |
-| `focus [@ref]` | Bring headed browser window to foreground (macOS) |
+| `doctor` | Diagnostic report: platform, server, terminal-agent, extension, locks, state-dir writability |
+| `focus [@ref]` | Bring headed browser window to foreground (macOS / Windows / Linux with wmctrl|xdotool) |
 | `handoff [message]` | Open visible Chrome at current page for user takeover |
 | `memory [--json]` | Snapshot Bun heap + per-tab JS heap + Chromium process tree + bounded buffer sizes. JSON output with --json. |
 | `restart` | Restart server |

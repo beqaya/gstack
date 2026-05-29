@@ -18,6 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { safeUnlink, safeKill, isProcessAlive } from './error-handling';
 import { writeSecureFile, mkdirSecure } from './file-permissions';
+import { IS_WINDOWS } from './platform';
 
 /**
  * Locate the terminal-agent script on disk. In dev (cli.ts running via
@@ -68,14 +69,47 @@ export function spawnTerminalAgent(opts: {
   }
   const script = opts.scriptPath || resolveTerminalAgentScript();
   if (!script || !fs.existsSync(script)) return null;
+  const childEnv: Record<string, string> = {
+    BROWSE_STATE_FILE: opts.stateFile,
+    BROWSE_SERVER_PORT: String(opts.serverPort),
+    ...(opts.extraEnv || {}),
+  };
+
+  if (IS_WINDOWS) {
+    // Bun.spawn({detached:true}) + unref() doesn't fully detach on Windows —
+    // the child dies when the parent CLI exits. Use Node's child_process.spawn
+    // via a tiny launcher script, mirroring how cli.ts spawns server-node.mjs.
+    // Diagnostics go to terminal-agent-spawn.log so failures aren't silent.
+    const bunPath = (Bun as any).which?.('bun') || 'bun';
+    const errLog = path.join(stateDir, 'terminal-agent-spawn.log');
+    safeUnlink(errLog);
+    const extraEnvStr = JSON.stringify(childEnv);
+    const launcherCode =
+      `const{spawn}=require('child_process');` +
+      `const fs=require('fs');` +
+      `try{` +
+      `const c=spawn(${JSON.stringify(bunPath)},['run',${JSON.stringify(script)}],` +
+      `{detached:true,stdio:['ignore','ignore','pipe'],` +
+      `cwd:${JSON.stringify(opts.cwd || process.cwd())},` +
+      `env:Object.assign({},process.env,${extraEnvStr})});` +
+      `c.on('error',e=>fs.appendFileSync(${JSON.stringify(errLog)},'spawn error: '+e.message+'\\n'));` +
+      `c.stderr.on('data',d=>fs.appendFileSync(${JSON.stringify(errLog)},'child stderr: '+d.toString()));` +
+      `c.unref();` +
+      `process.stdout.write(String(c.pid||''));` +
+      `}catch(e){fs.writeFileSync(${JSON.stringify(errLog)},'launcher: '+e.message+'\\n')}`;
+    const r = (Bun as any).spawnSync(['node', '-e', launcherCode], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    if (r.exitCode !== 0) return null;
+    const pidStr = new TextDecoder().decode(r.stdout).trim();
+    const pid = Number.parseInt(pidStr, 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  }
+
   const proc = (Bun as any).spawn(['bun', 'run', script], {
     cwd: opts.cwd || process.cwd(),
-    env: {
-      ...process.env,
-      BROWSE_STATE_FILE: opts.stateFile,
-      BROWSE_SERVER_PORT: String(opts.serverPort),
-      ...(opts.extraEnv || {}),
-    },
+    env: { ...process.env, ...childEnv },
     stdio: ['ignore', 'ignore', 'ignore'],
   });
   proc.unref?.();

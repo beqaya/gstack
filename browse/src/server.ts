@@ -1556,14 +1556,19 @@ export function buildFetchHandler(cfg: ServerConfig): ServerHandle {
       // terminal-agent\.ts` regex teardown which matched sibling gstack
       // sessions on the same host. Only the PID recorded in
       // `<stateDir>/terminal-agent-pid` by THIS daemon's agent is signaled.
+      // (Supersedes the cross-platform pkill replacement from our v1.42.1.0
+      // customization — upstream's record-based approach is more robust.)
       try {
         const stateDir = path.dirname(config.stateFile);
         const record = readAgentRecord(stateDir);
         if (record) killAgentByRecord(record, 'SIGTERM');
       } catch (err: any) {
-        console.warn('[browse] Failed to kill terminal-agent:', err.message);
+        if (err?.code !== 'ENOENT') {
+          console.warn('[browse] Failed to kill terminal-agent:', err.message);
+        }
       }
       safeUnlinkQuiet(path.join(path.dirname(config.stateFile), 'terminal-port'));
+      safeUnlinkQuiet(path.join(path.dirname(config.stateFile), 'terminal-agent.pid'));
       safeUnlinkQuiet(path.join(path.dirname(config.stateFile), 'terminal-internal-token'));
       safeUnlinkQuiet(agentRecordPath(path.dirname(config.stateFile)));
     }
@@ -1800,8 +1805,17 @@ export function buildFetchHandler(cfg: ServerConfig): ServerHandle {
         }
         const port = readTerminalPort();
         if (!port) {
+          // Platform-aware: Bun's `terminal:` spawn option (used by
+          // terminal-agent.ts to host the PTY) is Unix-only. On Windows the
+          // agent can boot but crashes on first byte. Tell the sidebar so it
+          // can render a meaningful state instead of a generic 503.
+          const isWindows = process.platform === 'win32';
           return new Response(JSON.stringify({
-            error: 'terminal-agent not ready',
+            error: isWindows ? 'pty-unsupported' : 'terminal-agent not ready',
+            os: process.platform,
+            message: isWindows
+              ? 'Sidebar terminal (PTY) is not yet supported on Windows. Bun lacks ConPTY support. Other gstack features work normally.'
+              : 'Terminal agent has not started or is unreachable. Try `browse disconnect` then `browse connect`.',
           }), { status: 503, headers: { 'Content-Type': 'application/json' } });
         }
         const lease = mintLease();
@@ -1812,6 +1826,7 @@ export function buildFetchHandler(cfg: ServerConfig): ServerHandle {
           revokeLease(lease.sessionId);
           return new Response(JSON.stringify({
             error: 'failed to grant terminal session',
+            os: process.platform,
           }), { status: 503, headers: { 'Content-Type': 'application/json' } });
         }
         return new Response(JSON.stringify({
@@ -2454,6 +2469,61 @@ export function buildFetchHandler(cfg: ServerConfig): ServerHandle {
         });
       }
 
+      // ─── /activity/log — webhook sink for external tools ──────────────
+      // Any local tool with the bearer token can push events into the
+      // sidebar's activity feed: CI runs, deploy status, test suites, custom
+      // observers. Body: {source, event, data?}. Sanitized through the
+      // standard activity pipeline (lone-surrogate scrub on egress, payload
+      // size cap). Loopback-only via the existing /command security model.
+      if (url.pathname === '/activity/log' && req.method === 'POST') {
+        if (!validateAuth(req)) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        let body: any;
+        try { body = await req.json(); } catch {
+          return new Response(JSON.stringify({ error: 'invalid JSON body' }), {
+            status: 400, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const source = typeof body?.source === 'string' ? body.source.slice(0, 64) : '';
+        const event = typeof body?.event === 'string' ? body.event.slice(0, 128) : '';
+        if (!source || !event) {
+          return new Response(JSON.stringify({ error: 'source and event are required strings' }), {
+            status: 400, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        // Cap payload size to prevent a misbehaving emitter from filling the
+        // SSE buffer. 8KB is generous for status events; large payloads
+        // belong in a separate endpoint, not the activity feed.
+        let data = body?.data;
+        if (data !== undefined) {
+          try {
+            const serialized = JSON.stringify(data);
+            if (serialized.length > 8192) {
+              return new Response(JSON.stringify({ error: 'data payload exceeds 8KB cap' }), {
+                status: 413, headers: { 'Content-Type': 'application/json' },
+              });
+            }
+          } catch {
+            return new Response(JSON.stringify({ error: 'data must be JSON-serializable' }), {
+              status: 400, headers: { 'Content-Type': 'application/json' },
+            });
+          }
+        }
+        const entry = emitActivity({
+          type: 'webhook',
+          source,
+          event,
+          ...(data !== undefined ? { data } : {}),
+          status: typeof body?.status === 'string' && (body.status === 'ok' || body.status === 'error') ? body.status : 'ok',
+        });
+        return new Response(JSON.stringify({ id: entry.id, timestamp: entry.timestamp }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
       // Activity history — REST, auth required, does NOT reset idle timer
       if (url.pathname === '/activity/history') {
         if (!validateAuth(req)) {
@@ -2933,8 +3003,14 @@ export async function start() {
   // BROWSE_HEADLESS_SKIP=1 skips browser launch entirely (for HTTP-only testing)
   const skipBrowser = process.env.BROWSE_HEADLESS_SKIP === '1';
   if (!skipBrowser) {
+    const attachUrl = process.env.BROWSE_ATTACH_URL;
     const headed = process.env.BROWSE_HEADED === '1';
-    if (headed) {
+    if (attachUrl) {
+      // Attach to a user-owned Chrome via CDP. Skips extension loading,
+      // skips Chromium rebrand, doesn't kill Chrome on close().
+      await browserManager.attachOverCDP(attachUrl);
+      console.log(`[browse] Attached to existing Chrome via CDP: ${attachUrl}`);
+    } else if (headed) {
       await browserManager.launchHeaded(envCfg.authToken);
       console.log(`[browse] Launched headed Chromium with extension`);
     } else {

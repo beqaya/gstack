@@ -171,12 +171,21 @@ export function resolveGstackHome(): string {
  * Resolution order:
  *   1. `explicit` arg (passed via ServerConfig.chromiumProfile by embedders)
  *   2. CHROMIUM_PROFILE env (used by gbrowser's gbd per-workspace)
- *   3. <resolveGstackHome()>/chromium-profile (default)
+ *   3. BROWSE_PROFILE_NAME env → <gstackHome>/profiles/<name>
+ *      (set by `browse connect --profile <name>`)
+ *   4. <resolveGstackHome()>/chromium-profile (default)
+ *
+ * Profile names are validated to prevent path traversal — only [A-Za-z0-9_-]
+ * up to 64 chars.
  */
 export function resolveChromiumProfile(explicit?: string): string {
   if (explicit && explicit.length > 0) return explicit;
   const env = process.env.CHROMIUM_PROFILE;
   if (env && env.length > 0) return env;
+  const named = process.env.BROWSE_PROFILE_NAME;
+  if (named && /^[A-Za-z0-9_-]{1,64}$/.test(named)) {
+    return path.join(resolveGstackHome(), 'profiles', named);
+  }
   return path.join(resolveGstackHome(), 'chromium-profile');
 }
 
@@ -209,7 +218,12 @@ export function cleanSingletonLocks(userDataDir: string): void {
   const explicitAbs = explicitProfile && path.isAbsolute(explicitProfile)
     ? path.resolve(explicitProfile)
     : null;
-  const isSafe = basename === 'chromium-profile' || (explicitAbs !== null && resolved === explicitAbs);
+  // Named profile path is also safe: <gstackHome>/profiles/<name> where name
+  // is the [A-Za-z0-9_-]{1,64} validated in resolveChromiumProfile.
+  const profilesDir = path.resolve(path.join(resolveGstackHome(), 'profiles'));
+  const isNamedProfile =
+    path.dirname(resolved) === profilesDir && /^[A-Za-z0-9_-]{1,64}$/.test(basename);
+  const isSafe = basename === 'chromium-profile' || (explicitAbs !== null && resolved === explicitAbs) || isNamedProfile;
   if (!isSafe) {
     console.warn(`[browse] cleanSingletonLocks: refusing to clean unrecognized profile dir: ${resolved}`);
     return;
