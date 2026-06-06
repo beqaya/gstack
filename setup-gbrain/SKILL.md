@@ -2,7 +2,7 @@
 name: setup-gbrain
 preamble-tier: 2
 version: 1.0.0
-description: Set up gbrain for this coding agent: install the CLI, initialize a local PGLite or Supabase brain, register MCP, capture per-remote trust policy. (gstack)
+description: "Set up gbrain for this coding agent: install the CLI, initialize a local PGLite or Supabase brain, register MCP, capture per-remote trust policy. (gstack)"
 triggers:
   - setup gbrain
   - install gbrain
@@ -63,7 +63,7 @@ _QUESTION_TUNING=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning
 echo "QUESTION_TUNING: $_QUESTION_TUNING"
 mkdir -p ~/.gstack/analytics
 if [ "$_TEL" != "off" ]; then
-echo '{"skill":"setup-gbrain","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
+echo '{"skill":"setup-gbrain","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(_repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null | tr -cd 'a-zA-Z0-9._-'); echo "${_repo:-unknown}")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 fi
 for _PF in $(find ~/.gstack/analytics -maxdepth 1 -name '.pending-*' 2>/dev/null); do
   if [ -f "$_PF" ]; then
@@ -173,7 +173,7 @@ Only run `open` if yes. Always run `touch`. If the deferred sentinel exists, ski
 
 If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask telemetry once via AskUserQuestion:
 
-> Help gstack get better. Share usage data only: skill, duration, crashes, stable device ID. No code, file paths, or repo names.
+> Help gstack get better. Share usage data only: skill, duration, crashes, stable device ID. No code or file paths. Your repo name is recorded locally only and stripped before any upload.
 
 Options:
 - A) Help gstack get better! (recommended)
@@ -365,25 +365,12 @@ so split chains are never AUTO_DECIDE-eligible — the user's option set is sacr
 **Full rule + worked examples + Hold/dependency semantics:** see
 `docs/askuserquestion-split.md` in the gstack repo. Read on demand when N>4.
 
-**Non-ASCII characters — write directly, never \u-escape.** When any
-    string field (question, option label, option description) contains
-    Chinese (繁體/簡體), Japanese, Korean, or other non-ASCII text, emit
-    the literal UTF-8 characters in the JSON string. **Never escape them
-    as `\uXXXX`.** Claude Code's tool parameter pipe is UTF-8 native
-    and passes characters through unchanged. Manually escaping requires
-    recalling each codepoint from training, which is unreliable for long
-    CJK strings — the model regularly emits the wrong codepoint (e.g.
-    writes `\u3103` thinking it is 管 U+7BA1, but `\u3103` is
-    actually ㄃, so the user sees `管理工具` rendered as `㄃3用箱`).
-    The trigger is long, multi-line questions with hundreds of CJK
-    characters: that is exactly when reflexive escaping kicks in and
-    exactly when miscoding is most damaging. Long ≠ escape. Keep
-    characters literal.
-
-    Wrong: `"question": "請選擇\uXXXX\uXXXX\uXXXX\uXXXX"`
-    Right: `"question": "請選擇管理工具"`
-
-    Only JSON-mandatory escapes remain allowed: `\n`, `\t`, `\"`, `\\`.
+**Non-ASCII characters — write directly, never \u-escape.** When any string
+field contains Chinese (繁體/簡體), Japanese, Korean, or other non-ASCII text,
+emit the literal UTF-8 characters; never escape them as `\uXXXX` (the pipe is
+UTF-8 native, and manual escaping miscodes long CJK strings). Only `\n`,
+`\t`, `\"`, `\\` remain allowed. Full rationale + worked example: see
+`docs/askuserquestion-cjk.md`. Read on demand when a question contains CJK.
 
 ### Self-check before emitting
 
@@ -1562,6 +1549,75 @@ Confirms the round trip. On failure, surface `gbrain doctor --json` output
 and STOP with a NEEDS_CONTEXT escalation.
 
 ---
+
+## Step 9.5: Brain trust policy (v1.48 brain-aware planning, D4 / Phase 1.5)
+
+The brain trust policy controls whether gstack auto-pushes `~/.gstack/`
+artifacts and writes calibration takes back to this brain. It's per-
+endpoint: a user with both a local PGLite (personal) and a team remote
+MCP (shared) gets both policies tracked separately.
+
+Detect the active endpoint hash + current policy:
+
+```bash
+_HASH=$(~/.claude/skills/gstack/bin/gstack-config endpoint-hash 2>/dev/null)
+_POLICY=$(~/.claude/skills/gstack/bin/gstack-config get brain_trust_policy@$_HASH 2>/dev/null || echo unset)
+echo "ENDPOINT_HASH: $_HASH"
+echo "BRAIN_TRUST_POLICY: $_POLICY"
+```
+
+Branch on transport + current policy:
+
+**If `_POLICY` is `personal` or `shared`:** policy already set. Print
+"Trust policy for this endpoint: $_POLICY" and skip to Step 10.
+
+**If `_POLICY` is `unset` AND `_HASH == "local"`:** auto-set personal
+(local engines are inherently single-tenant). No AskUserQuestion.
+
+```bash
+~/.claude/skills/gstack/bin/gstack-config set brain_trust_policy@$_HASH personal
+echo "Trust policy auto-set to 'personal' for local PGLite (single-tenant by construction)."
+```
+
+**If `_POLICY` is `unset` AND `_HASH != "local"` (remote MCP):** ask the
+trust policy question via AskUserQuestion:
+
+> The brain at this MCP endpoint — is it your personal brain or a
+> shared/team brain?
+>
+> Personal: gstack auto-pushes ~/.gstack/ artifacts (CEO plans, design
+> docs, retros, learnings) and writes calibration takes back as you make
+> decisions. Your brain gets smarter every session. Pick this if you
+> alone set up this brain.
+>
+> Shared/team: read-only by default. gstack reads context but prompts
+> before any write. Safer for brains where your individual takes
+> shouldn't pollute the shared corpus.
+
+Options:
+- A) Personal (recommended for self-hosted remote brains)
+- B) Shared/team
+
+After answer, persist:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-config set brain_trust_policy@$_HASH <personal|shared>
+```
+
+If `personal` was selected AND `artifacts_sync_mode` is still `off`, also
+default it to `full` (D4 auto-push convention):
+
+```bash
+_CURRENT_SYNC=$(~/.claude/skills/gstack/bin/gstack-config get artifacts_sync_mode 2>/dev/null || echo off)
+if [ "$_CURRENT_SYNC" = "off" ]; then
+  ~/.claude/skills/gstack/bin/gstack-config set artifacts_sync_mode full
+  echo "artifacts_sync_mode auto-set to 'full' (personal brain default)."
+fi
+```
+
+Backwards compat: existing users whose `artifacts_sync_mode_prompted` is
+already `true` keep their answer; this gate only fires for new endpoints
+or first-time-after-upgrade users.
 
 ## Step 10: GREEN/YELLOW/RED verdict block (idempotent doctor output)
 

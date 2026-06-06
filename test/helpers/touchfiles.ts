@@ -116,11 +116,13 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // Real-PTY E2E batch (#6 new tests on the harness).
   // Each one tests behavior the SDK harness can't observe (rendered TTY,
   // numbered-option lists, multi-phase ordering, idempotency state echo).
-  'ask-user-question-format-pty':              ['plan-ceo-review/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completeness-section.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts'],
+  'auq-format-gate':                           ['plan-ceo-review/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completeness-section.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/auq-sdk-capture.ts', 'test/helpers/session-runner.ts', 'test/helpers/llm-judge.ts'],
   'plan-ceo-mode-routing':       ['plan-ceo-review/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts'],
   'plan-design-with-ui-scope':   ['plan-design-review/**', 'test/fixtures/plans/ui-heavy-feature.md', 'test/helpers/claude-pty-runner.ts'],
   'budget-regression-pty':       ['test/helpers/eval-store.ts', 'test/skill-budget-regression.test.ts'],
-  'ship-idempotency-pty':        ['ship/**', 'bin/gstack-next-version', 'lib/worktree.ts', 'test/helpers/claude-pty-runner.ts'],
+  'ship-idempotency-pty':        ['ship/**', 'bin/gstack-next-version', 'bin/gstack-version-bump', 'scripts/resolvers/sections.ts', 'lib/worktree.ts', 'test/helpers/claude-pty-runner.ts'],
+  'ship-section-loading':        ['ship/**', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/auq-sdk-capture.ts', 'test/helpers/session-runner.ts'],
+  'plan-ceo-section-loading':    ['plan-ceo-review/**', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/auq-sdk-capture.ts', 'test/helpers/session-runner.ts'],
   'autoplan-chain-pty':          ['autoplan/**', 'plan-ceo-review/**', 'plan-design-review/**', 'plan-eng-review/**', 'plan-devex-review/**', 'test/fixtures/plans/ui-heavy-feature.md', 'test/helpers/claude-pty-runner.ts'],
   'e2e-harness-audit':            ['plan-ceo-review/**', 'plan-eng-review/**', 'plan-design-review/**', 'plan-devex-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/claude-pty-runner.ts'],
 
@@ -385,6 +387,35 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // /spec end-to-end via PTY — exercises the full Phase 1→5 pipeline
   // including --execute spawn. Periodic-tier — paid + non-deterministic.
   'spec-execute':     ['spec/**', 'test/skill-e2e-spec-execute.test.ts'],
+
+  // /office-hours brain-writeback path under fake gbrain CLI (v1.50.0.0
+  // T7). Drives /office-hours with a regenerated SKILL.md that has the
+  // compressed GBRAIN_SAVE_RESULTS block + a fake gbrain on PATH; asserts
+  // the agent calls `gbrain put office-hours/<slug>` with valid YAML
+  // frontmatter. Touched by anything that changes resolver output, gen
+  // pipeline, detection helper, refresh subcommand, or the on-demand
+  // docs the resolver points to.
+  'office-hours-brain-writeback': [
+    'scripts/resolvers/gbrain.ts',
+    'scripts/gen-skill-docs.ts',
+    'bin/gstack-gbrain-detect',
+    'bin/gstack-config',
+    'office-hours/SKILL.md.tmpl',
+    'docs/gbrain-write-surfaces.md',
+    'test/fixtures/office-hours-brain-writeback/**',
+    'test/skill-e2e-office-hours-brain-writeback.test.ts',
+  ],
+
+  // gbrain CLI real round-trip against a local PGLite store (v1.50.0.0
+  // T11). Proves the gbrain CLI persistence contract gstack relies on —
+  // a `gbrain put` followed by `gbrain get` returns the body. Skips if
+  // VOYAGE_API_KEY is unset OR gbrain CLI not on PATH. Touched by the
+  // resolver (which emits the CLI shape) and the test itself.
+  'gbrain-roundtrip-local': [
+    'scripts/resolvers/gbrain.ts',
+    'test/skill-e2e-gbrain-roundtrip-local.test.ts',
+  ],
+
 };
 
 /**
@@ -432,6 +463,13 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
 
   // Office Hours
   'office-hours-spec-review': 'gate',
+  // Brain-writeback E2E — periodic per cost (claude -p) + non-deterministic
+  // (model interprets the gbrain instruction). Matches nearby
+  // setup-gbrain-path4-* tier classification.
+  'office-hours-brain-writeback': 'periodic',
+  // GBrain CLI round-trip — periodic per Voyage embedding cost (~$0.001/run)
+  // and external-API-dependency (skips cleanly if VOYAGE_API_KEY unset).
+  'gbrain-roundtrip-local': 'periodic',
   'office-hours-forcing-energy': 'gate',       // V1.1 mode-posture regression gate (Sonnet generator)
   // 'office-hours-builder-wildness' retiered to periodic in v1.32 contributor
   // wave: this is an LLM-judge creativity score (axis_a ≥4 on a "wildness"
@@ -467,11 +505,13 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   // Real-PTY E2E batch — tier classification:
   //   gate: cheap, deterministic, run on every PR
   //   periodic: long-running or expensive (>$3/run), run weekly
-  'ask-user-question-format-pty':            'gate',       // ~$0.50/run, single skill probe
+  'auq-format-gate':                         'gate',       // ~$0.50/run, SDK capture, single skill probe
   'plan-ceo-mode-routing':     'periodic',   // ~$3/run, deep navigation through 8-12 prior AskUserQuestions
   'plan-design-with-ui-scope': 'gate',       // ~$0.80/run
   'budget-regression-pty':     'gate',       // free, library-only assertion
   'ship-idempotency-pty':      'periodic',   // ~$3/run, real /ship in plan mode
+  'ship-section-loading':      'periodic',   // ~$3/run, real /ship; asserts section reads
+  'plan-ceo-section-loading':  'periodic',   // ~$3-5/run, real /plan-ceo-review; asserts section read
   'autoplan-chain-pty':        'periodic',   // ~$8/run, all 3 phases sequential
 
   // Per-finding count + review-report-at-bottom — periodic because each
