@@ -1,0 +1,22 @@
+# watch/default-rules.yaml
+version: 1
+rules:
+  - id: quick-review-on-commit
+    on: { source: git, type: post-commit }
+    when:
+      files.match: ["src/**", "lib/**"]
+    action: { type: auto-run, skill: "/review", args: ["--quick"] }
+    notify: terminal-only-on-finding
+
+  - id: daily-health
+    on: { source: time, type: daily }
+    action: { type: auto-run, skill: "/health" }
+    notify: terminal
+
+  # Registered but inert in Phase 1 — no CI listener yet (lands in Phase 2)
+  - id: investigate-on-ci-fail
+    on: { source: ci, type: check_failed }
+    when:
+      check_name: "test"
+    action: { type: auto-run, skill: "/investigate", args: ["--from-ci"] }
+    notify: terminal+system

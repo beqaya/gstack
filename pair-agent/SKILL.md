@@ -1,7 +1,18 @@
 ---
 name: pair-agent
 version: 0.1.0
-description: Pair a remote AI agent with your browser. (gstack)
+description: |
+  Pair a remote AI agent with your browser. One command generates a setup key and
+  prints instructions the other agent can follow to connect. Works with OpenClaw,
+  Hermes, Codex, Cursor, or any agent that can make HTTP requests. The remote agent
+  gets its own tab with scoped access (read+write by default, admin on request).
+  Use when asked to "pair agent", "connect agent", "share browser", "remote browser",
+  "let another agent use my browser", or "give browser access". (gstack)
+voice-triggers:
+  - "pair agent"
+  - "connect agent"
+  - "share my browser"
+  - "remote browser access"
 triggers:
   - pair with agent
   - connect remote agent
@@ -14,18 +25,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-One command generates a setup key and
-prints instructions the other agent can follow to connect. Works with OpenClaw,
-Hermes, Codex, Cursor, or any agent that can make HTTP requests. The remote agent
-gets its own tab with scoped access (read+write by default, admin on request).
-Use when asked to "pair agent", "connect agent", "share browser", "remote browser",
-"let another agent use my browser", or "give browser access".
-
-Voice triggers (speech-to-text aliases): "pair agent", "connect agent", "share my browser", "remote browser access".
 
 ## Preamble (run first)
 
@@ -182,16 +181,16 @@ touch ~/.gstack/.writing-style-prompted
 
 Skip if `WRITING_STYLE_PENDING` is `no`.
 
-If `LAKE_INTRO` is `no`: say "gstack follows the **Boil the Ocean** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
+If `LAKE_INTRO` is `no` AND `~/.gstack/.onboarding-deferred` does NOT exist: say "gstack follows the **Boil the Lake** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
 
 ```bash
 open https://garryslist.org/posts/boil-the-ocean
 touch ~/.gstack/.completeness-intro-seen
 ```
 
-Only run `open` if yes. Always run `touch`.
+Only run `open` if yes. Always run `touch`. If the deferred sentinel exists, skip this section entirely.
 
-If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes`: ask telemetry once via AskUserQuestion:
+If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask telemetry once via AskUserQuestion:
 
 > Help gstack get better. Share usage data only: skill, duration, crashes, stable device ID. No code or file paths. Your repo name is recorded locally only and stripped before any upload.
 
@@ -219,7 +218,7 @@ touch ~/.gstack/.telemetry-prompted
 
 Skip if `TEL_PROMPTED` is `yes`.
 
-If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes`: ask once:
+If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask once:
 
 > Let gstack proactively suggest skills, like /qa for "does this work?" or /investigate for bugs?
 
@@ -255,7 +254,7 @@ Then run `touch ~/.gstack/.first-loop-tip-shown 2>/dev/null || true`.
 
 Skip this section if `ACTIVATED` and `FIRST_LOOP_SHOWN` are both `yes`.
 
-If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes`:
+If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist:
 Check if a CLAUDE.md file exists in the project root. If it does not exist, create it.
 
 Use AskUserQuestion:

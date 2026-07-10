@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "goals": [
+    { "id": "g01", "goal": "list all TODO comments in src", "expected_primitives": ["grep"], "min_nodes": 1, "max_nodes": 3 },
+    { "id": "g02", "goal": "show the last 10 commits in oneline format", "expected_primitives": ["git_log"], "min_nodes": 1, "max_nodes": 1 },
+    { "id": "g03", "goal": "show changes between HEAD and main", "expected_primitives": ["git_diff"], "min_nodes": 1, "max_nodes": 2 },
+    { "id": "g04", "goal": "read the package.json file", "expected_primitives": ["read_file"], "min_nodes": 1, "max_nodes": 1 },
+    { "id": "g05", "goal": "find all references to the function 'createServer' across the codebase", "expected_primitives": ["grep"], "min_nodes": 1, "max_nodes": 3 },
+    { "id": "g06", "goal": "give me a code health score for this repo", "expected_primitives": ["health_score"], "min_nodes": 1, "max_nodes": 2 },
+    { "id": "g07", "goal": "read both package.json and tsconfig.json", "expected_primitives": ["read_file", "parallel"], "min_nodes": 2, "max_nodes": 4 },
+    { "id": "g08", "goal": "find TODOs and find FIXMEs in src, in parallel", "expected_primitives": ["grep", "parallel"], "min_nodes": 2, "max_nodes": 4 },
+    { "id": "g09", "goal": "show the last 5 commits and their diffs", "expected_primitives": ["git_log", "git_diff"], "min_nodes": 2, "max_nodes": 6 },
+    { "id": "g10", "goal": "what's the production error rate in the last hour?", "expected_primitives": ["prod_query"], "min_nodes": 1, "max_nodes": 2, "requires_runtime": true }
+  ]
+}

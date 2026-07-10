@@ -1,0 +1,5 @@
+#!/usr/bin/env bun
+import("../synth/src/cli/index.ts").then(m => m.main(process.argv.slice(2))).catch(err => {
+  console.error("[gstack-synth]", err);
+  process.exit(1);
+});
