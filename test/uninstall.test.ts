@@ -3,6 +3,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { linkOrCopySync } from './helpers/link-or-copy';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const UNINSTALL = path.join(ROOT, 'bin', 'gstack-uninstall');
@@ -46,8 +47,8 @@ describe('gstack-uninstall', () => {
       fs.writeFileSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'SKILL.md'), 'test');
 
       // Create per-skill symlinks (both old unprefixed and new prefixed)
-      fs.symlinkSync('gstack/review', path.join(mockHome, '.claude', 'skills', 'review'));
-      fs.symlinkSync('gstack/ship', path.join(mockHome, '.claude', 'skills', 'gstack-ship'));
+      linkOrCopySync('gstack/review', path.join(mockHome, '.claude', 'skills', 'review'));
+      linkOrCopySync('gstack/ship', path.join(mockHome, '.claude', 'skills', 'gstack-ship'));
 
       // Create a non-gstack symlink (should NOT be removed)
       fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'other-tool'), { recursive: true });

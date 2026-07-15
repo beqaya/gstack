@@ -3,6 +3,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { linkOrCopySync } from './helpers/link-or-copy';
 
 // Every test in this file shells out to gstack-config + gstack-relink (bash scripts
 // invoking subprocess work). Under parallel bun test load, subprocess spawn contends
@@ -167,8 +168,8 @@ describe('gstack-relink (#578)', () => {
   test('upgrades old directory symlinks to real directories', () => {
     setupMockInstall(['qa', 'ship']);
     // Simulate old behavior: create directory symlinks (the old pattern)
-    fs.symlinkSync(path.join(installDir, 'qa'), path.join(skillsDir, 'qa'));
-    fs.symlinkSync(path.join(installDir, 'ship'), path.join(skillsDir, 'ship'));
+    linkOrCopySync(path.join(installDir, 'qa'), path.join(skillsDir, 'qa'));
+    linkOrCopySync(path.join(installDir, 'ship'), path.join(skillsDir, 'ship'));
     // Verify they start as symlinks
     expect(fs.lstatSync(path.join(skillsDir, 'qa')).isSymbolicLink()).toBe(true);
 
@@ -444,9 +445,9 @@ describe('upgrade migrations', () => {
   test('v0.15.2.0 migration fixes stale directory symlinks', () => {
     setupMockInstall(['qa', 'ship', 'review']);
     // Simulate old state: directory symlinks (pre-v0.15.2.0 pattern)
-    fs.symlinkSync(path.join(installDir, 'qa'), path.join(skillsDir, 'qa'));
-    fs.symlinkSync(path.join(installDir, 'ship'), path.join(skillsDir, 'ship'));
-    fs.symlinkSync(path.join(installDir, 'review'), path.join(skillsDir, 'review'));
+    linkOrCopySync(path.join(installDir, 'qa'), path.join(skillsDir, 'qa'));
+    linkOrCopySync(path.join(installDir, 'ship'), path.join(skillsDir, 'ship'));
+    linkOrCopySync(path.join(installDir, 'review'), path.join(skillsDir, 'review'));
     // Set no-prefix mode (suppress auto-relink so symlinks stay intact for the test)
     run(`${path.join(installDir, 'bin', 'gstack-config')} set skill_prefix false`, {
       GSTACK_SETUP_RUNNING: '1',

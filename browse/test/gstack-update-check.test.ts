@@ -7,9 +7,10 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync, symlinkSync, utimesSync } from 'fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, mkdirSync, utimesSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { linkOrCopySync } from '../../test/helpers/link-or-copy';
 
 const SCRIPT = join(import.meta.dir, '..', '..', 'bin', 'gstack-update-check');
 
@@ -41,7 +42,7 @@ beforeEach(() => {
   // Link real gstack-config so update_check config check works
   const binDir = join(gstackDir, 'bin');
   mkdirSync(binDir);
-  symlinkSync(join(import.meta.dir, '..', '..', 'bin', 'gstack-config'), join(binDir, 'gstack-config'));
+  linkOrCopySync(join(import.meta.dir, '..', '..', 'bin', 'gstack-config'), join(binDir, 'gstack-config'));
 });
 
 afterEach(() => {

@@ -21,6 +21,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { spawnSync } from "child_process";
+import { linkOrCopySync } from "./helpers/link-or-copy";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const MIGRATION = path.join(
@@ -97,7 +98,7 @@ function makeCuratedPath(opts: { jq?: "missing" | "shim-fail" | "real" } = {}): 
       const src = path.join(d, u);
       if (fs.existsSync(src)) {
         try {
-          fs.symlinkSync(src, path.join(dir, u));
+          linkOrCopySync(src, path.join(dir, u));
         } catch {}
         break;
       }
@@ -109,7 +110,7 @@ function makeCuratedPath(opts: { jq?: "missing" | "shim-fail" | "real" } = {}): 
       const src = path.join(d, "jq");
       if (fs.existsSync(src)) {
         try {
-          fs.symlinkSync(src, path.join(dir, "jq"));
+          linkOrCopySync(src, path.join(dir, "jq"));
         } catch {}
         break;
       }

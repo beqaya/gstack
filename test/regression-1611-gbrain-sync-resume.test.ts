@@ -37,6 +37,7 @@ import {
 } from "../bin/gstack-gbrain-sync";
 import { checkOwnedStagingDir, STAGING_MARKER } from "../lib/staging-guard";
 import { stagedRelPath, readNewFailures } from "../bin/gstack-memory-ingest";
+import { linkOrCopySync } from "./helpers/link-or-copy";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const DEFAULT_MS = 35 * 60 * 1000;
@@ -342,7 +343,7 @@ describe("#1802 checkOwnedStagingDir — ownership matrix", () => {
     const outside = path.join(home, "..", path.basename(home) + "-outside");
     fs.mkdirSync(outside, { recursive: true });
     const link = path.join(home, ".staging-ingest-link");
-    fs.symlinkSync(outside, link);
+    linkOrCopySync(outside, link);
     try {
       // realpathSync resolves the link to `outside`, whose parent is not `home`.
       expect(checkOwnedStagingDir(link, home).ok).toBe(false);

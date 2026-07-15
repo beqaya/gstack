@@ -2,9 +2,10 @@ import { describe, it, expect } from 'bun:test';
 import { validateOutputPath } from '../src/meta-commands';
 import { validateReadPath, SENSITIVE_COOKIE_NAME, SENSITIVE_COOKIE_VALUE } from '../src/read-commands';
 import { BLOCKED_METADATA_HOSTS } from '../src/url-validation';
-import { readFileSync, symlinkSync, unlinkSync, writeFileSync, realpathSync } from 'fs';
+import { readFileSync, unlinkSync, writeFileSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { linkOrCopySync } from '../../test/helpers/link-or-copy';
 
 describe('validateOutputPath', () => {
   it('allows paths within /tmp', () => {
@@ -88,7 +89,7 @@ describe('validateReadPath', () => {
   it('blocks symlink inside safe dir pointing outside', () => {
     const linkPath = join(tmpdir(), 'test-symlink-bypass-' + Date.now());
     try {
-      symlinkSync('/etc/passwd', linkPath);
+      linkOrCopySync('/etc/passwd', linkPath);
       expect(() => validateReadPath(linkPath)).toThrow(/Path must be within/);
     } finally {
       try { unlinkSync(linkPath); } catch {}
@@ -115,7 +116,7 @@ describe('validateOutputPath — symlink resolution', () => {
   it('blocks symlink inside /tmp pointing outside safe dirs', () => {
     const linkPath = join(tmpdir(), 'test-output-symlink-' + Date.now() + '.png');
     try {
-      symlinkSync('/etc/crontab', linkPath);
+      linkOrCopySync('/etc/crontab', linkPath);
       expect(() => validateOutputPath(linkPath)).toThrow(/Path must be within/);
     } finally {
       try { unlinkSync(linkPath); } catch {}
@@ -129,7 +130,7 @@ describe('validateOutputPath — symlink resolution', () => {
     const linkPath = join(realTmp, 'test-output-link-' + Date.now() + '.png');
     try {
       writeFileSync(targetPath, '');
-      symlinkSync(targetPath, linkPath);
+      linkOrCopySync(targetPath, linkPath);
       expect(() => validateOutputPath(linkPath)).not.toThrow();
     } finally {
       try { unlinkSync(linkPath); } catch {}
@@ -140,7 +141,7 @@ describe('validateOutputPath — symlink resolution', () => {
   it('blocks new file in symlinked directory pointing outside', () => {
     const linkDir = join(tmpdir(), 'test-dirlink-' + Date.now());
     try {
-      symlinkSync('/etc', linkDir);
+      linkOrCopySync('/etc', linkDir);
       expect(() => validateOutputPath(join(linkDir, 'evil.png'))).toThrow(/Path must be within/);
     } finally {
       try { unlinkSync(linkDir); } catch {}

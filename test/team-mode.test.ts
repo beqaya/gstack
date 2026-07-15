@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
+import { linkOrCopySync } from './helpers/link-or-copy';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const SETTINGS_HOOK = path.join(ROOT, 'bin', 'gstack-settings-hook');
@@ -291,7 +292,7 @@ describe('gstack-team-init', () => {
     fs.mkdirSync(skillsDir, { recursive: true });
     const targetDir = mkTmpDir();
     fs.writeFileSync(path.join(targetDir, 'VERSION'), '0.14.0.0');
-    fs.symlinkSync(targetDir, path.join(skillsDir, 'gstack'));
+    linkOrCopySync(targetDir, path.join(skillsDir, 'gstack'));
 
     const result = run(`${TEAM_INIT} optional`, { cwd: tmpDir });
     expect(result.exitCode).toBe(0);

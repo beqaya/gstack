@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { linkOrCopySync } from '../../test/helpers/link-or-copy';
 
 // ─── Shared source reads (used across multiple test sections) ───────────────
 const META_SRC = fs.readFileSync(path.join(import.meta.dir, '../src/meta-commands.ts'), 'utf-8');
@@ -155,7 +156,7 @@ describe('Task 1: validateOutputPath uses realpathSync', () => {
       tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-sec-test-'));
       symlinkPath = path.join(tmpDir, 'evil-link');
       try {
-        fs.symlinkSync('/etc', symlinkPath);
+        linkOrCopySync('/etc', symlinkPath);
       } catch {
         symlinkPath = '';
       }

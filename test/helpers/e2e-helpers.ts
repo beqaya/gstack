@@ -18,6 +18,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { linkOrCopySync } from './link-or-copy';
 
 export const ROOT = path.resolve(import.meta.dir, '..', '..');
 
@@ -110,7 +111,7 @@ export function setupBrowseShims(dir: string) {
   const binDir = path.join(dir, 'browse', 'dist');
   fs.mkdirSync(binDir, { recursive: true });
   if (fs.existsSync(browseBin)) {
-    fs.symlinkSync(browseBin, path.join(binDir, 'browse'));
+    linkOrCopySync(browseBin, path.join(binDir, 'browse'));
   }
 
   // find-browse shim
