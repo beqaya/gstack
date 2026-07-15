@@ -10,6 +10,7 @@ import {
   stableHash,
   assignFilesToShards,
   normalizeRelativePath,
+  classifyFragility,
 } from '../scripts/test-free-shards';
 
 const ROOT = path.resolve(import.meta.dir, '..');
@@ -124,5 +125,27 @@ describe('test-free-shards: sharding', () => {
     const a = assignFilesToShards(files, 5);
     const b = assignFilesToShards(files, 5);
     expect(a).toEqual(b);
+  });
+});
+
+describe('classifyFragility: bin/ rule is interpreter-aware', () => {
+  test('bash-wrapped bin spawn is NOT fragile', () => {
+    const src = `const S = path.join(ROOT, 'bin', 'gstack-uninstall');\nspawnSync('bash', [S, '--help']);`;
+    expect(classifyFragility(src)).toBeNull();
+  });
+  test('bun-wrapped bin spawn is NOT fragile', () => {
+    const src = `spawnSync('bun', [path.join(ROOT, 'bin', 'x')]);`;
+    expect(classifyFragility(src)).toBeNull();
+  });
+  test('direct bin spawn (no interpreter) IS fragile', () => {
+    const src = `const S = path.join(ROOT, 'bin', 'x');\nspawnSync(S, ['--help']);`;
+    expect(classifyFragility(src)?.reason).toContain('bin/');
+  });
+  test('bin path referenced with no spawn stays fragile (documented residual)', () => {
+    const src = `const S = path.join(ROOT, 'bin', 'x'); expect(S).toBeTruthy();`;
+    expect(classifyFragility(src)).not.toBeNull();
+  });
+  test('a non-bin fragile pattern still fires (regression guard)', () => {
+    expect(classifyFragility(`const p = '/tmp/foo';`)?.reason).toContain('/tmp/');
   });
 });

@@ -50,7 +50,14 @@ const PAID_EVAL_TESTS = [
 // own content here so the filter stays automatic as new tests land. The
 // "Windows-incompatible APIs" patterns at the bottom were added after the
 // first windows-free-tests CI run surfaced concrete failure modes.
-const WINDOWS_FRAGILE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+
+// A spawn whose FIRST argument is an interpreter runs a shebang script
+// correctly on Windows (git-bash), regardless of how the script path is
+// referenced. When present, it neutralises the bin/-reference rule below.
+const SAFE_INTERPRETER_SPAWN =
+  /(?:spawnSync|spawn|execFileSync|execFile)\(\s*['"`](?:bash|sh|bun|node|npx)\b/;
+
+const WINDOWS_FRAGILE_PATTERNS: Array<{ pattern: RegExp; reason: string; unless?: RegExp }> = [
   // Hardcoded POSIX shells / commands.
   { pattern: /['"`]\/bin\/(?:ba)?sh/, reason: 'hardcoded /bin/sh or /bin/bash' },
   { pattern: /spawnSync\(['"]sh['"],|spawn\(['"]sh['"],|exec\(['"]sh /, reason: 'spawn("sh", ...)' },
@@ -71,7 +78,11 @@ const WINDOWS_FRAGILE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   //   - path.join(ROOT, 'bin', 'script-name')        — typical
   //   - join(import.meta.dir, '..', 'bin', 'name')   — destructured (diff-scope)
   //   - path.join(ROOT, 'bin')                       — bare BIN constant (brain-sync)
-  { pattern: /,\s*['"]bin['"]\s*[,)]|['"]\.?\/?bin\/[a-z][\w-]+['"]/, reason: 'spawns bin/ shebang script (Windows CreateProcess does not parse shebangs)' },
+  {
+    pattern: /,\s*['"]bin['"]\s*[,)]|['"]\.?\/?bin\/[a-z][\w-]+['"]/,
+    reason: 'spawns bin/ shebang script (Windows CreateProcess does not parse shebangs)',
+    unless: SAFE_INTERPRETER_SPAWN,
+  },
   // Tests that launch a real Playwright browser. The windows-free-tests CI job
   // runs a curated subset that intentionally does NOT install Chromium —
   // browser bring-up on Windows is a separate concern (see PR #1238). Tests
@@ -121,6 +132,15 @@ export function isFreeTestFile(relativePath: string): boolean {
   return !PAID_EVAL_TESTS.some(pattern => pattern.test(normalized));
 }
 
+export function classifyFragility(content: string): { reason: string } | null {
+  for (const { pattern, reason, unless } of WINDOWS_FRAGILE_PATTERNS) {
+    if (pattern.test(content) && !(unless && unless.test(content))) {
+      return { reason };
+    }
+  }
+  return null;
+}
+
 /**
  * Returns the first POSIX-only pattern hit in the file, or null if Windows-safe.
  */
@@ -131,10 +151,7 @@ export function detectWindowsFragility(absolutePath: string): { reason: string }
   } catch {
     return null;
   }
-  for (const { pattern, reason } of WINDOWS_FRAGILE_PATTERNS) {
-    if (pattern.test(content)) return { reason };
-  }
-  return null;
+  return classifyFragility(content);
 }
 
 function walkTestFiles(dirPath: string): string[] {
