@@ -125,6 +125,18 @@ const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }> = [
     file: 'test/question-log-hook.test.ts',
     reason: 'direct bin-script spawn not wrapped in bash — spawnSync()s hosts/claude/hooks/question-log-hook (a #!/usr/bin/env bash shim) directly; Windows CreateProcess cannot dispatch on a shebang',
   },
+  {
+    file: 'browse/test/terminal-agent-ring-buffer-runtime.test.ts',
+    reason: 'flaky millisecond-boundary race in "lease registry is independent of ring buffer state" — mintLease() calls Date.now() independently for two leases and asserts equal expiresAt; passes in isolation but reliably straddles a ms boundary when run in a CPU-loaded batch on this Windows runner',
+  },
+  {
+    file: 'test/gbrain-init-rollback.test.ts',
+    reason: 'spawnSync("bash", ["-c", script]) extracts the skill template bash verbatim and builds PATH as `${bindir}:/usr/bin:/bin` where bindir is a raw Windows path (drive-letter colon + backslashes); bash cannot parse that PATH to find the fake gbrain shim, and /usr/bin, /bin do not exist on Windows',
+  },
+  {
+    file: 'test/gbrain-init-voyage-code-3.test.ts',
+    reason: 'same bash-template-extraction PATH bug as gbrain-init-rollback.test.ts — `${env.bindir}:/usr/bin:/bin` is unparseable by bash on Windows (drive-letter colon collides with PATH separator) and /usr/bin, /bin do not exist',
+  },
 ];
 
 export const DEFAULT_SHARD_COUNT = 20;
