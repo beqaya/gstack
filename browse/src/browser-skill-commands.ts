@@ -43,7 +43,17 @@ const MAX_STDOUT_BYTES = 1024 * 1024; // 1 MB
  * execPath for the source/dev-run case where it genuinely is bun.
  */
 function resolveBunBinary(): string {
-  return Bun.which('bun') ?? process.execPath;
+  const found = Bun.which('bun');
+  if (found) return found;
+  // Only trust execPath if it genuinely IS bun (the source/dev-run case). From
+  // the compiled `browse/dist/browse` binary, execPath is that binary, not bun
+  // — spawning `[execPath, 'run'/'test', …]` would mis-dispatch to the embedded
+  // program. Fail loudly instead of silently running the wrong executable.
+  const base = path.basename(process.execPath).toLowerCase();
+  if (base === 'bun' || base === 'bun.exe') return process.execPath;
+  throw new Error(
+    'Cannot resolve the bun binary: bun is not on PATH and this process is not bun itself. Install bun or add it to PATH.',
+  );
 }
 
 // ─── Public command dispatcher ──────────────────────────────────

@@ -170,16 +170,8 @@ const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }> = [
     reason: 'tests BSD/GNU `ln -snf` symlink-guard semantics (child-symlink-into-real-dir reproduction, fresh/upgrade/self-rerun link paths); these are POSIX symlink behaviors not reproducible on Windows',
   },
   {
-    file: 'test/skill-coverage-floor.test.ts',
-    reason: 'CRLF: on a Windows checkout the generated SKILL.md files begin with "---\\r\\n", but the test asserts content.startsWith("---\\n"); ~14 skills fail the frontmatter well-formedness check. Real CRLF-normalization issue — tracked as a follow-up (the test or the generator should normalize line endings)',
-  },
-  {
     file: 'test/memory-cache-injection.test.ts',
     reason: 'the AUQ memory-injection hook produces a different permissionDecision on Windows (expected "defer") — the hook spawns bin scripts and reads ~/.gstack paths; hook-spawn/path behavior differs on Windows. Real bug tracked as a follow-up',
-  },
-  {
-    file: 'test/openclaw-native-skills.test.ts',
-    reason: 'frontmatter YAML parse of native SKILL.md differs on Windows (keeps more than name+description) — most likely the same CRLF-in-generated-SKILL.md issue as skill-coverage-floor; follow-up',
   },
   {
     file: 'test/parity-suite.test.ts',
