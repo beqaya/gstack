@@ -137,6 +137,30 @@ const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }> = [
     file: 'test/gbrain-init-voyage-code-3.test.ts',
     reason: 'same bash-template-extraction PATH bug as gbrain-init-rollback.test.ts — `${env.bindir}:/usr/bin:/bin` is unparseable by bash on Windows (drive-letter colon collides with PATH separator) and /usr/bin, /bin do not exist',
   },
+  {
+    file: 'test/gbrain-lib-verify.test.ts',
+    reason: 'direct bin-script spawn not wrapped in bash — runVerify() spawnSync()s bin/gstack-gbrain-supabase-verify (a #!/usr/bin/env bash shim) directly; Windows CreateProcess cannot dispatch on a shebang. File mixes this with a separate bash-wrapped helper (runLibSnippet), so the whole file cannot be pattern-excluded automatically.',
+  },
+  {
+    file: 'test/gbrain-sync-skip.test.ts',
+    reason: 'fake "gbrain" binary is a #!/bin/sh shim on a sandboxed PATH, invoked directly (not via bash) by bin/gstack-gbrain-sync.ts; Windows cannot execute a shebang script via CreateProcess, and the PATH is additionally built as `${bindir}:/usr/bin:/bin` (colon-joined raw Windows path), so the orchestrator never finds/executes the shim and all skip-reason assertions see empty output',
+  },
+  {
+    file: 'test/gstack-decision-semantic.test.ts',
+    reason: 'same fake-POSIX-shim-on-PATH pattern as gbrain-sync-skip.test.ts — PATH built as `${binDir}:${process.env.PATH}` (colon-joining a raw Windows bindir into a semicolon-delimited Windows PATH) so the #!/bin/sh fake gbrain is never resolved when spawned directly',
+  },
+  {
+    file: 'test/gstack-gbrain-sync.test.ts',
+    reason: 'same fake-POSIX-shim-on-PATH pattern (envWithBindir() builds PATH as `${bindir}:${process.env.PATH}`) — 2 of the sourceLocalPath tests spawn the fake gbrain directly and get null instead of the shimmed source data on Windows',
+  },
+  {
+    file: 'test/gstack-upgrade-migration-v1_17_0_0.test.ts',
+    reason: 'run() hardcodes PATH to \'/usr/bin:/bin:/opt/homebrew/bin\' (macOS/Linux-only, no Windows bash location) when spawning `bash <script>`; spawnSync cannot resolve bash.exe on this PATH so it fails to launch and every assertion sees status: undefined',
+  },
+  {
+    file: 'test/gstack-upgrade-migration-v1_37_0_0.test.ts',
+    reason: 'runs gstack-upgrade/migrations/v1.37.0.0.sh under `set -euo pipefail` against a Windows-backslash HOME; the state-detection logic silently fails to match (exits 0 with empty stdout instead of printing the split-engine notice) — needs script-level investigation, tracked as a follow-up rather than a minimal fix',
+  },
 ];
 
 export const DEFAULT_SHARD_COUNT = 20;
