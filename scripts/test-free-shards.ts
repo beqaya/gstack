@@ -117,6 +117,14 @@ const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }> = [
     file: 'browse/test/findport.test.ts',
     reason: 'asserts Bun.serve.stop() is fire-and-forget — Bun behavior differs on Windows for this polyfill',
   },
+  {
+    file: 'test/question-preference-hook.test.ts',
+    reason: 'direct bin-script spawn not wrapped in bash — spawnSync()s hosts/claude/hooks/question-preference-hook (a #!/usr/bin/env bash shim) directly; Windows CreateProcess cannot dispatch on a shebang',
+  },
+  {
+    file: 'test/question-log-hook.test.ts',
+    reason: 'direct bin-script spawn not wrapped in bash — spawnSync()s hosts/claude/hooks/question-log-hook (a #!/usr/bin/env bash shim) directly; Windows CreateProcess cannot dispatch on a shebang',
+  },
 ];
 
 export const DEFAULT_SHARD_COUNT = 20;

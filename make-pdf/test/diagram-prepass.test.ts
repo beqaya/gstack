@@ -288,7 +288,10 @@ describe("inlineLocalImages", () => {
     expect(warnings[0]).toContain("offline");
   });
 
-  test("symlink escaping the input dir is caught by the realpath check", () => {
+  // fs.symlinkSync requires elevated privileges (Developer Mode or admin) on
+  // Windows and throws EPERM otherwise — there's no content assertion left
+  // to make once symlink creation itself fails, so this is skipped there.
+  test.skipIf(process.platform === "win32")("symlink escaping the input dir is caught by the realpath check", () => {
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "prepass-symlink-"));
     fs.writeFileSync(path.join(outside, "secret.png"), tinyPng(5, 5));
     const link = path.join(dir, "innocent.png");

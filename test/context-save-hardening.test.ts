@@ -200,7 +200,7 @@ describe('context-save: filename collision', () => {
     // Path must differ (append-only contract).
     expect(kv.FILE).not.toBe(`${tmp}/20260419-120000-foo.md`);
     // Suffix format: base-XXXX.md where XXXX matches the suffix allowlist.
-    expect(kv.FILE).toMatch(new RegExp(`^${tmp.replace(/[/.]/g, '\\$&')}/20260419-120000-foo-[a-z0-9]+\\.md$`));
+    expect(kv.FILE).toMatch(new RegExp(`^${tmp.replace(/[/\\.]/g, '\\$&')}/20260419-120000-foo-[a-z0-9]+\\.md$`));
   });
 
   test('collision suffix preserves append-only — prior file intact', () => {
@@ -321,7 +321,15 @@ describe('migration v1.1.3.0: HOME guard', () => {
   beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ctx-home-')); });
   afterEach(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {} });
 
-  test('HOME unset → exits 0 with diagnostic, no filesystem changes', () => {
+  // Git Bash / MSYS2 auto-populates $HOME from the Windows user profile at
+  // shell startup whenever the parent doesn't supply it (confirmed: an
+  // explicitly-unset HOME resolves to the real /c/Users/<user> inside the
+  // spawned bash, and an explicit HOME="" gets similarly normalized rather
+  // than staying empty). The migration's `[ -z "${HOME:-}" ]` guard never
+  // sees an empty HOME to trip on Windows, so these two premises can't be
+  // reproduced there — this is Git Bash's own startup behavior, not
+  // something the test or the migration script controls.
+  test.skipIf(process.platform === 'win32')('HOME unset → exits 0 with diagnostic, no filesystem changes', () => {
     // Create a file that would be wiped by an HOME="" bug: /.claude/skills/gstack/checkpoint
     // (not actually writable by the test, but we verify the script doesn't TRY).
     // Spawn without HOME in env.
@@ -335,7 +343,8 @@ describe('migration v1.1.3.0: HOME guard', () => {
     expect(result.stderr.toString()).toContain('HOME is unset');
   });
 
-  test('HOME="" → exits 0 with diagnostic', () => {
+  // See the platform note on the previous test.
+  test.skipIf(process.platform === 'win32')('HOME="" → exits 0 with diagnostic', () => {
     const result = spawnSync('bash', [MIGRATION], {
       env: { HOME: '', PATH: process.env.PATH || '/usr/bin:/bin' },
       stdio: ['ignore', 'pipe', 'pipe'],

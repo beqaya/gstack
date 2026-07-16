@@ -260,7 +260,16 @@ describe('gstack-codex-probe: timeout wrapper + namespace hygiene', () => {
     expect(result.status).toBe(0);
   });
 
-  test('timeout wrapper executes command directly when neither binary present', () => {
+  // Both tests below hand spawnSync's `env.PATH` a literal POSIX list
+  // (`/bin:/usr/bin`, `:`-joined). On Windows, spawnSync resolves the
+  // *executable itself* (`bash`) through options.env.PATH, not the parent
+  // process's real PATH — and there's no real `/bin` or `/usr/bin`
+  // directory, so `bash` can't be found (ENOENT) before the wrapper logic
+  // ever runs. A workaround PATH that keeps bash resolvable on this machine
+  // (Git's usr/bin) isn't viable either: that same directory ships a real
+  // `timeout.exe`, which defeats the "neither binary present" premise the
+  // first test depends on.
+  test.skipIf(process.platform === 'win32')('timeout wrapper executes command directly when neither binary present', () => {
     // Clear PATH to simulate no timeout/gtimeout. Use only /bin for `echo`.
     const r = runProbe({
       snippet: `_gstack_codex_timeout_wrapper 5 echo hello_world`,
@@ -270,7 +279,7 @@ describe('gstack-codex-probe: timeout wrapper + namespace hygiene', () => {
     expect(r.stdout.trim()).toBe('hello_world');
   });
 
-  test('timeout wrapper resolves gtimeout preferentially when on PATH', () => {
+  test.skipIf(process.platform === 'win32')('timeout wrapper resolves gtimeout preferentially when on PATH', () => {
     // Create a stub gtimeout that prints a sentinel so we can verify it was chosen.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-gto-stub-'));
     try {

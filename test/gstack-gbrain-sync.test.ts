@@ -680,7 +680,13 @@ describe("planHostnameFoldMigration", () => {
     expect(result).toEqual({ kind: "none", reason: "no-legacy-source" });
   });
 
-  it("returns skipped-path-drift when old source local_path differs from current repo root", () => {
+  // This test (and the 3 below it, plus 2 in sourceLocalPath) depend on
+  // makeShim()'s fake gbrain: a raw `#!/bin/sh` script with no extension,
+  // reached through envWithBindir()'s PATH built by joining a real Windows
+  // path with `:` (POSIX separator). Windows can't dispatch the shebang and
+  // the `:`-joined PATH isn't valid there either, so the fake gbrain never
+  // actually responds — genuine incompatibility, not a logic bug.
+  it.skipIf(process.platform === "win32")("returns skipped-path-drift when old source local_path differs from current repo root", () => {
     makeShim(bindir, {
       "sources list --json": {
         stdout: JSON.stringify([{ id: "legacy-id", local_path: "/some/other/repo" }]),
@@ -695,7 +701,7 @@ describe("planHostnameFoldMigration", () => {
     }
   });
 
-  it("returns renamed when rename is supported and exits 0", () => {
+  it.skipIf(process.platform === "win32")("returns renamed when rename is supported and exits 0", () => {
     makeShim(bindir, {
       "sources list --json": {
         stdout: JSON.stringify([{ id: "legacy-id", local_path: "/repo/here" }]),
@@ -709,7 +715,7 @@ describe("planHostnameFoldMigration", () => {
     expect(result).toEqual({ kind: "renamed", oldId: "legacy-id", newId: "new-id" });
   });
 
-  it("returns pending-cleanup when rename is unsupported (current gbrain 0.35.0.0)", () => {
+  it.skipIf(process.platform === "win32")("returns pending-cleanup when rename is unsupported (current gbrain 0.35.0.0)", () => {
     makeShim(bindir, {
       "sources list --json": {
         stdout: JSON.stringify([{ id: "legacy-id", local_path: "/repo/here" }]),
@@ -720,7 +726,7 @@ describe("planHostnameFoldMigration", () => {
     expect(result).toEqual({ kind: "pending-cleanup", oldId: "legacy-id" });
   });
 
-  it("returns pending-cleanup when rename is supported but the rename call itself fails", () => {
+  it.skipIf(process.platform === "win32")("returns pending-cleanup when rename is supported but the rename call itself fails", () => {
     makeShim(bindir, {
       "sources list --json": {
         stdout: JSON.stringify([{ id: "legacy-id", local_path: "/repo/here" }]),

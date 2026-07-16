@@ -37,6 +37,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
 
 interface HookStdin {
   session_id?: string;
@@ -206,11 +207,17 @@ function detectSkill(cwd: string | undefined): string {
 
 function spawnLog(payload: Record<string, unknown>, cwd?: string): void {
   // Locate the bin relative to this script's directory.
-  const here = path.dirname(new URL(import.meta.url).pathname);
+  const here = path.dirname(fileURLToPath(import.meta.url));
   // hosts/claude/hooks/ -> ../../../bin/
   const repoRoot = path.resolve(here, '..', '..', '..');
   const bin = path.join(repoRoot, 'bin', 'gstack-question-log');
-  const res = spawnSync(bin, [JSON.stringify(payload)], {
+  // bin/gstack-question-log is a `#!/usr/bin/env bash` script — Windows
+  // CreateProcess can't dispatch on a shebang, so wrap it in bash there.
+  const payloadArg = JSON.stringify(payload);
+  const [cmd, cmdArgs] = process.platform === 'win32'
+    ? [Bun.which('bash') ?? bin, [bin, payloadArg]]
+    : [bin, [payloadArg]];
+  const res = spawnSync(cmd, cmdArgs, {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 3000,

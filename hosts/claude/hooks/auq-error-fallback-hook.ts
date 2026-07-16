@@ -32,6 +32,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
 
 interface HookStdin {
   tool_name?: string;
@@ -126,9 +127,14 @@ export function isErrorResponse(response: unknown): boolean {
  *  echoes). Falls back to 'interactive' (degrade-safe) on any failure. */
 export function sessionKind(cwd?: string): 'spawned' | 'headless' | 'interactive' {
   try {
-    const here = path.dirname(new URL(import.meta.url).pathname);
+    const here = path.dirname(fileURLToPath(import.meta.url));
     const bin = path.resolve(here, '..', '..', '..', 'bin', 'gstack-session-kind');
-    const res = spawnSync(bin, [], {
+    // bin/gstack-session-kind is a `#!/usr/bin/env bash` script — Windows
+    // CreateProcess can't dispatch on a shebang, so wrap it in bash there.
+    const [cmd, cmdArgs] = process.platform === 'win32'
+      ? [Bun.which('bash') ?? bin, [bin]]
+      : [bin, [] as string[]];
+    const res = spawnSync(cmd, cmdArgs, {
       encoding: 'utf-8',
       timeout: 3000,
       cwd: cwd && fs.existsSync(cwd) ? cwd : undefined,

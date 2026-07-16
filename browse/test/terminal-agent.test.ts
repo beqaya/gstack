@@ -151,9 +151,13 @@ describe('Source-level guard: terminal-agent', () => {
       AGENT_SRC.indexOf("websocket: {"),
     );
     expect(upgradeBlock).not.toContain('spawnClaude(');
+    expect(upgradeBlock).not.toContain('maybeSpawnPty(');
     // Spawn must be invoked from the message handler (lazy on first byte).
+    // maybeSpawnPty() wraps spawnClaude() (POSIX) / spawnClaudeWindowsPty()
+    // (win32 node-pty fallback) — the message handler calls the wrapper, not
+    // spawnClaude directly.
     const messageHandler = AGENT_SRC.slice(AGENT_SRC.indexOf('message(ws, raw)'));
-    expect(messageHandler).toContain('spawnClaude(');
+    expect(messageHandler).toContain('maybeSpawnPty(');
     expect(messageHandler).toContain('!session.spawned');
   });
 

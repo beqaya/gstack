@@ -29,8 +29,17 @@ import { join } from "path";
 
 const DETECT_BIN = join(import.meta.dir, "..", "bin", "gstack-gbrain-detect");
 
-/** Absolute bun path resolved once at module load (uses the test runner's PATH). */
-const BUN_BIN = execFileSync("sh", ["-c", "command -v bun"], { encoding: "utf-8" }).trim();
+/**
+ * Absolute bun path resolved once at module load (uses the test runner's
+ * PATH). `sh -c "command -v bun"` reports a Git-Bash-style POSIX path
+ * (e.g. `/c/Users/.../bun`, no extension) on Windows — Node's execFileSync
+ * uses real Win32 CreateProcess and can't spawn that. Bun.which() resolves
+ * a native Windows path (honoring PATHEXT for the .cmd shim) instead.
+ */
+const BUN_BIN =
+  process.platform === "win32"
+    ? (Bun.which("bun") ?? execFileSync("sh", ["-c", "command -v bun"], { encoding: "utf-8" }).trim())
+    : execFileSync("sh", ["-c", "command -v bun"], { encoding: "utf-8" }).trim();
 
 /**
  * Run detect with a controlled HOME + PATH so the output is deterministic.
@@ -215,7 +224,13 @@ describe("bin/gstack-gbrain-detect — shape regression", () => {
     }
   });
 
-  it("with fake gbrain that returns valid JSON, returns gbrain_on_path=true and gbrain_local_status=ok", () => {
+  // The fake gbrain fixture below is a raw `#!/bin/sh` script with no
+  // extension. Windows CreateProcess can't dispatch on a shebang and there's
+  // no bash wrapper in the PATH-lookup path this test exercises, so the
+  // fixture itself can't run there (separate from the PATH env — Windows
+  // also needs `;` not `:` as the list separator, which this fixture doesn't
+  // account for either).
+  it.skipIf(process.platform === "win32")("with fake gbrain that returns valid JSON, returns gbrain_on_path=true and gbrain_local_status=ok", () => {
     const tmp = mkdtempSync(join(tmpdir(), "detect-shape-"));
     const bindir = join(tmp, "bin");
     const home = join(tmp, "home");
@@ -274,7 +289,8 @@ describe("bin/gstack-gbrain-detect --is-ok — live gate", () => {
     }
   });
 
-  it("exits 0 when a fake gbrain reports a healthy engine (ok)", () => {
+  // Same raw-shebang fixture limitation as the shape-regression test above.
+  it.skipIf(process.platform === "win32")("exits 0 when a fake gbrain reports a healthy engine (ok)", () => {
     const tmp = mkdtempSync(join(tmpdir(), "detect-isok-"));
     const bindir = join(tmp, "bin");
     const home = join(tmp, "home");
