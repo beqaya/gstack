@@ -48,7 +48,11 @@ function runHook(stdin: object): { stdout: string; stderr: string; status: numbe
   // set) doesn't flip the hook into the [conductor] prose deny instead of defer.
   delete env.CONDUCTOR_WORKSPACE_PATH;
   delete env.CONDUCTOR_PORT;
-  const res = spawnSync(HOOK, [], {
+  // The hook is a `#!/usr/bin/env bash` script. Windows CreateProcess cannot
+  // dispatch on a shebang, so wrap it in bash there (git-bash); on POSIX run it
+  // directly as before.
+  const isWin = process.platform === 'win32';
+  const res = spawnSync(isWin ? 'bash' : HOOK, isWin ? [HOOK] : [], {
     env,
     input: JSON.stringify({ ...stdin, cwd: fixtureCwd }),
     encoding: 'utf-8',
