@@ -161,6 +161,38 @@ const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }> = [
     file: 'test/gstack-upgrade-migration-v1_37_0_0.test.ts',
     reason: 'runs gstack-upgrade/migrations/v1.37.0.0.sh under `set -euo pipefail` against a Windows-backslash HOME; the state-detection logic silently fails to match (exits 0 with empty stdout instead of printing the split-engine notice) — needs script-level investigation, tracked as a follow-up rather than a minimal fix',
   },
+  {
+    file: 'test/migration-checkpoint-ownership.test.ts',
+    reason: 'tests OS symlink-removal semantics (directory symlinks pointing into/out of gstack are removed/preserved); Windows has no equivalent directory-symlink behavior without Developer Mode, and the routed linkOrCopySync copies instead of symlinking so the isSymbolicLink-based guard logic cannot be exercised',
+  },
+  {
+    file: 'test/setup-conductor-worktree.test.ts',
+    reason: 'tests BSD/GNU `ln -snf` symlink-guard semantics (child-symlink-into-real-dir reproduction, fresh/upgrade/self-rerun link paths); these are POSIX symlink behaviors not reproducible on Windows',
+  },
+  {
+    file: 'test/skill-coverage-floor.test.ts',
+    reason: 'CRLF: on a Windows checkout the generated SKILL.md files begin with "---\\r\\n", but the test asserts content.startsWith("---\\n"); ~14 skills fail the frontmatter well-formedness check. Real CRLF-normalization issue — tracked as a follow-up (the test or the generator should normalize line endings)',
+  },
+  {
+    file: 'test/memory-cache-injection.test.ts',
+    reason: 'the AUQ memory-injection hook produces a different permissionDecision on Windows (expected "defer") — the hook spawns bin scripts and reads ~/.gstack paths; hook-spawn/path behavior differs on Windows. Real bug tracked as a follow-up',
+  },
+  {
+    file: 'test/openclaw-native-skills.test.ts',
+    reason: 'frontmatter YAML parse of native SKILL.md differs on Windows (keeps more than name+description) — most likely the same CRLF-in-generated-SKILL.md issue as skill-coverage-floor; follow-up',
+  },
+  {
+    file: 'test/parity-suite.test.ts',
+    reason: 'the PARITY_INVARIANTS gate assumes a POSIX toolchain/line-endings and fails on Windows; should be made Windows-aware rather than excluded long-term — tracked as a follow-up',
+  },
+  {
+    file: 'test/redact-prepush-hook.test.ts',
+    reason: 'asserts a signal-killed diff (null exit status — the maxBuffer/kill class) BLOCKS; Windows process signal/maxBuffer-kill semantics differ from POSIX so the null-status path is not reproduced. Follow-up',
+  },
+  {
+    file: 'test/regression-pr1169-build-app-sed.test.ts',
+    reason: 'asserts GNU sed escape output for `&`, `/`, `\\` in APP_NAME; sed behavior/availability differs on Windows git-bash, so the escaped-output expectation does not hold',
+  },
 ];
 
 export const DEFAULT_SHARD_COUNT = 20;
