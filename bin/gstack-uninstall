@@ -131,15 +131,24 @@ fi
 # ─── Remove global Claude skills ────────────────────────────
 CLAUDE_SKILLS="$HOME/.claude/skills"
 if [ -d "$CLAUDE_SKILLS/gstack" ] || [ -L "$CLAUDE_SKILLS/gstack" ]; then
-  # Remove per-skill symlinks that point into gstack/
+  # Remove per-skill entries that point into gstack/. On POSIX these are
+  # symlinks (identified by their readlink target); on Windows `setup` copies
+  # skills instead of symlinking (no target), so a copied entry is identified
+  # by a same-named dir under gstack/ (optionally `gstack-`-prefixed), while
+  # gstack/ still exists (it is removed just below).
   for _LINK in "$CLAUDE_SKILLS"/*; do
-    [ -L "$_LINK" ] || continue
     _NAME="$(basename "$_LINK")"
     [ "$_NAME" = "gstack" ] && continue
-    _TARGET="$(readlink "$_LINK" 2>/dev/null || true)"
-    case "$_TARGET" in
-      gstack/*|*/gstack/*) rm -f "$_LINK"; REMOVED+=("claude/$_NAME") ;;
-    esac
+    if [ -L "$_LINK" ]; then
+      _TARGET="$(readlink "$_LINK" 2>/dev/null || true)"
+      case "$_TARGET" in
+        gstack/*|*/gstack/*) rm -f "$_LINK"; REMOVED+=("claude/$_NAME") ;;
+      esac
+    elif [ -d "$_LINK" ]; then
+      if [ -d "$CLAUDE_SKILLS/gstack/${_NAME#gstack-}" ]; then
+        rm -rf "$_LINK"; REMOVED+=("claude/$_NAME")
+      fi
+    fi
   done
 
   rm -rf "$CLAUDE_SKILLS/gstack"

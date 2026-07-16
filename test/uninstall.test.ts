@@ -46,7 +46,18 @@ describe('gstack-uninstall', () => {
       fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'gstack'), { recursive: true });
       fs.writeFileSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'SKILL.md'), 'test');
 
-      // Create per-skill symlinks (both old unprefixed and new prefixed)
+      // The per-skill sources must exist so the Windows copy-fallback in
+      // linkOrCopySync produces a REAL entry. A dangling relative symlink
+      // (source absent) is silently skipped on Windows, which would make the
+      // removal assertions below pass vacuously — exercising none of the
+      // per-skill-removal logic this test exists to verify.
+      fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'review'), { recursive: true });
+      fs.writeFileSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'review', 'SKILL.md'), 'test');
+      fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'ship'), { recursive: true });
+      fs.writeFileSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'ship', 'SKILL.md'), 'test');
+
+      // Create per-skill entries (symlink on POSIX, real copy on Windows;
+      // both old unprefixed and new prefixed names).
       linkOrCopySync('gstack/review', path.join(mockHome, '.claude', 'skills', 'review'));
       linkOrCopySync('gstack/ship', path.join(mockHome, '.claude', 'skills', 'gstack-ship'));
 
