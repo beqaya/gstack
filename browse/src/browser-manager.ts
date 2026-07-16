@@ -878,10 +878,15 @@ export class BrowserManager {
         // Headed/persistent context mode: close the context (which closes the browser)
         this.intentionalDisconnect = true;
         if (this.browser) this.browser.removeAllListeners('disconnected');
-        await Promise.race([
-          this.context ? this.context.close() : Promise.resolve(),
-          new Promise(resolve => setTimeout(resolve, 5000)),
-        ]).catch(() => {});
+        // Capture the process BEFORE close so we can force-kill if the graceful
+        // close hangs past the deadline (otherwise the Chromium process orphans
+        // and holds the profile SingletonLock — see cleanSingletonLocks).
+        const _proc = this.browser?.process?.() ?? this.context?.browser()?.process?.() ?? null;
+        const _timedOut = await Promise.race([
+          (this.context ? this.context.close() : Promise.resolve()).then(() => false),
+          new Promise<boolean>(resolve => setTimeout(() => resolve(true), 5000)),
+        ]).catch(() => true);
+        if (_timedOut) { try { _proc?.kill('SIGKILL'); } catch {} }
       } else if (this.connectionMode === 'attached') {
         // Attached mode: the user owns Chrome's lifecycle. Detach the CDP
         // connection but do NOT close the browser — that would kill all
@@ -895,12 +900,16 @@ export class BrowserManager {
         // browser.close() on a connectOverCDP target only closes the WS, not
         // the browser process itself (Playwright spec). User's Chrome lives on.
       } else {
-        // Launched mode: close the browser we spawned
+        // Launched mode: close the browser we spawned. If graceful close hangs
+        // past the deadline, force-kill so it can't orphan the Chromium process
+        // and hold the profile SingletonLock.
         this.browser.removeAllListeners('disconnected');
-        await Promise.race([
-          this.browser.close(),
-          new Promise(resolve => setTimeout(resolve, 5000)),
-        ]).catch(() => {});
+        const _proc = this.browser.process?.() ?? null;
+        const _timedOut = await Promise.race([
+          this.browser.close().then(() => false),
+          new Promise<boolean>(resolve => setTimeout(() => resolve(true), 5000)),
+        ]).catch(() => true);
+        if (_timedOut) { try { _proc?.kill('SIGKILL'); } catch {} }
       }
       this.browser = null;
     }
