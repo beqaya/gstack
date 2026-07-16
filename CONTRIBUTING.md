@@ -261,6 +261,8 @@ Tests run against the browse binary directly — they don't require dev mode.
 
 SKILL.md files are **generated** from `.tmpl` templates. Don't edit the `.md` directly — your changes will be overwritten on the next build.
 
+> **Merge conflicts in SKILL.md?** Because the generated `.md` files are committed, two branches touching a shared resolver collide across nearly all 54 of them — but the templates merge cleanly, so the conflicts are spurious. Don't resolve them by hand. After `git merge` reports SKILL.md conflicts, run **`bin/gstack-resolve-skill-conflicts`**: it clears the markers, regenerates from the merged templates, and stages the result (real non-SKILL.md conflicts are left for you to resolve first).
+
 ```bash
 # 1. Edit the template
 vim SKILL.md.tmpl              # or browse/SKILL.md.tmpl
