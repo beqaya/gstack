@@ -849,12 +849,29 @@ export class BrowserManager {
         const id = this.nextTabId++;
         this.pages.set(id, p);
         this.tabSessions.set(id, new TabSession(p));
+        // Instrument the tab like every other connection mode does — without
+        // this, native dialogs (alert/confirm) are never auto-dismissed and
+        // Chrome hangs waiting for a human, and console/network go uncaptured.
+        this.wirePageEvents(p);
         if (firstId === null) firstId = id;
       }
       if (firstId !== null) this.activeTabId = firstId;
     } else {
       await this.newTab();
     }
+
+    // Track tabs the user opens AFTER attaching (Cmd+T, link-in-new-tab) so
+    // they are visible to tab-list/snapshot/console and get dialog handling —
+    // connectOverCDP does not register this by default (mirror of launchHeaded).
+    attachedContext.on('page', (page) => {
+      const id = this.nextTabId++;
+      this.pages.set(id, page);
+      this.tabSessions.set(id, new TabSession(page));
+      this.activeTabId = id;
+      this.wirePageEvents(page);
+      console.log(`[browse] New tab detected in attached Chrome (id=${id}, total=${this.pages.size})`);
+      this.checkTabGuardrails();
+    });
 
     this.connectionMode = 'attached';
     this.intentionalDisconnect = false;
