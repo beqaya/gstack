@@ -88,5 +88,8 @@
   },
   "optionalDependencies": {
     "keytar": "^7.9.0"
+  },
+  "overrides": {
+    "basic-ftp": "5.3.1"
   }
 }
