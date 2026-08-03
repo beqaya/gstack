@@ -2,7 +2,15 @@
 name: benchmark
 preamble-tier: 1
 version: 1.0.0
-description: Performance regression detection using the browse daemon. (gstack)
+description: |
+  Performance regression detection using the browse daemon. Establishes
+  baselines for page load times, Core Web Vitals, and resource sizes.
+  Compares before/after on every PR. Tracks performance trends over time.
+  Use when: "performance", "benchmark", "page speed", "lighthouse", "web vitals",
+  "bundle size", "load time". (gstack)
+voice-triggers:
+  - "speed test"
+  - "check performance"
 triggers:
   - performance benchmark
   - check page speed
@@ -16,17 +24,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-Establishes
-baselines for page load times, Core Web Vitals, and resource sizes.
-Compares before/after on every PR. Tracks performance trends over time.
-Use when: "performance", "benchmark", "page speed", "lighthouse", "web vitals",
-"bundle size", "load time".
-
-Voice triggers (speech-to-text aliases): "speed test", "check performance".
 
 ## Preamble (run first)
 
