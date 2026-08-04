@@ -791,16 +791,30 @@ export function generateDesignSetup(ctx: TemplateContext): string {
 \`\`\`bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 D=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ] && D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
-[ -z "$D" ] && D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ]; then
+  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe" ]; then
+  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe"
+elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design" ]; then
+  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
+elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe" ]; then
+  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe"
+fi
 if [ -x "$D" ]; then
   echo "DESIGN_READY: $D"
 else
   echo "DESIGN_NOT_AVAILABLE"
 fi
 B=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ] && B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
-[ -z "$B" ] && B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ]; then
+  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe" ]; then
+  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe"
+elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse" ]; then
+  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
+elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe" ]; then
+  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe"
+fi
 if [ -x "$B" ]; then
   echo "BROWSE_READY: $B"
 else
@@ -836,8 +850,15 @@ export function generateDesignMockup(ctx: TemplateContext): string {
 \`\`\`bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 D=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ] && D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
-[ -z "$D" ] && D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ]; then
+  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe" ]; then
+  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe"
+elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design" ]; then
+  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
+elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe" ]; then
+  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe"
+fi
 [ -x "$D" ] && echo "DESIGN_READY" || echo "DESIGN_NOT_AVAILABLE"
 \`\`\`
 

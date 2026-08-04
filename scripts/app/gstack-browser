@@ -49,7 +49,7 @@ fi
 # Browse binary: bundled .app first, then global install
 # Note: -x on a directory is true, so check -f (regular file) too
 BROWSE_BIN=""
-for candidate in "$DIR/browse" "$DIR/browse/dist/browse" "$HOME/.claude/skills/gstack/browse/dist/browse"; do
+for candidate in "$DIR/browse" "$DIR/browse.exe" "$DIR/browse/dist/browse" "$DIR/browse/dist/browse.exe" "$HOME/.claude/skills/gstack/browse/dist/browse" "$HOME/.claude/skills/gstack/browse/dist/browse.exe"; do
   if [ -f "$candidate" ] && [ -x "$candidate" ]; then
     BROWSE_BIN="$candidate"
     break

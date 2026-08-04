@@ -54,7 +54,7 @@ export function generateCommandReference(_ctx: TemplateContext): string {
 export function generateSnapshotFlags(_ctx: TemplateContext): string {
   const lines: string[] = [
     'The snapshot is your primary tool for understanding and interacting with pages.',
-    '`$B` is the browse binary (resolved from `$_ROOT/.claude/skills/gstack/browse/dist/browse` or `~/.claude/skills/gstack/browse/dist/browse`).',
+    '`$B` is the browse binary (resolved from `$_ROOT/.claude/skills/gstack/browse/dist/browse` or `~/.claude/skills/gstack/browse/dist/browse`, trying the `.exe` suffix at each location too — the compiled binary is named `browse.exe` on Windows).',
     '',
     '**Syntax:** `$B snapshot [flags]`',
     '',
@@ -105,8 +105,15 @@ export function generateBrowseSetup(ctx: TemplateContext): string {
 \`\`\`bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 B=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ] && B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
-[ -z "$B" ] && B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ]; then
+  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe" ]; then
+  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe"
+elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse" ]; then
+  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
+elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe" ]; then
+  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe"
+fi
 if [ -x "$B" ]; then
   echo "READY: $B"
 else
