@@ -5,7 +5,8 @@ description: |
   Turn vague intent into a precise, executable spec in five phases. Files the issue,
   optionally spawns a Claude Code agent in a fresh worktree, and lets /ship close
   the source issue on merge. Use when asked to "spec this out", "file an issue",
-  "write up a ticket", "make this a GitHub issue", or "turn this into a backlog item". (gstack)
+  "write up a ticket", "make this a GitHub issue", or "turn this into a backlog item".
+  (gstack)
 allowed-tools:
   - Bash
   - Read

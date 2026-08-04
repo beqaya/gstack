@@ -3,7 +3,9 @@ name: design-consultation
 preamble-tier: 3
 version: 1.0.0
 description: |
-  Design consultation: understands your product, researches the landscape, proposes a complete design system (aesthetic, typography, color, layout, spacing, motion), and generates font+color preview... Creates DESIGN.md as your project's design source
+  Design consultation: understands your product, researches the landscape, proposes a
+  complete design system (aesthetic, typography, color, layout, spacing, motion), and
+  generates font+color preview pages. Creates DESIGN.md as your project's design source
   of truth. For existing sites, use /plan-design-review to infer the system instead.
   Use when asked to "design system", "brand guidelines", or "create DESIGN.md".
   Proactively suggest when starting a new project's UI with no existing
@@ -865,8 +867,15 @@ If the codebase is empty and purpose is unclear, say: *"I don't have a clear pic
 ```bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 B=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
-[ -z "$B" ] && B="$HOME/.claude/skills/gstack/browse/dist/browse"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ]; then
+  B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse.exe" ]; then
+  B="$_ROOT/.claude/skills/gstack/browse/dist/browse.exe"
+elif [ -x "$HOME/.claude/skills/gstack/browse/dist/browse" ]; then
+  B="$HOME/.claude/skills/gstack/browse/dist/browse"
+elif [ -x "$HOME/.claude/skills/gstack/browse/dist/browse.exe" ]; then
+  B="$HOME/.claude/skills/gstack/browse/dist/browse.exe"
+fi
 if [ -x "$B" ]; then
   echo "READY: $B"
 else
@@ -905,16 +914,30 @@ If browse is not available, that's fine — visual research is optional. The ski
 ```bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 D=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design" ] && D="$_ROOT/.claude/skills/gstack/design/dist/design"
-[ -z "$D" ] && D="$HOME/.claude/skills/gstack/design/dist/design"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design" ]; then
+  D="$_ROOT/.claude/skills/gstack/design/dist/design"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design.exe" ]; then
+  D="$_ROOT/.claude/skills/gstack/design/dist/design.exe"
+elif [ -x "$HOME/.claude/skills/gstack/design/dist/design" ]; then
+  D="$HOME/.claude/skills/gstack/design/dist/design"
+elif [ -x "$HOME/.claude/skills/gstack/design/dist/design.exe" ]; then
+  D="$HOME/.claude/skills/gstack/design/dist/design.exe"
+fi
 if [ -x "$D" ]; then
   echo "DESIGN_READY: $D"
 else
   echo "DESIGN_NOT_AVAILABLE"
 fi
 B=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
-[ -z "$B" ] && B="$HOME/.claude/skills/gstack/browse/dist/browse"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ]; then
+  B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse.exe" ]; then
+  B="$_ROOT/.claude/skills/gstack/browse/dist/browse.exe"
+elif [ -x "$HOME/.claude/skills/gstack/browse/dist/browse" ]; then
+  B="$HOME/.claude/skills/gstack/browse/dist/browse"
+elif [ -x "$HOME/.claude/skills/gstack/browse/dist/browse.exe" ]; then
+  B="$HOME/.claude/skills/gstack/browse/dist/browse.exe"
+fi
 if [ -x "$B" ]; then
   echo "BROWSE_READY: $B"
 else

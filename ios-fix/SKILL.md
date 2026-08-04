@@ -11,10 +11,7 @@ description: |
   Use when /ios-qa reports a bug and you want it fixed automatically, or
   when asked to "fix this iOS bug", "patch the iPhone app", or "auto-fix
   the iOS issue". (gstack)
-voice-triggers:
-  - "fix the iOS bug"
-  - "patch the iPhone app"
-  - "auto-fix the iOS issue"
+  Voice triggers (speech-to-text aliases): "fix the iOS bug", "patch the iPhone app", "auto-fix the iOS issue".
 allowed-tools:
   - Bash
   - Read

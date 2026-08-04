@@ -12,10 +12,7 @@ description: |
   /design-review.
   Use when asked to "review the iOS design", "audit the iPhone app's
   visuals", or "design QA the iOS app". (gstack)
-voice-triggers:
-  - "review the iOS design"
-  - "audit the iPhone app's visuals"
-  - "design QA the iPhone app"
+  Voice triggers (speech-to-text aliases): "review the iOS design", "audit the iPhone app's visuals", "design QA the iPhone app".
 allowed-tools:
   - Bash
   - Read

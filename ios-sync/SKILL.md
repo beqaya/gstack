@@ -3,15 +3,13 @@ name: ios-sync
 preamble-tier: 3
 version: 1.0.0
 description: |
-  Regenerate the iOS debug bridge against the latest upstream gstack templates. Updates StateServer.swift, DebugOverlay.swift, Package.swift,
+  Regenerate the iOS debug bridge against the latest upstream gstack
+  templates. Updates StateServer.swift, DebugOverlay.swift, Package.swift,
   and the typed @Observable state accessors. Use after you upgrade gstack
   or add new ViewModels/properties that need accessor coverage.
   Use when asked to "resync the iOS debug bridge", "regenerate iOS
   accessors", or "update the gstack iOS instrumentation". (gstack)
-voice-triggers:
-  - "resync the iOS debug bridge"
-  - "regenerate iOS accessors"
-  - "update the gstack iOS instrumentation"
+  Voice triggers (speech-to-text aliases): "resync the iOS debug bridge", "regenerate iOS accessors", "update the gstack iOS instrumentation".
 allowed-tools:
   - Bash
   - Read

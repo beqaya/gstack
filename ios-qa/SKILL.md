@@ -12,10 +12,7 @@ description: |
   run iOS QA from anywhere without touching the hardware.
   Use when asked to "ios qa", "test my iPhone app", "find bugs on the device",
   or "qa the iOS app". (gstack)
-voice-triggers:
-  - "iOS quality check"
-  - "test the iPhone app"
-  - "run iOS QA"
+  Voice triggers (speech-to-text aliases): "iOS quality check", "test the iPhone app", "run iOS QA".
 allowed-tools:
   - Bash
   - Read

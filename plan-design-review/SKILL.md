@@ -4,7 +4,8 @@ preamble-tier: 3
 interactive: true
 version: 2.0.0
 description: |
-  Designer's eye plan review — interactive, like CEO and Eng review. Rates each design dimension 0-10, explains what would make it a 10,
+  Designer's eye plan review — interactive, like CEO and Eng review.
+  Rates each design dimension 0-10, explains what would make it a 10,
   then fixes the plan to get there. Works in plan mode. For live site
   visual audits, use /design-review. Use when asked to "review the design plan"
   or "design critique".
@@ -1047,16 +1048,30 @@ Report findings before proceeding to Step 0.
 ```bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 D=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design" ] && D="$_ROOT/.claude/skills/gstack/design/dist/design"
-[ -z "$D" ] && D="$HOME/.claude/skills/gstack/design/dist/design"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design" ]; then
+  D="$_ROOT/.claude/skills/gstack/design/dist/design"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design.exe" ]; then
+  D="$_ROOT/.claude/skills/gstack/design/dist/design.exe"
+elif [ -x "$HOME/.claude/skills/gstack/design/dist/design" ]; then
+  D="$HOME/.claude/skills/gstack/design/dist/design"
+elif [ -x "$HOME/.claude/skills/gstack/design/dist/design.exe" ]; then
+  D="$HOME/.claude/skills/gstack/design/dist/design.exe"
+fi
 if [ -x "$D" ]; then
   echo "DESIGN_READY: $D"
 else
   echo "DESIGN_NOT_AVAILABLE"
 fi
 B=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
-[ -z "$B" ] && B="$HOME/.claude/skills/gstack/browse/dist/browse"
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ]; then
+  B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse.exe" ]; then
+  B="$_ROOT/.claude/skills/gstack/browse/dist/browse.exe"
+elif [ -x "$HOME/.claude/skills/gstack/browse/dist/browse" ]; then
+  B="$HOME/.claude/skills/gstack/browse/dist/browse"
+elif [ -x "$HOME/.claude/skills/gstack/browse/dist/browse.exe" ]; then
+  B="$HOME/.claude/skills/gstack/browse/dist/browse.exe"
+fi
 if [ -x "$B" ]; then
   echo "BROWSE_READY: $B"
 else

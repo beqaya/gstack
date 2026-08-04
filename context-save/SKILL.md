@@ -8,7 +8,8 @@ description: |
   Use when asked to "save progress", "save state", "context save", or
   "save my work". Pair with /context-restore to resume later.
   Formerly /checkpoint — renamed because Claude Code treats /checkpoint as a
-  native rewind alias in current environments, which was shadowing this skill. (gstack)
+  native rewind alias in current environments, which was shadowing this skill.
+  (gstack)
 allowed-tools:
   - Bash
   - Read
