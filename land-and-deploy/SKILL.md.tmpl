@@ -725,7 +725,7 @@ gh run list --branch <base> --limit 5 --json name,status,conclusion,headSha,work
 ```
 Look for workflow names containing "deploy", "release", "production", or "cd". If found: poll the deploy workflow in Step 6, then run canary.
 
-3. If SCOPE_DOCS is the only scope that's true (no frontend, no backend, no config): skip verification entirely. Tell the user: "This was a docs-only change — nothing to deploy or verify. You're all set." Go to Step 9.
+3. If SCOPE_DOCS is the only scope that's true (no frontend, no backend, no config): skip verification entirely. Tell the user: "This was a docs-only change — nothing to deploy or verify. You're all set." Go to Step 8.5 with status HEALTHY (docs-only).
 
 4. If no deploy workflows detected and no URL provided: use AskUserQuestion once:
    - **Re-ground:** "PR is merged, but I don't see a deploy workflow or a production URL for this project. If this is a web app, I can verify the deploy if you give me the URL. If it's a library or CLI tool, there's nothing to verify — we're done."
@@ -757,7 +757,8 @@ Steps 6-7 again against the production target.
 **If C (staging only):** Tell the user: "Deploying to staging only. I'll verify it works and stop there."
 
 Run Steps 6-7 against the staging target. After verification,
-print the deploy report (Step 9) with verdict "STAGING VERIFIED — production deploy pending."
+run Step 8.5's outcome gate against the staging target, then print the deploy
+report (Step 9) with verdict "STAGING VERIFIED — production deploy pending."
 Then tell the user: "Staging looks good. When you're ready for production, run `/land-and-deploy` again."
 **STOP.** The user can re-run `/land-and-deploy` later for production.
 
@@ -882,7 +883,7 @@ Take an annotated screenshot as evidence.
 - Page has real content (not blank or error screen) → PASS
 - Loads in under 10 seconds → PASS
 
-If all pass: Tell the user "Site is healthy. Page loaded in {X}s, no console errors, content looks good. Screenshot saved to {path}." Mark as HEALTHY, continue to Step 9.
+If all pass: Tell the user "Site is healthy. Page loaded in {X}s, no console errors, content looks good. Screenshot saved to {path}." Mark as HEALTHY, continue to Step 8.5.
 
 If any fail: show the evidence (screenshot path, console errors, perf numbers). Use AskUserQuestion:
 - **Re-ground:** "I found some issues on the live site after the deploy. Here's what I see: {specific issues}. This might be temporary (caches clearing, CDN propagating) or it might be a real problem."
@@ -911,7 +912,48 @@ If the revert has conflicts: "The revert has merge conflicts — this can happen
 If the base branch has push protections: "This repo has branch protections, so I can't push the revert directly. I'll create a revert PR instead — merge it to roll back."
 Then create a revert PR: `gh pr create --title 'revert: <original PR title>'`
 
-After a successful revert: Tell the user "Revert pushed to {base}. The deploy should roll back automatically once CI passes. Keep an eye on the site to confirm." Note the revert commit SHA and continue to Step 9 with status REVERTED.
+After a successful revert: Tell the user "Revert pushed to {base}. The deploy should roll back automatically once CI passes. Keep an eye on the site to confirm." Note the revert commit SHA and continue to Step 8.5 with status REVERTED.
+
+---
+
+## Step 8.5: Outcome gate (mandatory)
+
+**Every path into Step 9 passes through here first — there is no jump that
+skips this step.** Handle the entry status you arrived with:
+
+- **Status is REVERTED:** there is no live outcome left to prove — the
+  change was deliberately rolled back and the previous version is what's
+  running now. Do NOT invoke `/verify-outcome` to demand proof that the
+  reverted code "works." Record `N/A (reverted — nothing to verify)` as this
+  step's result, do not block, and continue straight to Step 9 with status
+  REVERTED unchanged.
+
+- **Status is HEALTHY and the scope was SCOPE_DOCS-only (Step 5 sub-step 3):**
+  there is no user-visible runtime outcome to name — that's exactly why
+  Step 5 skipped canary verification. Do NOT force `/verify-outcome` to
+  invent a DOM/API/CLI check for a change that has no runtime effect.
+  Instead, treat "no user-visible change claimed" as the outcome statement
+  itself: confirm (re-check, don't just trust Step 5's classification) that
+  the diff is genuinely docs-only, record that confirmation as this step's
+  `PROVEN`-equivalent result, and continue to Step 9.
+
+- **Every other case (production or staging canary reported HEALTHY, or the
+  user chose "that's expected" after a DEGRADED canary):** invoke
+  `/verify-outcome` for the user-visible thing this deploy (against
+  whichever target Steps 6-7 just ran — staging or production) was supposed
+  to make true. A `PROVEN` verdict is required for Step 9 to report
+  `DEPLOYED AND VERIFIED` (or `STAGING VERIFIED`, for the staging-only path
+  in Step 5a). On `UNPROVEN` or `CONTRADICTED`, Step 9 must report exactly
+  that instead — including what evidence was missing — and the VERDICT line
+  must NOT read `DEPLOYED AND VERIFIED` / `STAGING VERIFIED`. Step 7's
+  canary checks (200 status, no console errors) are inputs to this gate,
+  not substitutes for it: a green canary, a successful merge, and a passing
+  CI run are explicitly not sufficient on their own (see the 2026-08-03
+  blank-page outage, where all three were green while the site rendered
+  nothing).
+
+**Continue to Step 9** in every case above — Step 9 composes its VERDICT
+line from whatever this step just recorded.
 
 ---
 

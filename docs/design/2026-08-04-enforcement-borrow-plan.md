@@ -13,6 +13,16 @@
 - gstack repo: `C:\Users\Person\.claude\skills\gstack` — currently on branch `custom/frontmatter-routing`, one commit ahead of upstream. Commit there; push to the `fork` remote only.
 - **The live skills are COPIES, not junctions.** Every new or edited `SKILL.md` under the repo MUST also be copied to the matching top-level `C:\Users\Person\.claude\skills\<name>\SKILL.md`, or the change has no effect.
 - New skills use the rich `description: |` frontmatter form matching commit `731d97ec`, ending with the ` (gstack)` marker.
+- **SKILL.md files are GENERATED from `SKILL.md.tmpl` by `bun run gen:skill-docs`.**
+  55 skills have templates. Any edit to an existing skill (Task 4 touches `ship`
+  and `land-and-deploy`) MUST be made in BOTH `SKILL.md.tmpl` and `SKILL.md`,
+  identically — template-only leaves the live skill unchanged until someone
+  regenerates; generated-only is silently reverted by the next generator run.
+  Do NOT run the generator itself: it rewrites all ~53 skills at once and would
+  bury this work in an unreviewable diff. (Verified 2026-08-04: the templates
+  already carried the rich descriptions from upstream `e8893a18`; it was the
+  generated files that had drifted, which is what commits `40eba0dc`/`731d97ec`
+  re-synced.)
 - One git verb per command invocation.
 - **This is a general gstack enhancement, not project work.** Everything lands in
   the gstack repo. No consuming project's repository may be modified by this

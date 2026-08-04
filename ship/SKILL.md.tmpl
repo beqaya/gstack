@@ -511,6 +511,18 @@ no-op. The marker guarantees at-most-once per machine. To re-enable:
 
 ---
 
+## Step 22: Outcome gate (mandatory)
+
+Before reporting this shipped, invoke `/verify-outcome` for the user-visible
+thing this change was supposed to make true. A `PROVEN` verdict is required to
+report success. On `UNPROVEN` or `CONTRADICTED`, report exactly that instead —
+including what evidence was missing — and do NOT describe the work as shipped.
+A green CI run, a successful deploy, and an HTTP 200 are explicitly not
+substitutes (see the 2026-08-03 blank-page outage, where all three were green
+while the site rendered nothing).
+
+---
+
 ## Section self-check (before you finish)
 
 You ran a carved skill. For your situation, list every section the Section index
