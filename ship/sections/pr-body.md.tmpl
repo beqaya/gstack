@@ -21,7 +21,27 @@
 3. If `files_updated` is non-empty, print: `Documentation synced: {files_updated.length} files updated, committed as {commit_sha}`.
 4. If `files_updated` is empty, print: `Documentation is current — no updates needed.`
 
-**If the subagent fails or returns invalid JSON:** Print a warning and proceed to Step 19 without a `## Documentation` section. Do not block /ship on subagent failure. The user can run `/document-release` manually after the PR lands.
+**If the subagent fails or returns invalid JSON:** Print a warning and proceed to Step 18.5 without a `## Documentation` section. Do not block /ship on subagent failure. The user can run `/document-release` manually after the PR lands.
+
+---
+
+## Step 18.5: Outcome gate (mandatory, before the PR/MR is created or updated)
+
+Before the PR/MR body is composed, invoke `/verify-outcome` for the user-visible
+thing this change was supposed to make true. A `PROVEN` verdict is required to
+proceed to Step 19. A green CI run, a successful deploy, and an HTTP 200 are
+explicitly not substitutes (see the 2026-08-03 blank-page outage, where all
+three were green while the site rendered nothing).
+
+**On `UNPROVEN` or `CONTRADICTED`: STOP.** Do not create or update the PR/MR —
+the code stays pushed (Step 17 already ran) but nothing gets opened for review
+until the outcome is proven. Report exactly what evidence was missing. Do NOT
+describe the work as shipped, and do NOT continue to Step 19.
+
+This runs here — before Step 19 — specifically so an UNPROVEN or CONTRADICTED
+verdict can never reach a PR title, body, or URL the user has already seen and
+started to trust. Running the same check after the PR exists is too late to
+affect the PR.
 
 ---
 

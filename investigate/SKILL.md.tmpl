@@ -65,6 +65,14 @@ gbrain:
 
 # Systematic Debugging
 
+**Enforcement status: this skill is guidance, not a tool-level block.** The
+`hooks:` block in this file's frontmatter is declarative only — this harness
+does not auto-register frontmatter hooks (gstack is not an enabled plugin
+here; see `enabledPlugins` in `~/.claude/settings.json`), so
+`check-freeze.sh` is never invoked automatically and no Edit/Write is
+actually intercepted by it. See "Scope Lock" below for what the debug-scope
+boundary this skill sets actually does (and doesn't) enforce.
+
 ## Iron Law
 
 **NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST.**
@@ -113,9 +121,20 @@ If any learnings come back, name which one applies to your investigation in one 
 
 ---
 
-## Scope Lock
+## Scope Lock (guidance only, not enforced)
 
-After forming your root cause hypothesis, lock edits to the affected module to prevent scope creep.
+After forming your root cause hypothesis, note the affected module so you
+keep your own edits scoped and avoid drive-by fixes elsewhere in the same
+session. This is a self-reminder, not a tool-enforced boundary: nothing
+here installs a PreToolUse hook, so nothing stops an Edit/Write outside the
+noted directory. The only thing that actually blocks edits outside a
+directory is `gstack-freeze-wire --install` appending an entry into
+`~/.claude/settings.json`'s `Write|Edit` matcher — that's what `/freeze`'s
+Setup step does. `investigate` deliberately does not run that step here: it
+would mean modifying `~/.claude/settings.json` without asking, as a side
+effect of routine debugging, and the entry would persist into unrelated
+future sessions until someone remembers to run `/unfreeze`. If you want a
+real, tool-enforced boundary, run `/freeze` yourself.
 
 ```bash
 _FREEZE_SCRIPT="${CLAUDE_SKILL_DIR}/../freeze/bin/check-freeze.sh"
@@ -123,21 +142,36 @@ _FREEZE_SCRIPT="${CLAUDE_SKILL_DIR}/../freeze/bin/check-freeze.sh"
 [ -x "$_FREEZE_SCRIPT" ] && echo "FREEZE_AVAILABLE" || echo "FREEZE_UNAVAILABLE"
 ```
 
-**If FREEZE_AVAILABLE:** Identify the narrowest directory containing the affected files. Write it to the freeze state file:
+**If FREEZE_AVAILABLE:** Identify the narrowest directory containing the affected files.
 
 ```bash
 eval "$(~/.claude/skills/gstack/bin/gstack-paths)"
 STATE_DIR="$GSTACK_STATE_ROOT"
 mkdir -p "$STATE_DIR"
-echo "<detected-directory>/" > "$STATE_DIR/freeze-dir.txt"
-echo "Debug scope locked to: <detected-directory>/"
+if [ -s "$STATE_DIR/freeze-dir.txt" ]; then
+  echo "EXISTING_FREEZE_DIR: $(cat "$STATE_DIR/freeze-dir.txt")"
+else
+  echo "<detected-directory>/" > "$STATE_DIR/freeze-dir.txt"
+  echo "Debug scope noted: <detected-directory>/"
+fi
 ```
 
-Substitute `<detected-directory>` with the actual directory path (e.g., `src/auth/`). Tell the user: "Edits restricted to `<dir>/` for this debug session. This prevents changes to unrelated code. Run `/unfreeze` to remove the restriction."
+If `EXISTING_FREEZE_DIR` was printed, a boundary is already recorded — it
+may be an active, tool-enforced `/freeze` or `/guard` boundary. Do **not**
+overwrite it. Just keep your own debug scope in prose and mention the
+existing recorded directory to the user; overwriting `freeze-dir.txt` here
+could silently move or defeat a real enforced boundary the user set up
+themselves.
 
-If the bug spans the entire repo or the scope is genuinely unclear, skip the lock and note why.
+Otherwise, substitute `<detected-directory>` with the actual directory path
+(e.g., `src/auth/`). Tell the user: "Debug scope noted as `<dir>/` — I'll
+keep edits inside it for this session. This is a self-imposed guideline,
+not a tool-enforced block; nothing stops an Edit/Write outside it. If you
+want that enforced, run `/freeze` yourself."
 
-**If FREEZE_UNAVAILABLE:** Skip scope lock. Edits are unrestricted.
+If the bug spans the entire repo or the scope is genuinely unclear, skip the note and say why.
+
+**If FREEZE_UNAVAILABLE:** Skip the scope note. Edits are unrestricted regardless.
 
 ---
 

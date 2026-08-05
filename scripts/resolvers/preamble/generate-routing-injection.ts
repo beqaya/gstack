@@ -38,7 +38,7 @@ Key routing rules:
 
 Then commit the change: \`git add CLAUDE.md && git commit -m "chore: add gstack skill routing rules to CLAUDE.md"\`
 
-If B: run \`${ctx.paths.binDir}/gstack-config set routing_declined true\` and say they can re-enable with \`gstack-config set routing_declined false\`.
+If B: run \`${ctx.paths.binDir}/gstack-config set routing_declined true\` and say they can re-enable with \`${ctx.paths.binDir}/gstack-config set routing_declined false\`.
 
 This only happens once per project. Skip if \`HAS_ROUTING\` is \`yes\` or \`ROUTING_DECLINED\` is \`true\`.`;
 }

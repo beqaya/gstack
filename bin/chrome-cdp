@@ -6,6 +6,21 @@
 # We create a separate data dir with a symlink to the user's real profile,
 # so Chrome thinks it's non-default but uses the same cookies/extensions.
 
+UNAME_S="$(uname -s 2>/dev/null || echo unknown)"
+case "$UNAME_S" in
+  Darwin) ;;
+  *)
+    echo "chrome-cdp: macOS-only (relies on the .app bundle path, osascript, and pgrep/pkill)." >&2
+    echo "  Detected OS: $UNAME_S — not supported by this script." >&2
+    echo "  On Windows, launch Chrome with CDP manually instead, e.g. from PowerShell:" >&2
+    echo "    & \"\$env:LOCALAPPDATA\\Google\\Chrome\\Application\\chrome.exe\" --remote-debugging-port=9222" >&2
+    echo "  or from Git Bash:" >&2
+    echo "    \"\$LOCALAPPDATA/Google/Chrome/Application/chrome.exe\" --remote-debugging-port=9222 &" >&2
+    echo "  Then attach via CDP on that port (e.g. \$B connect chrome)." >&2
+    exit 1
+    ;;
+esac
+
 PORT="${1:-9222}"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 REAL_PROFILE="$HOME/Library/Application Support/Google/Chrome"

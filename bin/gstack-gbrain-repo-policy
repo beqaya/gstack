@@ -55,7 +55,7 @@ die() { echo "gstack-gbrain-repo-policy: $*" >&2; exit 2; }
 
 require_jq() {
   if ! command -v jq >/dev/null 2>&1; then
-    die "jq is required. Install with: brew install jq"
+    die "jq is required. Install: https://jqlang.github.io/jq/download/ (macOS: brew install jq; Windows: winget install jqlang.jq)"
   fi
 }
 

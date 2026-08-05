@@ -80,7 +80,7 @@ die_conflict(){ echo "gstack-gbrain-supabase-provision: $*" >&2; exit 5; }
 die_net() { echo "gstack-gbrain-supabase-provision: $*" >&2; exit 8; }
 
 require_jq() {
-  command -v jq >/dev/null 2>&1 || die "jq is required. Install with: brew install jq"
+  command -v jq >/dev/null 2>&1 || die "jq is required. Install: https://jqlang.github.io/jq/download/ (macOS: brew install jq; Windows: winget install jqlang.jq)"
 }
 require_curl() {
   command -v curl >/dev/null 2>&1 || die "curl is required"

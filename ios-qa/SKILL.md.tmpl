@@ -108,7 +108,12 @@ fi
    Codegen stops with a source diagnostic instead of emitting a broken or
    lossy harness when any of these constraints is violated.
 2. Show the user the accessor list and ask whether to install the DebugBridge
-   SPM dependency into their `Package.swift` (one AskUserQuestion).
+   SPM dependency into their `Package.swift` (one AskUserQuestion). Record the
+   answer as `$DEBUGBRIDGE_APPROVED` (yes/no) — Phase 2 step 2 gates on it.
+   If declined, `/ios-qa` cannot proceed past Phase 2 step 1: every later step
+   (build, launch, daemon, vision loop) talks to the bridge this dependency
+   provides. Tell the user testing requires it, then stop — do not run Phase 2
+   step 2 or later.
 
 ## Phase 2: Bootstrap the device bridge
 
@@ -122,8 +127,10 @@ fi
    The regenerator also removes the explicit obsolete flat-file set created by
    older ios-sync versions, preventing a stale second harness from remaining
    in the app target.
-2. Add the generated `DebugBridge` local SPM dependency to the app's
-   `Package.swift`. The package
+2. **Only if `$DEBUGBRIDGE_APPROVED` = yes (Phase 1 step 2):** add the
+   generated `DebugBridge` local SPM dependency to the app's `Package.swift`.
+   If the user declined, this step and Phase 2 steps 3-7 do not run — Phase 1
+   already stopped the skill. The package
    ships three Debug-config-only library products:
    - `DebugBridgeCore` (Swift, cross-platform) — StateServer + bridge protocols.
    - `DebugBridgeTouch` (Objective-C, iOS-only) — KIF-derived in-process touch

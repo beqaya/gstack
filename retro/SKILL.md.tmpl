@@ -207,6 +207,18 @@ cat ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 
 # 12. Test files changed in window
 git log origin/<default> --since="<window>" --format="" --name-only | grep -E '\.(test|spec)\.' | sort -u | wc -l
+
+# 13. Merged PR titles in window (for the Features Shipped metric; requires `gh` CLI + auth).
+#     <since> here is the date-only portion of the midnight-aligned start date computed
+#     above (YYYY-MM-DD, drop the T00:00:00 suffix) since gh's search filter is date-only.
+gh pr list --state merged --base <default> --search "merged:>=<since>" --json number,title,mergedAt --limit 100 -q '.[] | "\(.number)|\(.title)|\(.mergedAt)"' 2>/dev/null || true
+
+# 14. CHANGELOG.md (for the Features Shipped metric; file may not exist)
+cat CHANGELOG.md 2>/dev/null || true
+
+# 15. VERSION file changes in window, oldest-first (for the Version range metric; file may not exist)
+cat VERSION 2>/dev/null || true
+git log origin/<default> --since="<window>" --format="COMMIT:%H|%ai" --reverse -p -- VERSION 2>/dev/null || true
 ```
 
 ### Step 2: Compute Metrics
@@ -238,6 +250,33 @@ and weighted commits reflect intent-to-ship. Logical SLOC added reflects real
 new functionality. Raw LOC is demoted to context because AI inflates it; ten
 lines of a good fix is not less shipping than ten thousand lines of scaffold.
 See docs/designs/PLAN_TUNING_V1.md §Workstream C.
+
+**Features shipped (from CHANGELOG + merged PR titles):** Combine two sources:
+
+- Merged PR titles from Step 1 command 13 (`gh pr list --state merged ...`). Each
+  line is `number|title|mergedAt`. Count distinct PRs and use the titles as the
+  feature list. If `gh` isn't installed or isn't authenticated, command 13 returns
+  nothing — fall back to the PR numbers already extracted in command 5 (grepped
+  from commit subjects) and infer titles from the associated commit subjects instead.
+- CHANGELOG.md entries from Step 1 command 14. If the file exists, take the entries
+  under the topmost version heading(s) whose date falls inside the retro window
+  (or, if entries are undated, the topmost heading only) as additional shipped
+  items — dedupe against anything already captured from PR titles.
+
+Count **N** as the deduped union of both sources. If `gh pr list` returned nothing
+AND CHANGELOG.md doesn't exist (`cat CHANGELOG.md` produced no output), fall back
+to counting distinct PR numbers from command 5, and note in the narrative:
+"Features-shipped count is PR-number-only — no CHANGELOG.md and no `gh` access in
+this repo." Never silently show "N/A" for this row; it is the lead metric.
+
+**Version range:** Read the current `VERSION` file content from Step 1 command 15
+(`cat VERSION`) as the window-end value. For the window-start value, look at the
+`COMMIT:` blocks from the same command's `git log --reverse -p -- VERSION` output:
+take the first commit's patch and read the `+` (added) line as the value the file
+was bumped *to* at the start of the window, then use `-` (removed) line from that
+same patch as the value immediately before the window. If no commits touched
+VERSION in the window, the file didn't change — report `vX.Y.Z.W → vX.Y.Z.W` using
+the current value for both ends. If VERSION doesn't exist at all, skip the row.
 
 Then show a **per-author leaderboard** immediately below:
 

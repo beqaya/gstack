@@ -168,7 +168,7 @@ stay agent judgment; the slot pick stays `gstack-next-version`.
    Read the JSON `state` and dispatch:
    - **FRESH** → do the bump (steps 2-4).
    - **ALREADY_BUMPED** → skip the bump, but run the queue-drift check (step 3) with the reported `currentVersion`. If the queue moved (next free version differs), **AskUserQuestion**: rebump to the new version (rewrites CHANGELOG header + PR title) or keep current (CI version-gate will reject until resolved).
-   - **DRIFT_STALE_PKG** → run `gstack-version-bump repair` (syncs package.json to VERSION). No re-bump; reuse `currentVersion` for CHANGELOG + PR.
+   - **DRIFT_STALE_PKG** → run `{{BIN_DIR}}/gstack-version-bump repair` (syncs package.json to VERSION). No re-bump; reuse `currentVersion` for CHANGELOG + PR.
    - **DRIFT_UNEXPECTED** → **STOP**. package.json disagrees with VERSION while VERSION matches base — a manual edit bypassed /ship. Reconcile manually, then re-run.
 
 2. **Decide the bump level** from the diff (agent judgment):
@@ -201,7 +201,7 @@ stay agent judgment; the slot pick stays `gstack-next-version`.
 
 Cross-reference the project's TODOS.md against the changes being shipped. Mark completed items automatically; prompt only if the file is missing or disorganized.
 
-Read `.claude/skills/review/TODOS-format.md` for the canonical format reference.
+Read `~/.claude/skills/gstack/review/TODOS-format.md` for the canonical format reference.
 
 **1. Check if TODOS.md exists** in the repository root.
 
@@ -511,15 +511,17 @@ no-op. The marker guarantees at-most-once per machine. To re-enable:
 
 ---
 
-## Step 22: Outcome gate (mandatory)
+## Step 22: Outcome gate — already enforced at Step 18.5
 
-Before reporting this shipped, invoke `/verify-outcome` for the user-visible
-thing this change was supposed to make true. A `PROVEN` verdict is required to
-report success. On `UNPROVEN` or `CONTRADICTED`, report exactly that instead —
-including what evidence was missing — and do NOT describe the work as shipped.
-A green CI run, a successful deploy, and an HTTP 200 are explicitly not
-substitutes (see the 2026-08-03 blank-page outage, where all three were green
-while the site rendered nothing).
+The mandatory outcome gate (`/verify-outcome`) now runs at Step 18.5, inside
+`sections/pr-body.md`, **before** the PR/MR is created or updated — not here.
+Running it this late (after the PR URL is already in front of the user) was
+the defect: a CONTRADICTED verdict could no longer affect the PR. See Step
+18.5 for the full gate logic; do not re-run or duplicate it here.
+
+If you reached this line, Step 18.5 already returned `PROVEN` — report success
+now. If it had returned `UNPROVEN` or `CONTRADICTED`, Step 18.5's STOP fired
+before Step 19 and this line was never reached.
 
 ---
 

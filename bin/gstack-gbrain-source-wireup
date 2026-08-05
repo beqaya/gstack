@@ -209,7 +209,7 @@ ensure_worktree() {
 check_source_state() {
   local id="$1"
   if ! command -v jq >/dev/null 2>&1; then
-    die "jq required for source state detection. Install jq (brew install jq) and re-run." 1
+    die "jq required for source state detection. Install: https://jqlang.github.io/jq/download/ (macOS: brew install jq; Windows: winget install jqlang.jq) and re-run." 1
   fi
   local existing_path
   existing_path=$(gbrain sources list --json 2>/dev/null \

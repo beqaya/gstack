@@ -41,7 +41,7 @@ URL="$1"
 [ -n "${GBRAIN_MCP_TOKEN:-}" ] || { echo "gstack-gbrain-mcp-verify: GBRAIN_MCP_TOKEN env var required" >&2; exit 2; }
 
 command -v curl >/dev/null 2>&1 || { echo "gstack-gbrain-mcp-verify: curl is required" >&2; exit 2; }
-command -v jq >/dev/null 2>&1 || { echo "gstack-gbrain-mcp-verify: jq is required (brew install jq)" >&2; exit 2; }
+command -v jq >/dev/null 2>&1 || { echo "gstack-gbrain-mcp-verify: jq is required. Install: https://jqlang.github.io/jq/download/ (macOS: brew install jq; Windows: winget install jqlang.jq)" >&2; exit 2; }
 
 emit() {
   # emit <status> <server_name> <server_version> <error_class> <error_text> <url_supported> <raw_body>

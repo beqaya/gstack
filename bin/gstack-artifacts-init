@@ -144,6 +144,12 @@ if [ -z "$REMOTE_URL" ]; then
       fi
       ;;
     gitlab)
+      if ! command -v jq >/dev/null 2>&1; then
+        echo "jq is required for --host gitlab (used to parse 'glab repo view' output)." >&2
+        echo "Install: https://jqlang.github.io/jq/download/ (macOS: brew install jq; Windows: winget install jqlang.jq)" >&2
+        echo "Or skip jq entirely: pass --remote <url> directly." >&2
+        exit 1
+      fi
       echo "Creating GitLab repo: $REPO_NAME ..."
       if ! glab repo create "$REPO_NAME" --private --description "$DESCRIPTION" 2>/dev/null; then
         REMOTE_URL=$(glab repo view "$REPO_NAME" -F json 2>/dev/null | jq -r '.web_url // empty' 2>/dev/null || echo "")
