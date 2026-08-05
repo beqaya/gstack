@@ -306,7 +306,7 @@ Key routing rules:
 
 Then commit the change: `git add CLAUDE.md && git commit -m "chore: add gstack skill routing rules to CLAUDE.md"`
 
-If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `gstack-config set routing_declined false`.
+If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `~/.claude/skills/gstack/bin/gstack-config set routing_declined false`.
 
 This only happens once per project. Skip if `HAS_ROUTING` is `yes` or `ROUTING_DECLINED` is `true`.
 
@@ -349,7 +349,7 @@ AI orchestrator (e.g., OpenClaw). In spawned sessions:
 
 "AskUserQuestion" can resolve to two tools at runtime: the **host MCP variant** (e.g. `mcp__conductor__AskUserQuestion` — appears in your tool list when the host registers it) or the **native** Claude Code tool.
 
-**Conductor rule (read before the MCP rule):** if `CONDUCTOR_SESSION: true` was echoed by the preamble, do NOT call AskUserQuestion at all — neither native nor any `mcp__*__AskUserQuestion` variant. Render EVERY decision brief as the **prose form** below and STOP. This is proactive, not a reaction to a failure: Conductor disables native AUQ and its MCP variant is flaky (it returns `[Tool result missing due to internal error]`), so prose is the reliable path. **Auto-decide preferences still apply first:** if a `[plan-tune auto-decide] <id> → <option>` result has already surfaced for a question, proceed with that option (no prose). Because in Conductor you go straight to prose without ever calling the tool, this auto-decide-first ordering is enforced HERE, not only by the PreToolUse hook. When you render a Conductor prose brief, also capture it with `bin/gstack-question-log` (the PostToolUse capture hook never fires on a prose path, so `/plan-tune` history/learning depends on this call).
+**Conductor rule (read before the MCP rule):** if `CONDUCTOR_SESSION: true` was echoed by the preamble, do NOT call AskUserQuestion at all — neither native nor any `mcp__*__AskUserQuestion` variant. Render EVERY decision brief as the **prose form** below and STOP. This is proactive, not a reaction to a failure: Conductor disables native AUQ and its MCP variant is flaky (it returns `[Tool result missing due to internal error]`), so prose is the reliable path. **Auto-decide preferences still apply first:** if a `[plan-tune auto-decide] <id> → <option>` result has already surfaced for a question, proceed with that option (no prose). This auto-decide-first ordering is enforced HERE, by the model itself — the PreToolUse enforcement hook is not installed by default (install it with `bin/gstack-settings-hook add-event --event PreToolUse|PostToolUse` for real enforcement); when installed, it enforces the same ordering as a backstop. Because in Conductor you go straight to prose without ever calling the tool, relying on this model-level enforcement is required, not optional. When you render a Conductor prose brief, also capture it with `bin/gstack-question-log` (the PostToolUse capture hook, when installed, never fires on a prose path either, so `/plan-tune` history/learning depends on this call by default).
 
 **Rule (non-Conductor):** if any `mcp__*__AskUserQuestion` variant is in your tool list, prefer it. Hosts may disable native AUQ via `--disallowedTools AskUserQuestion` (Conductor does, by default) and route through their MCP variant; calling native there silently fails. Same questions/options shape; same decision-brief format applies.
 
@@ -481,6 +481,7 @@ else
 fi
 _BRAIN_SYNC_BIN="~/.claude/skills/gstack/bin/gstack-brain-sync"
 _BRAIN_CONFIG_BIN="~/.claude/skills/gstack/bin/gstack-config"
+_BRAIN_RESTORE_BIN="~/.claude/skills/gstack/bin/gstack-brain-restore"
 
 # /sync-gbrain context-load: teach the agent to use gbrain when it's available.
 # Per-worktree pin: post-spike redesign uses kubectl-style `.gbrain-source` in the
@@ -529,7 +530,7 @@ if [ -f "$_BRAIN_REMOTE_FILE" ] && [ ! -d "$_GSTACK_HOME/.git" ] && [ "$_BRAIN_S
   _BRAIN_NEW_URL=$(head -1 "$_BRAIN_REMOTE_FILE" 2>/dev/null | tr -d '[:space:]')
   if [ -n "$_BRAIN_NEW_URL" ]; then
     echo "ARTIFACTS_SYNC: artifacts repo detected: $_BRAIN_NEW_URL"
-    echo "ARTIFACTS_SYNC: run 'gstack-brain-restore' to pull your cross-machine artifacts (or 'gstack-config set artifacts_sync_mode off' to dismiss forever)"
+    echo "ARTIFACTS_SYNC: run '$_BRAIN_RESTORE_BIN' to pull your cross-machine artifacts (or '$_BRAIN_CONFIG_BIN set artifacts_sync_mode off' to dismiss forever)"
   fi
 fi
 
@@ -584,7 +585,7 @@ After answer:
 "$_BRAIN_CONFIG_BIN" set artifacts_sync_mode_prompted true
 ```
 
-If A/B and `~/.gstack/.git` is missing, ask whether to run `gstack-artifacts-init`. Do not block the skill.
+If A/B and `~/.gstack/.git` is missing, ask whether to run `~/.claude/skills/gstack/bin/gstack-artifacts-init`. Do not block the skill.
 
 At skill END before telemetry:
 
@@ -720,9 +721,9 @@ If you are looping on the same diagnostic, same file, or failed fix variants, ST
 
 Before each AskUserQuestion, choose `question_id` from `scripts/question-registry.ts` or `{skill}-{slug}`, then run `~/.claude/skills/gstack/bin/gstack-question-preference --check "<id>"`. `AUTO_DECIDE` means choose the recommended option and say "Auto-decided [summary] → [option] (your preference). Change with /plan-tune." `ASK_NORMALLY` means ask.
 
-**Embed the question_id as a marker in the question text** so hooks can identify it deterministically (plan-tune cathedral T14 / D18 progressive markers). Append `<gstack-qid:{question_id}>` somewhere in the rendered question (the leading line or trailing line is fine; the marker doesn't render visibly to the user when wrapped in HTML-style angle brackets, but the hook strips it). Without the marker the PreToolUse enforcement hook treats the AUQ as observed-only and never auto-decides — so always include it when the question matches a registered `question_id`.
+**Embed the question_id as a marker in the question text** so hooks can identify it deterministically (plan-tune cathedral T14 / D18 progressive markers). Append `<gstack-qid:{question_id}>` somewhere in the rendered question (the leading line or trailing line is fine; the marker doesn't render visibly to the user when wrapped in HTML-style angle brackets, but the hook strips it when installed). The PreToolUse enforcement hook is not installed by default — install it with `bin/gstack-settings-hook add-event --event PreToolUse|PostToolUse` for real enforcement. Without the marker, that hook (when installed) treats the AUQ as observed-only and never auto-decides, so always include it when the question matches a registered `question_id`; by default (no hook installed) the marker has no runtime effect and the model's own `--check` call above governs AUTO_DECIDE/ASK_NORMALLY.
 
-**Embed the option recommendation via the `(recommended)` label suffix** on exactly one option per AUQ. The PreToolUse hook parses `(recommended)` first, falls back to "Recommendation: X" prose, and refuses to auto-decide if ambiguous. Two `(recommended)` labels = refuse.
+**Embed the option recommendation via the `(recommended)` label suffix** on exactly one option per AUQ. The PreToolUse hook, when installed, parses `(recommended)` first, falls back to "Recommendation: X" prose, and refuses to auto-decide if ambiguous. Two `(recommended)` labels = refuse. By default, with no hook installed, the model applies this same rule itself after `gstack-question-preference --check` returns `AUTO_DECIDE`.
 
 After answer, log best-effort (PostToolUse hook also captures deterministically when installed; dedup on (source, tool_use_id) handles double-writes):
 ```bash
@@ -1032,6 +1033,18 @@ cat ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 
 # 12. Test files changed in window
 git log origin/<default> --since="<window>" --format="" --name-only | grep -E '\.(test|spec)\.' | sort -u | wc -l
+
+# 13. Merged PR titles in window (for the Features Shipped metric; requires `gh` CLI + auth).
+#     <since> here is the date-only portion of the midnight-aligned start date computed
+#     above (YYYY-MM-DD, drop the T00:00:00 suffix) since gh's search filter is date-only.
+gh pr list --state merged --base <default> --search "merged:>=<since>" --json number,title,mergedAt --limit 100 -q '.[] | "\(.number)|\(.title)|\(.mergedAt)"' 2>/dev/null || true
+
+# 14. CHANGELOG.md (for the Features Shipped metric; file may not exist)
+cat CHANGELOG.md 2>/dev/null || true
+
+# 15. VERSION file changes in window, oldest-first (for the Version range metric; file may not exist)
+cat VERSION 2>/dev/null || true
+git log origin/<default> --since="<window>" --format="COMMIT:%H|%ai" --reverse -p -- VERSION 2>/dev/null || true
 ```
 
 ### Step 2: Compute Metrics
@@ -1063,6 +1076,33 @@ and weighted commits reflect intent-to-ship. Logical SLOC added reflects real
 new functionality. Raw LOC is demoted to context because AI inflates it; ten
 lines of a good fix is not less shipping than ten thousand lines of scaffold.
 See docs/designs/PLAN_TUNING_V1.md §Workstream C.
+
+**Features shipped (from CHANGELOG + merged PR titles):** Combine two sources:
+
+- Merged PR titles from Step 1 command 13 (`gh pr list --state merged ...`). Each
+  line is `number|title|mergedAt`. Count distinct PRs and use the titles as the
+  feature list. If `gh` isn't installed or isn't authenticated, command 13 returns
+  nothing — fall back to the PR numbers already extracted in command 5 (grepped
+  from commit subjects) and infer titles from the associated commit subjects instead.
+- CHANGELOG.md entries from Step 1 command 14. If the file exists, take the entries
+  under the topmost version heading(s) whose date falls inside the retro window
+  (or, if entries are undated, the topmost heading only) as additional shipped
+  items — dedupe against anything already captured from PR titles.
+
+Count **N** as the deduped union of both sources. If `gh pr list` returned nothing
+AND CHANGELOG.md doesn't exist (`cat CHANGELOG.md` produced no output), fall back
+to counting distinct PR numbers from command 5, and note in the narrative:
+"Features-shipped count is PR-number-only — no CHANGELOG.md and no `gh` access in
+this repo." Never silently show "N/A" for this row; it is the lead metric.
+
+**Version range:** Read the current `VERSION` file content from Step 1 command 15
+(`cat VERSION`) as the window-end value. For the window-start value, look at the
+`COMMIT:` blocks from the same command's `git log --reverse -p -- VERSION` output:
+take the first commit's patch and read the `+` (added) line as the value the file
+was bumped *to* at the start of the window, then use `-` (removed) line from that
+same patch as the value immediately before the window. If no commits touched
+VERSION in the window, the file didn't change — report `vX.Y.Z.W → vX.Y.Z.W` using
+the current value for both ends. If VERSION doesn't exist at all, skip the row.
 
 Then show a **per-author leaderboard** immediately below:
 

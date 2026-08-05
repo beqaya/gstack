@@ -244,7 +244,7 @@ Use AskUserQuestion:
 - Continue with the workflow.
 
 **If "Add as P0 TODO":**
-- If `TODOS.md` exists, add the entry following the format in `review/TODOS-format.md` (or `.claude/skills/review/TODOS-format.md`).
+- If `TODOS.md` exists, add the entry following the format in `~/.claude/skills/gstack/review/TODOS-format.md`.
 - If `TODOS.md` does not exist, create it with the standard header and add the entry.
 - Entry should include: title, the error output, which branch it was noticed on, and priority P0.
 - Continue with the workflow — treat the pre-existing failure as non-blocking.
@@ -305,7 +305,7 @@ Match against these patterns (from CLAUDE.md):
 - `config/system_prompts/*.txt`
 - `test/evals/**/*` (eval infrastructure changes affect all suites)
 
-**If no matches:** Print "No prompt-related files changed — skipping evals." and continue to Step 9.
+**If no matches:** Print "No prompt-related files changed — skipping evals." and continue to Step 7.
 
 **2. Identify affected eval suites:**
 
@@ -351,7 +351,7 @@ poller is reaped.
 **4. Check results:**
 
 - **If any eval fails:** Show the failures, the cost dashboard, and **STOP**. Do not proceed.
-- **If all pass:** Note pass counts and cost. Continue to Step 9.
+- **If all pass:** Note pass counts and cost. Continue to Step 7.
 
 **5. Save eval output** — include eval results and cost dashboard in the PR body (Step 19).
 

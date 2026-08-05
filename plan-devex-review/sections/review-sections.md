@@ -2,7 +2,7 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Review Sections (8 passes, after Step 0 is complete)
 
-**Anti-skip rule:** Never condense, abbreviate, or skip any review pass (1-8) regardless of plan type (strategy, spec, code, infra). Every pass in this skill exists for a reason. "This is a strategy doc so DX passes don't apply" is always wrong — DX gaps are where adoption breaks down. If a pass genuinely has zero findings, say "No issues found" and move on — but you must evaluate it.
+**Anti-skip rule:** Which passes run is governed ONLY by the mode selected in Step 0E, per the Mode Quick Reference table below (DX EXPANSION and DX POLISH run all 8; DX TRIAGE runs Pass 1 + Pass 3 only). That table is mode-gating, not shortcut-taking — it is the one authorized way to not run a pass. Beyond that: never condense, abbreviate, or skip any pass your mode requires, regardless of plan type (strategy, spec, code, infra). Every pass this mode requires exists for a reason. "This is a strategy doc so DX passes don't apply" is always wrong — DX gaps are where adoption breaks down. If a required pass genuinely has zero findings, say "No issues found" and move on — but you must evaluate it in full.
 
 **Anti-shortcut clause:** The plan file is the OUTPUT of the interactive review, not a substitute for it. Writing every finding into one plan write and calling ExitPlanMode without firing AskUserQuestion is the precise failure mode of the May 2026 transcript bug — the model explored, found issues, and dumped them into a deliverable rather than walking the user through them. If you have ANY non-trivial finding in any review section, the path from finding to ExitPlanMode goes THROUGH AskUserQuestion. Zero findings in every section is the only path to ExitPlanMode that bypasses AskUserQuestion. If you find yourself wanting to write a plan with findings before asking, stop and call AskUserQuestion now — that's the bug, recognize it.
 
@@ -63,6 +63,8 @@ DX TREND (prior reviews):
 
 ### Pass 1: Getting Started Experience (Zero Friction)
 
+**Runs in:** all modes — DX EXPANSION, DX POLISH, and DX TRIAGE (one of the two passes DX TRIAGE keeps; see Mode Quick Reference below).
+
 Rate 0-10: Can a developer go from zero to hello world in under 5 minutes?
 
 **Evidence recall:** Reference the competitive benchmark from 0C (target tier), the
@@ -92,6 +94,8 @@ in one terminal session without leaving the terminal?
 
 ### Pass 2: API/CLI/SDK Design (Usable + Useful)
 
+**Runs in:** DX EXPANSION and DX POLISH only — skip entirely in DX TRIAGE mode (see Mode Quick Reference below).
+
 Rate 0-10: Is the interface intuitive, consistent, and complete?
 
 **Evidence recall:** Does the API surface match [persona from 0A]'s mental model?
@@ -115,6 +119,8 @@ Good API design test: Can a [persona] use this API correctly after seeing one ex
 **STOP.** AskUserQuestion once per issue. Recommend + WHY.
 
 ### Pass 3: Error Messages & Debugging (Fight Uncertainty)
+
+**Runs in:** all modes — DX EXPANSION, DX POLISH, and DX TRIAGE (the other pass DX TRIAGE keeps; see Mode Quick Reference below).
 
 Rate 0-10: When something goes wrong, does the developer know what happened, why,
 and how to fix it?
@@ -141,6 +147,8 @@ Also evaluate:
 
 ### Pass 4: Documentation & Learning (Findable + Learn by Doing)
 
+**Runs in:** DX EXPANSION and DX POLISH only — skip entirely in DX TRIAGE mode (see Mode Quick Reference below).
+
 Rate 0-10: Can a developer find what they need and learn by doing?
 
 **Evidence recall:** Does the docs architecture match [persona from 0A]'s learning
@@ -161,6 +169,8 @@ Evaluate:
 
 ### Pass 5: Upgrade & Migration Path (Credible)
 
+**Runs in:** DX EXPANSION and DX POLISH only — skip entirely in DX TRIAGE mode (see Mode Quick Reference below).
+
 Rate 0-10: Can developers upgrade without fear?
 
 Load reference: Read the "## Pass 5" section from `~/.claude/skills/gstack/plan-devex-review/dx-hall-of-fame.md`.
@@ -175,6 +185,8 @@ Evaluate:
 **STOP.** AskUserQuestion once per issue. Recommend + WHY.
 
 ### Pass 6: Developer Environment & Tooling (Valuable + Accessible)
+
+**Runs in:** DX EXPANSION and DX POLISH only — skip entirely in DX TRIAGE mode (see Mode Quick Reference below).
 
 Rate 0-10: Does this integrate into developers' existing workflows?
 
@@ -197,6 +209,8 @@ Evaluate:
 
 ### Pass 7: Community & Ecosystem (Findable + Desirable)
 
+**Runs in:** DX EXPANSION and DX POLISH only — skip entirely in DX TRIAGE mode (see Mode Quick Reference below).
+
 Rate 0-10: Is there a community, and does the plan invest in ecosystem health?
 
 Load reference: Read the "## Pass 7" section from `~/.claude/skills/gstack/plan-devex-review/dx-hall-of-fame.md`.
@@ -212,6 +226,8 @@ Evaluate:
 **STOP.** AskUserQuestion once per issue. Recommend + WHY.
 
 ### Pass 8: DX Measurement & Feedback Loops (Implement + Refine)
+
+**Runs in:** DX EXPANSION and DX POLISH only — skip entirely in DX TRIAGE mode (see Mode Quick Reference below).
 
 Rate 0-10: Does the plan include ways to measure and improve DX over time?
 
@@ -238,6 +254,9 @@ Load reference: Read the "## Claude Code Skill DX Checklist" section from
 Check each item. For any unchecked item, explain what's missing and suggest the fix.
 
 **STOP.** AskUserQuestion for any item that requires a design decision.
+
+**Mode gate:** per the Mode Quick Reference below, the outside voice is skipped entirely
+in DX TRIAGE mode — go straight to Required Outputs. In DX EXPANSION and DX POLISH modes, run it:
 
 ## Outside Voice — Independent Plan Challenge (default-on)
 
@@ -483,8 +502,12 @@ Options: **A)** Add to TODOS.md **B)** Skip **C)** Build it now
 +====================================================================+
 ```
 
-If all passes 8+: "DX plan is solid. Developers will have a good experience."
-If any below 6: Flag as critical DX debt with specific impact on adoption.
+In DX TRIAGE mode, only Getting Started and Error Messages were scored (Passes 2, 4-8
+were mode-gated, not evaluated) — mark their scorecard rows "N/A — skipped in DX TRIAGE"
+instead of leaving them blank, and base "Overall DX" only on the passes that ran.
+
+If all evaluated passes score 8+: "DX plan is solid. Developers will have a good experience."
+If any evaluated pass scores below 6: Flag as critical DX debt with specific impact on adoption.
 If TTHW > 10 min: Flag as blocking issue.
 
 ### DX Implementation Checklist

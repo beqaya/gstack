@@ -143,7 +143,9 @@ _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 P=""
 [ -n "$MAKE_PDF_BIN" ] && [ -x "$MAKE_PDF_BIN" ] && P="$MAKE_PDF_BIN"
 [ -z "$P" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/make-pdf/dist/pdf" ] && P="$_ROOT/.claude/skills/gstack/make-pdf/dist/pdf"
-[ -z "$P" ] && P="$HOME/.claude/skills/gstack/make-pdf/dist/pdf"
+[ -z "$P" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/make-pdf/dist/pdf.exe" ] && P="$_ROOT/.claude/skills/gstack/make-pdf/dist/pdf.exe"
+[ -z "$P" ] && [ -x "$HOME/.claude/skills/gstack/make-pdf/dist/pdf" ] && P="$HOME/.claude/skills/gstack/make-pdf/dist/pdf"
+[ -z "$P" ] && [ -x "$HOME/.claude/skills/gstack/make-pdf/dist/pdf.exe" ] && P="$HOME/.claude/skills/gstack/make-pdf/dist/pdf.exe"
 if [ -x "$P" ]; then
   echo "MAKE_PDF_READY: $P"
   alias _p_="$P"   # shellcheck alias helper (not exported)
@@ -323,7 +325,7 @@ Key routing rules:
 
 Then commit the change: `git add CLAUDE.md && git commit -m "chore: add gstack skill routing rules to CLAUDE.md"`
 
-If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `gstack-config set routing_declined false`.
+If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `~/.claude/skills/gstack/bin/gstack-config set routing_declined false`.
 
 This only happens once per project. Skip if `HAS_ROUTING` is `yes` or `ROUTING_DECLINED` is `true`.
 
@@ -373,6 +375,7 @@ else
 fi
 _BRAIN_SYNC_BIN="~/.claude/skills/gstack/bin/gstack-brain-sync"
 _BRAIN_CONFIG_BIN="~/.claude/skills/gstack/bin/gstack-config"
+_BRAIN_RESTORE_BIN="~/.claude/skills/gstack/bin/gstack-brain-restore"
 
 # /sync-gbrain context-load: teach the agent to use gbrain when it's available.
 # Per-worktree pin: post-spike redesign uses kubectl-style `.gbrain-source` in the
@@ -421,7 +424,7 @@ if [ -f "$_BRAIN_REMOTE_FILE" ] && [ ! -d "$_GSTACK_HOME/.git" ] && [ "$_BRAIN_S
   _BRAIN_NEW_URL=$(head -1 "$_BRAIN_REMOTE_FILE" 2>/dev/null | tr -d '[:space:]')
   if [ -n "$_BRAIN_NEW_URL" ]; then
     echo "ARTIFACTS_SYNC: artifacts repo detected: $_BRAIN_NEW_URL"
-    echo "ARTIFACTS_SYNC: run 'gstack-brain-restore' to pull your cross-machine artifacts (or 'gstack-config set artifacts_sync_mode off' to dismiss forever)"
+    echo "ARTIFACTS_SYNC: run '$_BRAIN_RESTORE_BIN' to pull your cross-machine artifacts (or '$_BRAIN_CONFIG_BIN set artifacts_sync_mode off' to dismiss forever)"
   fi
 fi
 
@@ -476,7 +479,7 @@ After answer:
 "$_BRAIN_CONFIG_BIN" set artifacts_sync_mode_prompted true
 ```
 
-If A/B and `~/.gstack/.git` is missing, ask whether to run `gstack-artifacts-init`. Do not block the skill.
+If A/B and `~/.gstack/.git` is missing, ask whether to run `~/.claude/skills/gstack/bin/gstack-artifacts-init`. Do not block the skill.
 
 At skill END before telemetry:
 

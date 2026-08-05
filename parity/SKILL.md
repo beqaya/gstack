@@ -32,6 +32,8 @@ allowed-tools:
   - Write
   - Glob
 ---
+<!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
+<!-- Regenerate: bun run gen:skill-docs -->
 
 # /parity -- Repo-to-Live Skill Drift Detector
 

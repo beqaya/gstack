@@ -328,7 +328,7 @@ Key routing rules:
 
 Then commit the change: `git add CLAUDE.md && git commit -m "chore: add gstack skill routing rules to CLAUDE.md"`
 
-If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `gstack-config set routing_declined false`.
+If B: run `~/.claude/skills/gstack/bin/gstack-config set routing_declined true` and say they can re-enable with `~/.claude/skills/gstack/bin/gstack-config set routing_declined false`.
 
 This only happens once per project. Skip if `HAS_ROUTING` is `yes` or `ROUTING_DECLINED` is `true`.
 
@@ -371,7 +371,7 @@ AI orchestrator (e.g., OpenClaw). In spawned sessions:
 
 "AskUserQuestion" can resolve to two tools at runtime: the **host MCP variant** (e.g. `mcp__conductor__AskUserQuestion` — appears in your tool list when the host registers it) or the **native** Claude Code tool.
 
-**Conductor rule (read before the MCP rule):** if `CONDUCTOR_SESSION: true` was echoed by the preamble, do NOT call AskUserQuestion at all — neither native nor any `mcp__*__AskUserQuestion` variant. Render EVERY decision brief as the **prose form** below and STOP. This is proactive, not a reaction to a failure: Conductor disables native AUQ and its MCP variant is flaky (it returns `[Tool result missing due to internal error]`), so prose is the reliable path. **Auto-decide preferences still apply first:** if a `[plan-tune auto-decide] <id> → <option>` result has already surfaced for a question, proceed with that option (no prose). Because in Conductor you go straight to prose without ever calling the tool, this auto-decide-first ordering is enforced HERE, not only by the PreToolUse hook. When you render a Conductor prose brief, also capture it with `bin/gstack-question-log` (the PostToolUse capture hook never fires on a prose path, so `/plan-tune` history/learning depends on this call).
+**Conductor rule (read before the MCP rule):** if `CONDUCTOR_SESSION: true` was echoed by the preamble, do NOT call AskUserQuestion at all — neither native nor any `mcp__*__AskUserQuestion` variant. Render EVERY decision brief as the **prose form** below and STOP. This is proactive, not a reaction to a failure: Conductor disables native AUQ and its MCP variant is flaky (it returns `[Tool result missing due to internal error]`), so prose is the reliable path. **Auto-decide preferences still apply first:** if a `[plan-tune auto-decide] <id> → <option>` result has already surfaced for a question, proceed with that option (no prose). This auto-decide-first ordering is enforced HERE, by the model itself — the PreToolUse enforcement hook is not installed by default (install it with `bin/gstack-settings-hook add-event --event PreToolUse|PostToolUse` for real enforcement); when installed, it enforces the same ordering as a backstop. Because in Conductor you go straight to prose without ever calling the tool, relying on this model-level enforcement is required, not optional. When you render a Conductor prose brief, also capture it with `bin/gstack-question-log` (the PostToolUse capture hook, when installed, never fires on a prose path either, so `/plan-tune` history/learning depends on this call by default).
 
 **Rule (non-Conductor):** if any `mcp__*__AskUserQuestion` variant is in your tool list, prefer it. Hosts may disable native AUQ via `--disallowedTools AskUserQuestion` (Conductor does, by default) and route through their MCP variant; calling native there silently fails. Same questions/options shape; same decision-brief format applies.
 
@@ -503,6 +503,7 @@ else
 fi
 _BRAIN_SYNC_BIN="~/.claude/skills/gstack/bin/gstack-brain-sync"
 _BRAIN_CONFIG_BIN="~/.claude/skills/gstack/bin/gstack-config"
+_BRAIN_RESTORE_BIN="~/.claude/skills/gstack/bin/gstack-brain-restore"
 
 # /sync-gbrain context-load: teach the agent to use gbrain when it's available.
 # Per-worktree pin: post-spike redesign uses kubectl-style `.gbrain-source` in the
@@ -551,7 +552,7 @@ if [ -f "$_BRAIN_REMOTE_FILE" ] && [ ! -d "$_GSTACK_HOME/.git" ] && [ "$_BRAIN_S
   _BRAIN_NEW_URL=$(head -1 "$_BRAIN_REMOTE_FILE" 2>/dev/null | tr -d '[:space:]')
   if [ -n "$_BRAIN_NEW_URL" ]; then
     echo "ARTIFACTS_SYNC: artifacts repo detected: $_BRAIN_NEW_URL"
-    echo "ARTIFACTS_SYNC: run 'gstack-brain-restore' to pull your cross-machine artifacts (or 'gstack-config set artifacts_sync_mode off' to dismiss forever)"
+    echo "ARTIFACTS_SYNC: run '$_BRAIN_RESTORE_BIN' to pull your cross-machine artifacts (or '$_BRAIN_CONFIG_BIN set artifacts_sync_mode off' to dismiss forever)"
   fi
 fi
 
@@ -606,7 +607,7 @@ After answer:
 "$_BRAIN_CONFIG_BIN" set artifacts_sync_mode_prompted true
 ```
 
-If A/B and `~/.gstack/.git` is missing, ask whether to run `gstack-artifacts-init`. Do not block the skill.
+If A/B and `~/.gstack/.git` is missing, ask whether to run `~/.claude/skills/gstack/bin/gstack-artifacts-init`. Do not block the skill.
 
 At skill END before telemetry:
 
@@ -742,9 +743,9 @@ If you are looping on the same diagnostic, same file, or failed fix variants, ST
 
 Before each AskUserQuestion, choose `question_id` from `scripts/question-registry.ts` or `{skill}-{slug}`, then run `~/.claude/skills/gstack/bin/gstack-question-preference --check "<id>"`. `AUTO_DECIDE` means choose the recommended option and say "Auto-decided [summary] → [option] (your preference). Change with /plan-tune." `ASK_NORMALLY` means ask.
 
-**Embed the question_id as a marker in the question text** so hooks can identify it deterministically (plan-tune cathedral T14 / D18 progressive markers). Append `<gstack-qid:{question_id}>` somewhere in the rendered question (the leading line or trailing line is fine; the marker doesn't render visibly to the user when wrapped in HTML-style angle brackets, but the hook strips it). Without the marker the PreToolUse enforcement hook treats the AUQ as observed-only and never auto-decides — so always include it when the question matches a registered `question_id`.
+**Embed the question_id as a marker in the question text** so hooks can identify it deterministically (plan-tune cathedral T14 / D18 progressive markers). Append `<gstack-qid:{question_id}>` somewhere in the rendered question (the leading line or trailing line is fine; the marker doesn't render visibly to the user when wrapped in HTML-style angle brackets, but the hook strips it when installed). The PreToolUse enforcement hook is not installed by default — install it with `bin/gstack-settings-hook add-event --event PreToolUse|PostToolUse` for real enforcement. Without the marker, that hook (when installed) treats the AUQ as observed-only and never auto-decides, so always include it when the question matches a registered `question_id`; by default (no hook installed) the marker has no runtime effect and the model's own `--check` call above governs AUTO_DECIDE/ASK_NORMALLY.
 
-**Embed the option recommendation via the `(recommended)` label suffix** on exactly one option per AUQ. The PreToolUse hook parses `(recommended)` first, falls back to "Recommendation: X" prose, and refuses to auto-decide if ambiguous. Two `(recommended)` labels = refuse.
+**Embed the option recommendation via the `(recommended)` label suffix** on exactly one option per AUQ. The PreToolUse hook, when installed, parses `(recommended)` first, falls back to "Recommendation: X" prose, and refuses to auto-decide if ambiguous. Two `(recommended)` labels = refuse. By default, with no hook installed, the model applies this same rule itself after `gstack-question-preference --check` returns `AUTO_DECIDE`.
 
 After answer, log best-effort (PostToolUse hook also captures deterministically when installed; dedup on (source, tool_use_id) handles double-writes):
 ```bash
@@ -816,6 +817,14 @@ Replace `SKILL_NAME`, `OUTCOME`, and `USED_BROWSE` before running.
 Skills that run plan reviews (`/plan-*-review`, `/codex review`) include the EXIT PLAN MODE GATE blocking checklist at the end of the skill, which verifies the plan file ends with `## GSTACK REVIEW REPORT` before ExitPlanMode is called. Skills that don't run plan reviews (operational skills like `/ship`, `/qa`, `/review`) typically don't operate in plan mode and have no review report to verify; this footer is a no-op for them. Writing the plan file is the one edit allowed in plan mode.
 
 # Systematic Debugging
+
+**Enforcement status: this skill is guidance, not a tool-level block.** The
+`hooks:` block in this file's frontmatter is declarative only — this harness
+does not auto-register frontmatter hooks (gstack is not an enabled plugin
+here; see `enabledPlugins` in `~/.claude/settings.json`), so
+`check-freeze.sh` is never invoked automatically and no Edit/Write is
+actually intercepted by it. See "Scope Lock" below for what the debug-scope
+boundary this skill sets actually does (and doesn't) enforce.
 
 ## Iron Law
 
@@ -901,9 +910,20 @@ If any learnings come back, name which one applies to your investigation in one 
 
 ---
 
-## Scope Lock
+## Scope Lock (guidance only, not enforced)
 
-After forming your root cause hypothesis, lock edits to the affected module to prevent scope creep.
+After forming your root cause hypothesis, note the affected module so you
+keep your own edits scoped and avoid drive-by fixes elsewhere in the same
+session. This is a self-reminder, not a tool-enforced boundary: nothing
+here installs a PreToolUse hook, so nothing stops an Edit/Write outside the
+noted directory. The only thing that actually blocks edits outside a
+directory is `gstack-freeze-wire --install` appending an entry into
+`~/.claude/settings.json`'s `Write|Edit` matcher — that's what `/freeze`'s
+Setup step does. `investigate` deliberately does not run that step here: it
+would mean modifying `~/.claude/settings.json` without asking, as a side
+effect of routine debugging, and the entry would persist into unrelated
+future sessions until someone remembers to run `/unfreeze`. If you want a
+real, tool-enforced boundary, run `/freeze` yourself.
 
 ```bash
 _FREEZE_SCRIPT="${CLAUDE_SKILL_DIR}/../freeze/bin/check-freeze.sh"
@@ -911,21 +931,36 @@ _FREEZE_SCRIPT="${CLAUDE_SKILL_DIR}/../freeze/bin/check-freeze.sh"
 [ -x "$_FREEZE_SCRIPT" ] && echo "FREEZE_AVAILABLE" || echo "FREEZE_UNAVAILABLE"
 ```
 
-**If FREEZE_AVAILABLE:** Identify the narrowest directory containing the affected files. Write it to the freeze state file:
+**If FREEZE_AVAILABLE:** Identify the narrowest directory containing the affected files.
 
 ```bash
 eval "$(~/.claude/skills/gstack/bin/gstack-paths)"
 STATE_DIR="$GSTACK_STATE_ROOT"
 mkdir -p "$STATE_DIR"
-echo "<detected-directory>/" > "$STATE_DIR/freeze-dir.txt"
-echo "Debug scope locked to: <detected-directory>/"
+if [ -s "$STATE_DIR/freeze-dir.txt" ]; then
+  echo "EXISTING_FREEZE_DIR: $(cat "$STATE_DIR/freeze-dir.txt")"
+else
+  echo "<detected-directory>/" > "$STATE_DIR/freeze-dir.txt"
+  echo "Debug scope noted: <detected-directory>/"
+fi
 ```
 
-Substitute `<detected-directory>` with the actual directory path (e.g., `src/auth/`). Tell the user: "Edits restricted to `<dir>/` for this debug session. This prevents changes to unrelated code. Run `/unfreeze` to remove the restriction."
+If `EXISTING_FREEZE_DIR` was printed, a boundary is already recorded — it
+may be an active, tool-enforced `/freeze` or `/guard` boundary. Do **not**
+overwrite it. Just keep your own debug scope in prose and mention the
+existing recorded directory to the user; overwriting `freeze-dir.txt` here
+could silently move or defeat a real enforced boundary the user set up
+themselves.
 
-If the bug spans the entire repo or the scope is genuinely unclear, skip the lock and note why.
+Otherwise, substitute `<detected-directory>` with the actual directory path
+(e.g., `src/auth/`). Tell the user: "Debug scope noted as `<dir>/` — I'll
+keep edits inside it for this session. This is a self-imposed guideline,
+not a tool-enforced block; nothing stops an Edit/Write outside it. If you
+want that enforced, run `/freeze` yourself."
 
-**If FREEZE_UNAVAILABLE:** Skip scope lock. Edits are unrestricted.
+If the bug spans the entire repo or the scope is genuinely unclear, skip the note and say why.
+
+**If FREEZE_UNAVAILABLE:** Skip the scope note. Edits are unrestricted regardless.
 
 ---
 
