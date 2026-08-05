@@ -35,6 +35,9 @@ OVERRIDE_LOG = os.path.join(ANALYTICS_DIR, "generated-overrides.jsonl")
 ERROR_LOG = os.path.join(ANALYTICS_DIR, "guard-errors.jsonl")
 SENTINEL_PATH = os.path.join(GSTACK_DIR, ".allow-generated-edit")
 SENTINEL_MAX_AGE_SECONDS = 5 * 60
+SCRATCH_SENTINEL_PATH = os.path.join(GSTACK_DIR, ".scratch-mode")
+SCRATCH_MAX_AGE_SECONDS = 30 * 60
+SCRATCH_CLEAR_CMD = 'Remove-Item -Force "$env:USERPROFILE\\.gstack\\.scratch-mode"'
 REGEN_CMD = "bun run gen:skill-docs -- --catalog-mode=full"
 GENERIC_SOURCE = "the resolver/template under scripts/ that emits this"
 SENTINEL_CREATE_CMD = (
@@ -96,6 +99,45 @@ def check_sentinel_override(file_path, reason):
     return True
 
 
+def check_scratch_mode():
+    """Check the /scratch sentinel and report whether scratch mode blocks this edit.
+
+    Returns a deny message if the sentinel exists and is fresh (< 30 minutes
+    old) — scratch mode is active, so every Edit/Write is blocked, not just
+    edits to generated files. Returns None if the sentinel is absent, or if
+    it is present but expired: an expired sentinel means the session that
+    armed it likely died before it could clean up, so it is deleted here
+    (not just ignored) and the edit falls through to the normal generated-
+    file checks below. This is the guard against a dead /scratch session
+    wedging editing on this machine forever.
+    """
+    if not os.path.isfile(SCRATCH_SENTINEL_PATH):
+        return None
+
+    try:
+        mtime = os.path.getmtime(SCRATCH_SENTINEL_PATH)
+        age_seconds = datetime.datetime.now().timestamp() - mtime
+    except Exception:
+        age_seconds = SCRATCH_MAX_AGE_SECONDS + 1  # treat unreadable as expired
+
+    if age_seconds > SCRATCH_MAX_AGE_SECONDS:
+        try:
+            os.remove(SCRATCH_SENTINEL_PATH)
+        except Exception:
+            pass
+        return None
+
+    return (
+        "[gstack-generated-guard] Blocked: scratch mode is active — /scratch "
+        "promises a read-only side answer, so no Edit or Write is permitted "
+        "until it finishes. This block is structural, not a request: it "
+        "applies to every file, not just generated ones. If scratch mode is "
+        "stuck (its session ended before it could clean up), clear it "
+        f"yourself: {SCRATCH_CLEAR_CMD} — or just wait, it self-expires 30 "
+        "minutes after it started."
+    )
+
+
 def allow():
     sys.stdout.write(json.dumps({
         "hookSpecificOutput": {
@@ -149,6 +191,11 @@ def main():
         payload = json.loads(raw)
     except Exception:
         allow()
+        return
+
+    scratch_block = check_scratch_mode()
+    if scratch_block:
+        deny(scratch_block)
         return
 
     tool_input = payload.get("tool_input") or {}
