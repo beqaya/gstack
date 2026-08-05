@@ -197,3 +197,43 @@ a synthetic case:
 
 Classifier-based approvals (needs a second model in the loop); TDD-as-law; any
 GUI; the Tier 2 and Tier 3 ideas; running the doc generator automatically.
+
+## Override (2026-08-05 — supersedes the escape hatch in Component 1)
+
+**Defect found:** the original escape hatch checked `OVERRIDE_TOKEN in raw`,
+where `raw` was the ENTIRE PreToolUse stdin payload — including
+`tool_input.new_string`, i.e. the file content being written. Two
+consequences, both proven live: (1) any edit whose CONTENT happens to
+contain the string `GENERATED-EDIT-INTENTIONAL` silently bypasses the guard,
+even with no intent to override — this design doc itself, which names the
+token, would trip it; (2) an agent can deliberately inject the token into
+content and strip it in a follow-up edit, defeating the guard on purpose.
+Root cause: the spec said the override lives "in the edit rationale," but
+the Edit tool has no free-text rationale field, so the only thing to match
+against was the whole payload — a field the edit's own author controls.
+Checking guarded content for permission to bypass the guard is not an
+escape hatch, it is the vulnerability.
+
+**Fix:** the token-in-payload check is removed, with no fallback to it. The
+override is now an out-of-band, single-use sentinel file:
+`~/.gstack/.allow-generated-edit`.
+
+- The guard allows the edit only if the sentinel file exists AND its mtime
+  is under 5 minutes old.
+- On any inspection where the sentinel exists — fresh or expired — it is
+  deleted immediately. A fresh sentinel authorises exactly one edit; an
+  expired sentinel authorises nothing and is discarded rather than left to
+  be mistaken for a live one.
+- A fresh, consumed sentinel logs one line to
+  `~/.gstack/analytics/generated-overrides.jsonl` with the file path, the
+  detection reason, a timestamp, and `"mechanism": "sentinel"`.
+- The deny message states the literal command to arm the sentinel on this
+  machine (PowerShell, since the target file has no content field an agent
+  or the guarded edit itself could poison):
+  `New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.gstack" | Out-Null; New-Item -ItemType File -Force -Path "$env:USERPROFILE\.gstack\.allow-generated-edit" | Out-Null`
+
+This preserves the property the token check was meant to provide (a
+deliberate, auditable override for a genuine emergency hotfix) while closing
+the channel that made it forgeable: the signal now lives entirely outside
+any tool-call payload, so no edit content — accidental or adversarial — can
+create, extend, or fake it.

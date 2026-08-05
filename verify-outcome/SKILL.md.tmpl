@@ -80,6 +80,31 @@ concluding UNPROVEN for tooling reasons. For every other evidence class, if
 the right tool genuinely isn't available in this session, that is itself
 evidence of UNPROVEN -- say so, do not substitute a weaker check.
 
+## Step B2 -- Name the falsifier
+
+**Step B2 -- name the falsifier.** Before recording a verdict, state the
+single observation that would prove this claim WRONG, then go make that
+observation. If you cannot name one, you do not understand the claim well
+enough to verify it. The falsifier must be something you have NOT already
+checked -- naming a check you already ran is confirmation, not
+falsification.
+
+### Worked example -- the PostHog CSP fix
+
+Claim: "the CSP is fixed so PostHog works." Checks that had already passed:
+typecheck, four green CI/deploy workflows, deploy success, the response
+header visibly changed to include the PostHog origins, and the page
+rendered. Every one of those is a Step A/B signal, not a falsifier.
+
+The falsifier not yet run: open the browser console and look for CSP
+refusals. That was the one check that had been skipped.
+
+Result when finally run: five PostHog scripts were still blocked -- by a
+SECOND directive, `script-src`, not the `connect-src` directive that had
+actually been fixed. The fix was half done, and every other signal said
+otherwise. Verdict: CONTRADICTED, not PROVEN -- five green proxy signals do
+not outrank one falsifier that was never run.
+
 ## Step C: Record the verdict
 
 - **PROVEN** -- the evidence is shown inline, in this response.

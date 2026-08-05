@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""gstack-failure-count — Tier-1 failure circuit breaker counter.
+
+Tracks how many times an agent has retried the same failing action within
+one task, and tells it CONTINUE or BREAK. This is guidance, not an enforced
+hook: nothing stops an agent from ignoring BREAK, but printing it gives the
+agent (and anyone reading the transcript) an unambiguous stop signal instead
+of a vibe.
+
+Usage:
+    gstack-failure-count <task-id> --record same|different|infra
+    gstack-failure-count <task-id> --reset
+    gstack-failure-count <task-id> --status
+
+State: ~/.gstack/failures/<task-id>.json
+    consecutive_same — length of the current streak of failures classified
+                        "same" in a row (an "infra" record joins this streak
+                        once it starts counting — see below).
+    total            — all counted failures for this task, ever (infra
+                        failures in their grace period are NOT counted).
+    infra_count      — total infra-classified records, counted or not. This
+                        is what the grace period is measured against.
+
+Classification (caller's job, not this script's):
+    same       — the identical action was retried and failed again.
+    different  — a different action failed (still a failure, but it resets
+                 the same-action streak — the agent tried something new).
+    infra      — a transient infrastructure error (ENOTFOUND, ConnectionRefused,
+                 ETIMEDOUT, HTTP 5xx). The first TWO infra records in a task
+                 are free (grace period) and always print CONTINUE without
+                 touching consecutive_same/total — retrying a genuine network
+                 blip is correct, not a broken loop. From the THIRD infra
+                 record on, it counts exactly like "same" (increments both
+                 consecutive_same and total) — see references/failure-circuit-breaker.md
+                 for why (three agents died to real infra errors in one
+                 evening; the fourth+ repeat of the same infra error in one
+                 task is no longer a blip).
+
+Thresholds — BREAK when, after this record is applied:
+    consecutive_same >= 3   OR   total >= 10
+
+Real incident this exists for: an agent misread Windows scheduler code
+267009 (SCHED_S_TASK_RUNNING — the task is STILL RUNNING, not failed) as a
+failure, killed its own healthy task, and reported the kill as evidence of a
+bug. Nothing bounded the retry loop, so it never had a reason to stop and
+reconsider its own diagnosis. See references/failure-circuit-breaker.md.
+"""
+import sys
+import os
+import re
+import json
+import datetime
+
+HOME = os.path.expanduser("~")
+STATE_DIR = os.path.join(HOME, ".gstack", "failures")
+
+INFRA_GRACE = 2
+CONSECUTIVE_THRESHOLD = 3
+TOTAL_THRESHOLD = 10
+
+RECORD_KINDS = ("same", "different", "infra")
+
+
+def now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def slug(task_id):
+    s = re.sub(r"[^A-Za-z0-9_.-]+", "_", task_id.strip())
+    return s or "unnamed-task"
+
+
+def state_path(task_id):
+    return os.path.join(STATE_DIR, slug(task_id) + ".json")
+
+
+def default_state(task_id):
+    return {
+        "task_id": task_id,
+        "consecutive_same": 0,
+        "total": 0,
+        "infra_count": 0,
+        "last_kind": None,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+
+
+def load_state(task_id):
+    path = state_path(task_id)
+    if not os.path.isfile(path):
+        return default_state(task_id)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for key, val in default_state(task_id).items():
+            data.setdefault(key, val)
+        return data
+    except Exception:
+        return default_state(task_id)
+
+
+def save_state(state):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    state["updated_at"] = now_iso()
+    path = state_path(state["task_id"])
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+    os.replace(tmp, path)
+
+
+def breaker_tripped(state):
+    return state["consecutive_same"] >= CONSECUTIVE_THRESHOLD or state["total"] >= TOTAL_THRESHOLD
+
+
+def record(task_id, kind):
+    if kind not in RECORD_KINDS:
+        sys.stderr.write(f"gstack-failure-count: --record must be one of {RECORD_KINDS}\n")
+        sys.exit(2)
+
+    state = load_state(task_id)
+
+    if kind == "infra":
+        state["infra_count"] += 1
+        if state["infra_count"] <= INFRA_GRACE:
+            state["last_kind"] = "infra-grace"
+            save_state(state)
+            print("CONTINUE")
+            return
+        # Third+ infra record: counts exactly like "same" from here.
+        state["total"] += 1
+        state["consecutive_same"] += 1
+        state["last_kind"] = "infra-counted"
+    elif kind == "same":
+        state["total"] += 1
+        state["consecutive_same"] += 1
+        state["last_kind"] = "same"
+    else:  # different
+        state["total"] += 1
+        state["consecutive_same"] = 1
+        state["last_kind"] = "different"
+
+    save_state(state)
+    print("BREAK" if breaker_tripped(state) else "CONTINUE")
+
+
+def reset(task_id):
+    path = state_path(task_id)
+    if os.path.isfile(path):
+        os.remove(path)
+    print(f"RESET: {task_id}")
+
+
+def status(task_id):
+    state = load_state(task_id)
+    out = dict(state)
+    out["status"] = "BREAK" if breaker_tripped(state) else "CONTINUE"
+    print(json.dumps(out, indent=2))
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        sys.stderr.write(
+            "usage: gstack-failure-count <task-id> [--record same|different|infra] [--reset] [--status]\n"
+        )
+        sys.exit(2)
+
+    positional = [a for a in args if not a.startswith("--")]
+    if not positional:
+        sys.stderr.write("gstack-failure-count: <task-id> is required\n")
+        sys.exit(2)
+    task_id = positional[0]
+
+    if "--reset" in args:
+        reset(task_id)
+        return
+    if "--status" in args:
+        status(task_id)
+        return
+    if "--record" in args:
+        idx = args.index("--record")
+        if idx + 1 >= len(args):
+            sys.stderr.write("gstack-failure-count: --record requires a value (same|different|infra)\n")
+            sys.exit(2)
+        record(task_id, args[idx + 1])
+        return
+
+    sys.stderr.write(
+        "usage: gstack-failure-count <task-id> [--record same|different|infra] [--reset] [--status]\n"
+    )
+    sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

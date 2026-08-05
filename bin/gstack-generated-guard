@@ -8,8 +8,16 @@ generated artifact: a mirrored adapter-tree copy, a file with a sibling
 marker. The deny message names the real source to edit and the regeneration
 command, so the edit gets redirected instead of silently reverted later.
 
-Escape hatch: if the raw payload contains the token GENERATED-EDIT-INTENTIONAL,
-the edit is allowed and logged to generated-overrides.jsonl instead of denied.
+Escape hatch: an out-of-band, single-use sentinel file at
+~/.gstack/.allow-generated-edit. It must exist AND be under 5 minutes old.
+This is deliberately NOT a signal inside the tool-call payload — a payload
+field (including a "rationale" or token embedded in new_string) is content
+the agent being guarded controls, so checking the payload for a magic string
+means the thing the guard blocks can also unblock itself. The sentinel lives
+outside the payload the Edit/Write tool ever sees, so no edit content can
+forge it. It is consumed (deleted) on the first inspection, fresh or stale,
+so it can never authorise more than one edit and a forgotten sentinel does
+not stay armed.
 
 FAIL OPEN is mandatory: any exception, unreadable path, or malformed payload
 must ALLOW the edit and log to guard-errors.jsonl. A guard that blocks work
@@ -21,12 +29,18 @@ import json
 import datetime
 
 HOME = os.path.expanduser("~")
-ANALYTICS_DIR = os.path.join(HOME, ".gstack", "analytics")
+GSTACK_DIR = os.path.join(HOME, ".gstack")
+ANALYTICS_DIR = os.path.join(GSTACK_DIR, "analytics")
 OVERRIDE_LOG = os.path.join(ANALYTICS_DIR, "generated-overrides.jsonl")
 ERROR_LOG = os.path.join(ANALYTICS_DIR, "guard-errors.jsonl")
-OVERRIDE_TOKEN = "GENERATED-EDIT-INTENTIONAL"
+SENTINEL_PATH = os.path.join(GSTACK_DIR, ".allow-generated-edit")
+SENTINEL_MAX_AGE_SECONDS = 5 * 60
 REGEN_CMD = "bun run gen:skill-docs -- --catalog-mode=full"
 GENERIC_SOURCE = "the resolver/template under scripts/ that emits this"
+SENTINEL_CREATE_CMD = (
+    'New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\\.gstack" | Out-Null; '
+    'New-Item -ItemType File -Force -Path "$env:USERPROFILE\\.gstack\\.allow-generated-edit" | Out-Null'
+)
 
 ADAPTER_DIRS = [
     ".agents", ".cursor", ".factory", ".gbrain", ".hermes",
@@ -45,6 +59,41 @@ def log_jsonl(path, record):
             f.write(json.dumps(record) + "\n")
     except Exception:
         pass
+
+
+def check_sentinel_override(file_path, reason):
+    """Check the out-of-band sentinel and consume it if present.
+
+    Returns True iff a FRESH (< SENTINEL_MAX_AGE_SECONDS old) sentinel was
+    found, in which case the override is logged and the edit should be
+    allowed. In every case where the sentinel file exists — fresh or
+    expired — it is deleted here, so a single sentinel authorises at most
+    one edit and a stale one can never authorise anything.
+    """
+    if not os.path.isfile(SENTINEL_PATH):
+        return False
+
+    try:
+        mtime = os.path.getmtime(SENTINEL_PATH)
+        age_seconds = datetime.datetime.now().timestamp() - mtime
+    except Exception:
+        age_seconds = SENTINEL_MAX_AGE_SECONDS + 1  # treat unreadable as expired
+
+    try:
+        os.remove(SENTINEL_PATH)
+    except Exception:
+        pass
+
+    if age_seconds > SENTINEL_MAX_AGE_SECONDS:
+        return False
+
+    log_jsonl(OVERRIDE_LOG, {
+        "path": file_path,
+        "reason": reason,
+        "ts": now_iso(),
+        "mechanism": "sentinel",
+    })
+    return True
 
 
 def allow():
@@ -135,8 +184,7 @@ def main():
         allow()
         return
 
-    if OVERRIDE_TOKEN in raw:
-        log_jsonl(OVERRIDE_LOG, {"path": file_path, "reason": reason, "ts": now_iso()})
+    if check_sentinel_override(file_path, reason):
         allow()
         return
 
@@ -154,8 +202,10 @@ def main():
         f"Edit the source instead: {source}. "
         f"Regenerate with: {REGEN_CMD} — then run /parity to sync repo -> live copies. "
         f"If this edit is genuinely intentional (e.g. an emergency hotfix to a "
-        f"shipped artifact), include the token {OVERRIDE_TOKEN} in the edit "
-        f"description to bypass this guard (the override is logged)."
+        f"shipped artifact), authorise it out-of-band: run this on the machine "
+        f"running the edit, then retry the SAME edit within 5 minutes (it is "
+        f"single-use): {SENTINEL_CREATE_CMD} "
+        f"The override is logged to {OVERRIDE_LOG}."
     )
     deny(message)
 
