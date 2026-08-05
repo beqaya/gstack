@@ -58,13 +58,24 @@ describe('--catalog-mode=full opt-out wiring (static)', () => {
 
 describe('--catalog-mode=full opt-out behavior (smoke)', () => {
   test('--catalog-mode=full produces multi-line description in frontmatter', () => {
-    // Save the trim'd state so we can restore it.
-    const trimmedShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
-    // #1778: the trimmed ship description has an interior colon ("Ship workflow:")
-    // and is now YAML-quoted — tolerate the optional surrounding quotes.
-    expect(trimmedShip).toMatch(/^description: "?Ship workflow:[^\n]*\(gstack\)"?\n/m);
-
+    // This fork's canonical resting state is --catalog-mode=full, so generate
+    // each mode explicitly rather than assuming whatever is checked in, and
+    // restore to full in the finally block. Restoring bare (the upstream
+    // default) silently collapses ~40 skill descriptions to one line — that
+    // has now cost a full regeneration twice.
     try {
+      // Generate the default (trim) mode explicitly, then assert its shape.
+      const trimRun = spawnSync('bun', ['run', 'gen:skill-docs'], {
+        cwd: REPO_ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 60_000,
+      });
+      expect(trimRun.status).toBe(0);
+      const trimmedShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
+      // #1778: the trimmed ship description has an interior colon ("Ship workflow:")
+      // and is now YAML-quoted — tolerate the optional surrounding quotes.
+      expect(trimmedShip).toMatch(/^description: "?Ship workflow:[^\n]*\(gstack\)"?\n/m);
+
       // Run with --catalog-mode=full. Mutates working tree.
       const result = spawnSync('bun', ['run', 'gen:skill-docs', '--catalog-mode=full'], {
         cwd: REPO_ROOT,
@@ -88,8 +99,11 @@ describe('--catalog-mode=full opt-out behavior (smoke)', () => {
       const body = fullShip.slice(fmEnd);
       expect(body).not.toContain('## When to invoke this skill');
     } finally {
-      // Restore default trim state regardless of test outcome.
-      const restore = spawnSync('bun', ['run', 'gen:skill-docs'], {
+      // Restore this fork's canonical --catalog-mode=full state, NOT the
+      // upstream trim default. A bare regeneration here leaves every skill
+      // description collapsed to one line, and the damage is invisible until
+      // someone reads a SKILL.md.
+      const restore = spawnSync('bun', ['run', 'gen:skill-docs', '--catalog-mode=full'], {
         cwd: REPO_ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 60_000,
@@ -97,13 +111,12 @@ describe('--catalog-mode=full opt-out behavior (smoke)', () => {
       if (restore.status !== 0) {
         // eslint-disable-next-line no-console
         console.error(
-          'CRITICAL: failed to restore default trim state. Run `bun run gen:skill-docs` to clean up.',
+          'CRITICAL: failed to restore full-catalog state. Run `bun run scripts/gen-skill-docs.ts --catalog-mode=full` to clean up.',
         );
       }
-      // Sanity-check the restored state matches what we saw at the start.
+      // Sanity-check the restored state is the full block scalar, not trimmed.
       const restoredShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
-      // #1778: restored trim state has the YAML-quoted (interior-colon) description.
-      expect(restoredShip).toMatch(/^description: "?Ship workflow:[^\n]*\(gstack\)"?\n/m);
+      expect(restoredShip).toMatch(/^description: \|\s*$/m);
     }
   }, 180_000);
 
