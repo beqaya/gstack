@@ -28,6 +28,7 @@ import * as path from 'path';
 const REPO_ROOT = path.resolve(import.meta.dir, '..');
 const GEN_SKILL_DOCS = path.join(REPO_ROOT, 'scripts', 'gen-skill-docs.ts');
 const SHIP_SKILL = path.join(REPO_ROOT, 'ship', 'SKILL.md');
+const PROACTIVE_SUGGESTIONS = path.join(REPO_ROOT, 'scripts', 'proactive-suggestions.json');
 
 describe('--catalog-mode=full opt-out wiring (static)', () => {
   test('CATALOG_MODE_ARG parsing is wired into gen-skill-docs.ts', () => {
@@ -63,6 +64,11 @@ describe('--catalog-mode=full opt-out behavior (smoke)', () => {
     // restore to full in the finally block. Restoring bare (the upstream
     // default) silently collapses ~40 skill descriptions to one line — that
     // has now cost a full regeneration twice.
+    // The trim run below populates proactive-suggestions.json (a trim-only
+    // artifact that stays empty in full mode, and which the full run does not
+    // reset). Snapshot it so the test leaves no residue.
+    const suggestionsBefore = fs.readFileSync(PROACTIVE_SUGGESTIONS, 'utf-8');
+
     try {
       // Generate the default (trim) mode explicitly, then assert its shape.
       const trimRun = spawnSync('bun', ['run', 'gen:skill-docs'], {
@@ -117,6 +123,9 @@ describe('--catalog-mode=full opt-out behavior (smoke)', () => {
       // Sanity-check the restored state is the full block scalar, not trimmed.
       const restoredShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
       expect(restoredShip).toMatch(/^description: \|\s*$/m);
+
+      // Put the trim-only artifact back the way we found it.
+      fs.writeFileSync(PROACTIVE_SUGGESTIONS, suggestionsBefore);
     }
   }, 180_000);
 
