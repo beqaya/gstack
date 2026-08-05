@@ -38,10 +38,31 @@ signals anyone thought to look at.**
 `allowed-tools` in skill frontmatter is ADVISORY. It is checked against tool-name
 strings; nothing inspects what a permitted tool is used for, and `Bash` can write
 files regardless. The mechanism that actually blocks a tool call in this harness
-is a **`PreToolUse` hook returning `permissionDecision: "deny"`** (see
-`freeze/SKILL.md`, which implements exactly this). Therefore: anything in this
+is a **`PreToolUse` hook returning a deny decision**. Therefore: anything in this
 spec that must be *enforced* is a hook. Anything that is guidance is a skill or a
 rule, and is described honestly as guidance.
+
+**CORRECTION (2026-08-05).** An earlier draft cited `freeze/SKILL.md` as the
+working reference for this. That was wrong, and following it produced an inert
+guard. `freeze/bin/check-freeze.sh` emits a FLAT top-level shape —
+`{"permissionDecision": "deny", "message": "..."}` — which this harness never
+reads. Ground truth, extracted from the installed Claude Code binary
+(`~/.local/share/claude/versions/2.1.222`): the dispatcher only honours
+`hookSpecificOutput.hookEventName === "PreToolUse"` together with
+`hookSpecificOutput.permissionDecision`, and takes the blocking text from
+`hookSpecificOutput.permissionDecisionReason`. The correct shapes are:
+
+    deny:  {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                   "permissionDecision": "deny",
+                                   "permissionDecisionReason": "<text>"}}
+    allow: {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                   "permissionDecision": "allow"}}
+
+Consequence worth acting on separately: **`/freeze` is very likely inert too** —
+its directory boundary looks installed and enforces nothing. Not fixed here
+(out of scope), but it is the same defect class this spec exists to catch, and
+it was found only because a live Edit-tool test was demanded instead of a
+synthetic payload test.
 
 ## Components
 

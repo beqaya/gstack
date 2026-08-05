@@ -48,12 +48,23 @@ def log_jsonl(path, record):
 
 
 def allow():
-    sys.stdout.write(json.dumps({}) + "\n")
+    sys.stdout.write(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+        }
+    }) + "\n")
     sys.exit(0)
 
 
 def deny(message):
-    sys.stdout.write(json.dumps({"permissionDecision": "deny", "message": message}) + "\n")
+    sys.stdout.write(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": message,
+        }
+    }) + "\n")
     sys.exit(0)
 
 
