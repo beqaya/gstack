@@ -25,18 +25,33 @@ hooks:
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
 
-# /careful — Destructive Command Guardrails
+# /careful — Destructive Command Guardrails (guidance only, not enforced)
 
-Safety mode is now **active**. Every bash command will be checked for destructive
-patterns before running. If a destructive command is detected, you'll be warned
-and can choose to proceed or cancel.
+**Enforcement status: this skill is guidance, not a tool-level block.** The
+`hooks:` block in this file's frontmatter is declarative only — this harness
+does not auto-register frontmatter hooks (gstack is not an enabled plugin
+here; see `enabledPlugins` in `~/.claude/settings.json`), so
+`check-careful.sh` is never invoked automatically and no Bash call is
+actually intercepted. Nothing currently wires it into `~/.claude/settings.json`
+the way `/freeze` wires `check-freeze.sh` (via `gstack-freeze-wire`).
+
+In practice, "safety mode" means the assistant is expected to read the
+pattern table below and check each Bash command against it before running,
+warning you and waiting for confirmation on a match. That is a convention
+the assistant follows, not a guarantee — there is no mechanism stopping the
+assistant (or any other code path) from running a matching command without
+checking. For a real, tool-enforced boundary see `/freeze`, which blocks
+Edit/Write outside a directory via an actual PreToolUse hook.
 
 ```bash
 mkdir -p ~/.gstack/analytics
 echo '{"skill":"careful","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","repo":"'$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")'"}'  >> ~/.gstack/analytics/skill-usage.jsonl 2>/dev/null || true
 ```
 
-## What's protected
+## Patterns the assistant checks for
+
+Not "protected" in the enforced sense — these are the patterns the
+assistant is expected to recognize and warn about, per the guidance above.
 
 | Pattern | Example | Risk |
 |---------|---------|------|
@@ -56,8 +71,19 @@ These patterns are allowed without warning:
 
 ## How it works
 
-The hook reads the command from the tool input JSON, checks it against the
-patterns above, and returns `permissionDecision: "ask"` with a warning message
-if a match is found. You can always override the warning and proceed.
+`bin/check-careful.sh` exists and, if it were wired into
+`~/.claude/settings.json` (the same way `gstack-freeze-wire` wires
+`check-freeze.sh` for `/freeze`), would read the command from the tool
+input JSON, check it against the patterns above, and return
+`permissionDecision: "ask"` with a warning message on a match. That wiring
+has not been done — no `bin/gstack-careful-wire` (or equivalent) exists,
+and `~/.claude/settings.json` has no `PreToolUse` entry for the `Bash`
+matcher. So today the script only runs if you invoke it yourself; it is
+never triggered by the harness.
 
-To deactivate, end the conversation or start a new one. Hooks are session-scoped.
+What actually happens when you run `/careful` is that the assistant reads
+this file and follows it as instructions for the rest of the session: check
+each Bash command it's about to run against the table above, and ask before
+running a match. There is no hook to deactivate — this ends when the
+assistant stops following the instruction (end of session, or if it's
+simply not adhered to).

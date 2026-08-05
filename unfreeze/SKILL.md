@@ -34,12 +34,18 @@ STATE_DIR="$GSTACK_STATE_ROOT"
 if [ -f "$STATE_DIR/freeze-dir.txt" ]; then
   PREV=$(cat "$STATE_DIR/freeze-dir.txt")
   rm -f "$STATE_DIR/freeze-dir.txt"
-  echo "Freeze boundary cleared (was: $PREV). Edits are now allowed everywhere."
+  echo "Freeze boundary cleared (was: $PREV)."
 else
   echo "No freeze boundary was set."
 fi
+"$HOME/.claude/skills/gstack/bin/gstack-freeze-wire" --remove
+echo "Edits are now allowed everywhere."
 ```
 
-Tell the user the result. Note that `/freeze` hooks are still registered for the
-session — they will just allow everything since no state file exists. To re-freeze,
-run `/freeze` again.
+Tell the user the result plainly: the boundary was enforced by a PreToolUse
+hook in `~/.claude/settings.json` (added under the existing `Write|Edit`
+matcher by `/freeze`'s Setup step), and this step just removed that exact
+hook entry — `gstack-freeze-wire --remove` — leaving every other hook
+(auto-stash, generated-file guard, and anything unrelated) untouched. This
+is idempotent: running `/unfreeze` again when nothing is frozen is a no-op.
+To re-freeze, run `/freeze` again — it reinstalls the hook.

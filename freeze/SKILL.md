@@ -66,22 +66,45 @@ echo "$FREEZE_DIR" > "$STATE_DIR/freeze-dir.txt"
 echo "Freeze boundary set: $FREEZE_DIR"
 ```
 
-Tell the user: "Edits are now restricted to `<path>/`. Any Edit or Write
-outside this directory will be blocked. To change the boundary, run `/freeze`
-again. To remove it, run `/unfreeze` or end the session."
+3. Wire the enforcement hook — this is what actually makes the boundary
+block edits, not just record state nothing reads:
+```bash
+"$HOME/.claude/skills/gstack/bin/gstack-freeze-wire" --install
+```
+
+Tell the user: "Edits are now restricted to `<path>/`, enforced by a
+PreToolUse hook registered in `~/.claude/settings.json` (appended into the
+existing `Write|Edit` matcher alongside your other hooks — nothing else was
+touched). Any Edit or Write outside this directory will be blocked. To
+change the boundary, run `/freeze` again. To remove the boundary AND the
+hook, run `/unfreeze` (or `gstack-freeze-wire --remove` directly)."
 
 ## How it works
+
+`/freeze`'s Setup step installs the enforcement hook via
+`gstack-freeze-wire --install`, which appends a PreToolUse entry for
+`check-freeze.sh` into the settings.json `Write|Edit` matcher that already
+carries the auto-stash and generated-file-guard hooks — it is one more hook
+in that same list, not a separate matcher entry. Without this step nothing
+ever invokes the script and the boundary is inert.
 
 The hook reads `file_path` from the Edit/Write tool input JSON, then checks
 whether the path starts with the freeze directory. If not, it returns
 `permissionDecision: "deny"` to block the operation.
 
-The freeze boundary persists for the session via the state file. The hook
-script reads it on every Edit/Write invocation.
+The freeze boundary persists across sessions via the state file
+(`freeze-dir.txt`) AND the settings.json hook entry — both survive until
+`/unfreeze` removes them. The hook script reads the state file on every
+Edit/Write invocation.
 
 ## Notes
 
 - The trailing `/` on the freeze directory prevents `/src` from matching `/src-old`
 - Freeze applies to Edit and Write tools only — Read, Bash, Glob, Grep are unaffected
 - This prevents accidental edits, not a security boundary — Bash commands like `sed` can still modify files outside the boundary
-- To deactivate, run `/unfreeze` or end the conversation
+- The boundary is enforced by a real settings.json PreToolUse hook, not just session state — it survives until explicitly removed
+- To deactivate, run `/unfreeze` — this removes both the state file and the
+  settings.json hook entry. Ending the session does NOT remove the hook
+  entry (it lives in `~/.claude/settings.json`, not session memory), so a
+  forgotten freeze stays enforced in your NEXT session too until `/unfreeze`
+  is run
