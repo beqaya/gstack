@@ -46,13 +46,75 @@ _cleanup_skill_entry() {
   fi
 }
 
+# Counters so the final summary reflects what was actually created, not just
+# that the script ran without a nonzero exit.
+REAL_LINK_COUNT=0
+FALLBACK_COUNT=0
+FAILED_COUNT=0
+
+# _link_file SRC TARGET
+#
+# Creates TARGET as a live link to SRC (absolute paths). `ln -s` on Windows
+# without Developer Mode or an elevated shell does NOT fail — it silently
+# writes a plain copy and still exits 0 (confirmed empirically on this class
+# of machine: readlink reports "not a symlink" and edits to SRC never appear
+# in TARGET). So a nonzero exit code is not the failure signal here; we must
+# verify a real symlink was actually created. If it wasn't, fall back to a
+# Windows hard link (works without elevation/Developer Mode, verified via
+# PowerShell's New-Item -ItemType HardLink), and only as a last resort fall
+# back to an explicitly-flagged plain copy — never silently.
+_link_file() {
+  local src="$1" target="$2"
+  rm -f "$target" 2>/dev/null || true
+
+  ln -snf "$src" "$target" 2>/dev/null || true
+  if [ -L "$target" ] && [ "$(readlink "$target" 2>/dev/null)" = "$src" ]; then
+    REAL_LINK_COUNT=$((REAL_LINK_COUNT + 1))
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        local wsrc wtarget
+        wsrc="$(cygpath -w "$src")"
+        wtarget="$(cygpath -w "$target")"
+        rm -f "$target" 2>/dev/null || true
+        if powershell.exe -NoProfile -Command \
+            "New-Item -ItemType HardLink -Force -Path '$wtarget' -Target '$wsrc' | Out-Null" \
+            >/dev/null 2>&1 && [ -f "$target" ]; then
+          FALLBACK_COUNT=$((FALLBACK_COUNT + 1))
+          return 0
+        fi
+      fi
+      ;;
+  esac
+
+  # Last resort: a plain copy. This is NOT a live link — it goes stale the
+  # next time SRC changes. Say so loudly instead of reporting success.
+  rm -f "$target" 2>/dev/null || true
+  if cp -f "$src" "$target" 2>/dev/null; then
+    echo "  WARNING: could not create a real link for $target" >&2
+    echo "           wrote a plain copy instead — it will NOT track future edits to $src." >&2
+    echo "           Fix: enable Windows Developer Mode (Settings > Privacy & security >" >&2
+    echo "           For developers), or run gstack-relink from an elevated shell, then" >&2
+    echo "           re-run gstack-relink to upgrade this copy to a real link." >&2
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+    return 1
+  fi
+
+  echo "  ERROR: could not link or copy $src -> $target" >&2
+  FAILED_COUNT=$((FAILED_COUNT + 1))
+  return 1
+}
+
 _link_root_skill_alias() {
   local target="$SKILLS_DIR/_gstack-command"
 
   [ -f "$INSTALL_DIR/SKILL.md" ] || return 0
   [ -L "$target" ] && rm -f "$target"
   mkdir -p "$target"
-  ln -snf "$INSTALL_DIR/SKILL.md" "$target/SKILL.md"
+  _link_file "$INSTALL_DIR/SKILL.md" "$target/SKILL.md"
 }
 
 _link_root_skill_alias
@@ -87,7 +149,7 @@ for skill_dir in "$INSTALL_DIR"/*/; do
   [ -L "$target" ] && rm -f "$target"
   # Create real directory with symlinked SKILL.md (absolute path)
   mkdir -p "$target"
-  ln -snf "$INSTALL_DIR/$skill/SKILL.md" "$target/SKILL.md"
+  _link_file "$INSTALL_DIR/$skill/SKILL.md" "$target/SKILL.md"
   SKILL_COUNT=$((SKILL_COUNT + 1))
 done
 
@@ -98,4 +160,10 @@ if [ "$PREFIX" = "true" ]; then
   echo "Relinked $SKILL_COUNT skills as gstack-*"
 else
   echo "Relinked $SKILL_COUNT skills as flat names"
+fi
+if [ "$FALLBACK_COUNT" -gt 0 ] || [ "$FAILED_COUNT" -gt 0 ]; then
+  echo "  $REAL_LINK_COUNT real symlink(s), $FALLBACK_COUNT Windows hard-link fallback(s), $FAILED_COUNT plain-copy fallback(s) (see WARNING/ERROR lines above)."
+  [ "$FAILED_COUNT" -gt 0 ] && echo "  Plain-copy entries will NOT pick up future upstream edits automatically."
+else
+  echo "  $REAL_LINK_COUNT real symlink(s) created."
 fi

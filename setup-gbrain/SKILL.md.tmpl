@@ -144,8 +144,12 @@ fi
 echo "Switched to local PGLite. Previous config saved at $BACKUP — review before deleting."
 ```
 
-Then jump to Step 5a (MCP registration; the new PGLite engine is registered as
-local-stdio).
+Then continue to Step 5 (verify gbrain doctor) — do not jump straight to Step 5a.
+Every other path verifies-then-registers; this one must too, so a PGLite init that
+succeeded at the CLI level but is still unhealthy (e.g. embedding key issue) gets
+caught before the user is told to restart Claude Code sessions. Step 5 will then
+fall through to Step 5a (MCP registration; the new PGLite engine registers as
+local-stdio) once doctor reports `ok` or `warnings`.
 
 **If C (Switch brain mode)**: continue to Step 2's normal path picker.
 

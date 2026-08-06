@@ -23,8 +23,30 @@ if [ -z "$EXT_DIR" ]; then
   exit 1
 fi
 
-# Copy path to clipboard
-echo -n "$EXT_DIR" | pbcopy 2>/dev/null
+# Copy path to clipboard — try a real clipboard tool per platform, and track
+# whether it actually worked instead of assuming success.
+CLIP_OK=0
+case "$(uname -s)" in
+  Darwin)
+    if command -v pbcopy >/dev/null 2>&1; then
+      printf '%s' "$EXT_DIR" | pbcopy 2>/dev/null && CLIP_OK=1
+    fi
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    if command -v clip.exe >/dev/null 2>&1; then
+      printf '%s' "$EXT_DIR" | clip.exe 2>/dev/null && CLIP_OK=1
+    elif command -v powershell.exe >/dev/null 2>&1; then
+      printf '%s' "$EXT_DIR" | powershell.exe -NoProfile -Command "Set-Clipboard -Value ([Console]::In.ReadToEnd())" >/dev/null 2>&1 && CLIP_OK=1
+    fi
+    ;;
+  Linux)
+    if command -v xclip >/dev/null 2>&1; then
+      printf '%s' "$EXT_DIR" | xclip -selection clipboard 2>/dev/null && CLIP_OK=1
+    elif command -v wl-copy >/dev/null 2>&1; then
+      printf '%s' "$EXT_DIR" | wl-copy 2>/dev/null && CLIP_OK=1
+    fi
+    ;;
+esac
 
 # Get browse server port
 PORT=""
@@ -36,7 +58,11 @@ fi
 echo "gstack Chrome Extension Setup"
 echo "=============================="
 echo ""
-echo "Extension path (copied to clipboard):"
+if [ "$CLIP_OK" = "1" ]; then
+  echo "Extension path (copied to clipboard):"
+else
+  echo "Extension path (could NOT copy to clipboard — no clipboard tool found; copy this manually):"
+fi
 echo "  $EXT_DIR"
 echo ""
 
@@ -54,12 +80,41 @@ echo ""
 echo "  1. Opening chrome://extensions now..."
 
 # Open chrome://extensions
-osascript -e 'tell application "Google Chrome" to open location "chrome://extensions"' 2>/dev/null || \
-  open "chrome://extensions" 2>/dev/null || \
-  echo "     Could not open Chrome. Navigate to chrome://extensions manually."
+case "$(uname -s)" in
+  Darwin)
+    osascript -e 'tell application "Google Chrome" to open location "chrome://extensions"' 2>/dev/null || \
+      open "chrome://extensions" 2>/dev/null || \
+      echo "     Could not open Chrome. Navigate to chrome://extensions manually."
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    cmd.exe /c start chrome "chrome://extensions" >/dev/null 2>&1 || \
+      echo "     Could not open Chrome. Navigate to chrome://extensions manually."
+    ;;
+  Linux)
+    (command -v google-chrome >/dev/null 2>&1 && google-chrome "chrome://extensions" >/dev/null 2>&1 &) || \
+      xdg-open "chrome://extensions" 2>/dev/null || \
+      echo "     Could not open Chrome. Navigate to chrome://extensions manually."
+    ;;
+  *)
+    echo "     Could not open Chrome. Navigate to chrome://extensions manually."
+    ;;
+esac
 
 echo "  2. Toggle 'Developer mode' ON (top-right)"
 echo "  3. Click 'Load unpacked'"
-echo "  4. In the file picker: Cmd+Shift+G → paste (path is in your clipboard) → Enter → Select"
+case "$(uname -s)" in
+  Darwin)
+    echo "  4. In the file picker: Cmd+Shift+G → paste the path$([ "$CLIP_OK" = "1" ] && echo ' (in your clipboard)') → Enter → Select"
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    echo "  4. In the file picker: paste the path$([ "$CLIP_OK" = "1" ] && echo ' (in your clipboard)') into the \"Folder\" field at the bottom → Enter, or select it in the Explorer tree"
+    ;;
+  Linux)
+    echo "  4. In the file picker: Ctrl+L (or Ctrl+Shift+G in some GTK dialogs) → paste the path$([ "$CLIP_OK" = "1" ] && echo ' (in your clipboard)') → Enter"
+    ;;
+  *)
+    echo "  4. In the file picker: navigate to the path above and select it"
+    ;;
+esac
 echo "  5. Click the gstack puzzle icon in toolbar → enter port: ${PORT:-<check \$B status>}"
 echo "  6. Click 'Open Side Panel'"

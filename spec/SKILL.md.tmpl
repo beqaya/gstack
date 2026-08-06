@@ -269,7 +269,14 @@ Use a 2-minute timeout. Read stderr from `$TMPERR_GATE` after.
   - B) Save draft locally and stop (no issue filed)
   - C) One more revision attempt
 
-Max 3 dispatches total. If still <7 after iter 3, AskUserQuestion same options.
+Max 3 dispatches total. If still <7 after iter 3 (dispatch #3, the last one
+this cap allows), AskUserQuestion with **only**:
+  - A) Ship anyway (file at this quality)
+  - B) Save draft locally and stop (no issue filed)
+
+Do NOT offer "one more revision attempt" here — a third revision round would be
+dispatch #4, over the cap. If the user still wants another revision, tell them
+to re-invoke `/spec` on the saved draft as a fresh run.
 
 **Cleanup:** `rm -f "$TMPERR_GATE"` after processing.
 

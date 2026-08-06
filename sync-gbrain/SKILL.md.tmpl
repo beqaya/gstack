@@ -226,7 +226,9 @@ not `--full`, AskUserQuestion via the format in the preamble:
 > B) Skip — I'll run it later
 
 If A: re-invoke the orchestrator with `--full --code-only`.
-If B: continue to Step 4 with the empty-corpus state recorded.
+If B: continue to Step 3.5 (not Step 4) with the empty-corpus state recorded — Step 3.5
+still needs to run to compute `CYCLE` for Step 5's verdict block, even though its own
+`PAGES > 0` condition means it won't prompt here.
 
 ---
 

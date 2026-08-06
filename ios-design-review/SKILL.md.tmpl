@@ -78,8 +78,9 @@ For each screen in the app, score 0-10 and explain what would push it to 10:
 ## Loop
 
 1. `POST /session/acquire` with capability `observe` (read-only).
-2. For each major screen (driven from a screen list the user provides, or
-   auto-discovered via the accessibility tree):
+2. For each major screen, driven from a screen list the user provides (ask the
+   user to enumerate the screens/flows in scope if they haven't already —
+   there is no automated screen-discovery mechanism):
    - `GET /screenshot`
    - `GET /elements`
    - Apply the 10-dimension rubric.

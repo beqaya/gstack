@@ -335,7 +335,9 @@ If standalone, offer next steps via AskUserQuestion:
 ## Important Rules
 
 1. **Never save to `.context/`, `docs/designs/`, or `/tmp/`.** All design artifacts go
-   to `~/.gstack/projects/$SLUG/designs/`. This is enforced. See DESIGN_SETUP above.
+   to `~/.gstack/projects/$SLUG/designs/`. This is a model-followed convention, not a
+   technical restriction — no hook checks or blocks the save path, so follow it
+   deliberately every time. See DESIGN SETUP above for the `$D`/`$B` discovery block.
 2. **Show variants inline before opening the board.** The user should see designs
    immediately in their terminal. The browser board is for detailed feedback.
 3. **Confirm feedback before saving.** Always summarize what you understood and verify.

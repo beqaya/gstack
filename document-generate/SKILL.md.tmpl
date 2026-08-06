@@ -29,8 +29,6 @@ triggers:
 
 {{PREAMBLE}}
 
-{{BASE_BRANCH_DETECT}}
-
 # Document Generate: Diataxis Documentation Writer
 
 You are running the `/document-generate` workflow. Your job: produce **high-quality,
@@ -413,8 +411,31 @@ EOF
 git push
 ```
 
-4. **If a PR exists**, update the PR body with a `## Documentation Generated` section listing
-   every new file with its Diataxis quadrant and a one-line description:
+4. **If a PR exists**, append a `## Documentation Generated` section to the PR body listing
+   every new file with its Diataxis quadrant and a one-line description. Check whether a PR
+   exists, fetch its current body, append the new section, and write it back:
+
+```bash
+gh pr view --json number -q .number >/dev/null 2>&1 && HAS_PR=1 || HAS_PR=0
+if [ "$HAS_PR" = "1" ]; then
+  gh pr view --json body -q .body > /tmp/gstack-docgen-pr-body-$$.md
+  cat >> /tmp/gstack-docgen-pr-body-$$.md <<'EOF'
+
+## Documentation Generated
+
+| File | Quadrant | Description |
+|------|----------|-------------|
+EOF
+  # append one "| path | quadrant | description |" row per file generated this run
+  gh pr edit --body-file /tmp/gstack-docgen-pr-body-$$.md
+  rm -f /tmp/gstack-docgen-pr-body-$$.md
+else
+  echo "No PR found — skipping PR body update."
+fi
+```
+
+Example of the resulting table (fill in the actual rows for this run, do not paste this example
+verbatim):
 
 ```
 ## Documentation Generated
@@ -426,6 +447,9 @@ git push
 | docs/explanation-bayesian-scheduler.md | Explanation | Why the scheduler uses Bayesian inference |
 | docs/howto-custom-widgets.md | How-to | Creating and registering custom widgets |
 ```
+
+If `gh pr edit` fails (e.g. no `gh` CLI, not authenticated, or GitLab remote), warn "Could not
+update PR body — documentation changes are in the commit." and continue; do not block on it.
 
 5. Output a structured summary:
 

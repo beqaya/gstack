@@ -822,9 +822,10 @@ else
 fi
 \`\`\`
 
-If \`DESIGN_NOT_AVAILABLE\`: skip visual mockup generation and fall back to the
-existing HTML wireframe approach (\`DESIGN_SKETCH\`). Design mockups are a
-progressive enhancement, not a hard requirement.
+If \`DESIGN_NOT_AVAILABLE\`: design mockups are a progressive enhancement, not a
+hard requirement. Skip visual mockup generation and continue in text: describe the
+proposed layout, colors, and typography in prose instead. (If this skill has its
+own separate HTML-wireframe fallback step, use that instead of a text description.)
 
 If \`BROWSE_NOT_AVAILABLE\`: use \`open file://...\` instead of \`$B goto\` to open
 comparison boards. The user just needs to see the HTML file in any browser.
@@ -862,8 +863,8 @@ fi
 [ -x "$D" ] && echo "DESIGN_READY" || echo "DESIGN_NOT_AVAILABLE"
 \`\`\`
 
-**If \`DESIGN_NOT_AVAILABLE\`:** Fall back to the HTML wireframe approach below
-(the existing DESIGN_SKETCH section). Visual mockups require the design binary.
+**If \`DESIGN_NOT_AVAILABLE\`:** Fall back to the HTML wireframe approach in the
+section below this one. Visual mockups require the design binary.
 
 **If \`DESIGN_READY\`:** Generate visual mockup explorations for the user.
 
