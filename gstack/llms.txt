@@ -19,6 +19,7 @@ Conventions:
 - [/careful](careful/SKILL.md): Safety guardrails for destructive commands.
 - [/claude](claude/SKILL.md): Claude Code CLI wrapper for non-Claude hosts - three modes.
 - [/codex](codex/SKILL.md): OpenAI Codex CLI wrapper — three modes.
+- [/connect-chrome](connect-chrome/SKILL.md): Launch GStack Browser — AI-controlled Chromium with the sidebar extension baked in.
 - [/context-restore](context-restore/SKILL.md): Restore working context saved earlier by /context-save.
 - [/context-save](context-save/SKILL.md): Save working context.
 - [/cso](cso/SKILL.md): Chief Security Officer mode.
@@ -46,7 +47,6 @@ Conventions:
 - [/learn](learn/SKILL.md): Manage project learnings.
 - [/make-pdf](make-pdf/SKILL.md): Turn any markdown file into a publication-quality PDF.
 - [/office-hours](office-hours/SKILL.md): YC Office Hours — two modes.
-- [/open-gstack-browser](open-gstack-browser/SKILL.md): Launch GStack Browser — AI-controlled Chromium with the sidebar extension baked in.
 - [/pair-agent](pair-agent/SKILL.md): Pair a remote AI agent with your browser.
 - [/parity](parity/SKILL.md): Detects gstack repo edits that never reached the live copies a user actually runs.
 - [/plan-ceo-review](plan-ceo-review/SKILL.md): CEO/founder-mode plan review.
