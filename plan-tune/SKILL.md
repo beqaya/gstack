@@ -1230,9 +1230,16 @@ claim is invisible).
 
 ## Recent auto-decisions
 
-Show the last 10 questions where the PreToolUse hook auto-decided (source=
-`auto-decided` in the log). Lets the user spot-check enforcement and flip
-any that misfired via `always-ask`.
+Show the last 10 log rows tagged `source=auto-decided`. When the PreToolUse
+hook is installed (`bin/gstack-settings-hook add-event --event
+PreToolUse|PostToolUse` — not installed by default), it writes these rows
+itself at the moment it auto-decides, which is real enforcement evidence.
+But `auto-decided` is a plain string value `gstack-question-log` accepts
+from any caller, including a manual invocation by the model, so a row
+carrying it is not proof by itself that the hook fired — treat this list as
+a record of what got logged, not an audit of hook enforcement, unless
+you've independently confirmed the hook is installed. Flip any that look
+wrong via `always-ask`.
 
 ```bash
 eval "$(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)"
@@ -1261,10 +1268,15 @@ Run `gstack-question-preference --write '{"question_id":"<id>","preference":
 
 ## Audit unmarked questions
 
-Top N hash-only question_ids by frequency. These are AUQ fires the cathedral
-hook captured but cannot enforce against (no `<gstack-qid:foo>` marker in
-the skill template — D18 progressive markers). Surfacing them drives marker
-adoption: high-traffic unmarked questions are the next candidates to retrofit.
+Top N hash-only question_ids by frequency. These are AUQ fires logged
+without a `<gstack-qid:foo>` marker (D18 progressive markers) — no marker
+means the PreToolUse hook, when installed, cannot identify or enforce
+against the question. No `PostToolUse` capture hook ships wired by default
+either, so on a machine without both installed this list is typically
+empty rather than populated; treat a nonempty list as evidence something is
+already capturing unmarked fires, not an assumption. Surfacing any that do
+appear drives marker adoption: high-traffic unmarked questions are the next
+candidates to retrofit.
 
 ```bash
 eval "$(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)"
@@ -1355,8 +1367,11 @@ invokes via `/plan-tune distill` / `dream`.
      plan D9 routing. Then pass `--gbrain-published true` to the bin so
      the proposals file records the mirror.
    - When gbrain isn't configured (no MCP tools), the bin's local file
-     write is the durable source-of-truth and the PreToolUse hook reads it
-     via Layer 8 memory injection.
+     write (`~/.gstack/free-text-memory.json`) is the durable
+     source-of-truth. The PreToolUse hook, when installed, reads it and
+     injects matching nuggets as Layer 8 memory context on every AUQ call;
+     without the hook installed, the file still holds the nugget but
+     nothing injects it automatically.
 
 ---
 

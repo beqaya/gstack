@@ -761,9 +761,9 @@ If the user has a `.md` file open and says "make it look nice", propose
 ## Debugging
 
 - Output looks empty / blank → check browse daemon is running: `$B status`.
-- Fragmented text on copy-paste → highlight.js output (Phase 4). Retry with
-  `--no-syntax` once that flag exists. For now, remove fenced code blocks
-  and regenerate.
+- Fragmented text on copy-paste → highlight.js output (Phase 4). There is no
+  flag to disable syntax highlighting; work around it by removing fenced code
+  blocks from the markdown before regenerating.
 - Paged.js timeout → probably no headings in the markdown. Drop `--toc`.
 - "[remote image blocked]" placeholder in the output → add `--allow-network`
   (understand you're giving the markdown file permission to fetch from its

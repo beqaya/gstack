@@ -1486,10 +1486,14 @@ For each fixable issue, in severity order:
 
 ### 8a. Locate source
 
-```bash
-# Grep for error messages, component names, route definitions
-# Glob for file patterns matching the affected page
-```
+Locate the code using the Grep and Glob tools (not shell commands):
+
+- **Grep** for the literal error text, component name, or route path seen in the
+  browser. The rendered error string is usually the highest-signal starting point.
+- **Glob** for files matching the affected page — e.g. `**/*<route>*.tsx` for a
+  route, `**/<Component>.*` for a named component.
+- If neither lands it, widen from the network request: grep the failing endpoint
+  path, then follow its handler back to the rendering code.
 
 - Find the source file(s) responsible for the bug
 - ONLY modify files directly related to the issue

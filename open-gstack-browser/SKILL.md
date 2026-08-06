@@ -5,8 +5,12 @@ description: |
   Launch GStack Browser — AI-controlled Chromium with the sidebar extension baked in.
   Opens a visible browser window where you can watch every action in real time.
   The sidebar shows a live activity feed and chat. Anti-bot stealth built in.
-  Use when asked to "open gstack browser", "launch browser", "connect chrome",
-  "open chrome", "real browser", "launch chrome", "side panel", or "control my browser".
+  This is the gstack-internal name for the same launcher published at the top
+  level as /connect-chrome — the two are not a design split, just this skill
+  registered under two names; /connect-chrome is the canonical entry point.
+  Use when asked by this skill's own name, "open gstack browser"; for "launch
+  browser", "connect chrome", "open chrome", "real browser", "launch chrome",
+  "side panel", or "control my browser", use /connect-chrome instead.
 voice-triggers:
   - "show me the browser"
 triggers:

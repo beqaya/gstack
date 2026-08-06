@@ -1795,7 +1795,7 @@ AskUserQuestion options:
 - A: mark APPROVED, write review logs, suggest /ship
 - B: ask which overrides, apply, re-present gate
 - C: answer freeform, re-present gate
-- D: make changes, re-run affected phases (scope→1B, design→2, test plan→3, arch→3). Max 3 cycles.
+- D: make changes, re-run affected phases (scope→Phase 1, design→Phase 2, test plan→Phase 3, arch→Phase 3). Max 3 cycles.
 - E: start over
 
 ---
@@ -1852,7 +1852,11 @@ Suggest next step: `/ship` when ready to create the PR.
 ## Important Rules
 
 - **Never abort.** The user chose /autoplan. Respect that choice. Surface all taste decisions, never redirect to interactive review.
-- **Two gates.** The non-auto-decided AskUserQuestions are: (1) premise confirmation in Phase 1, and (2) User Challenges — when both models agree the user's stated direction should change. Everything else is auto-decided using the 6 principles.
+- **Four user-facing gates, not two.** The non-auto-decided AskUserQuestions are: (1) the
+  Prerequisite Skill Offer, if no design doc is found (before Phase 1); (2) premise
+  confirmation in Phase 1; (3) User Challenges, surfaced at the Phase 4 Final Approval Gate —
+  when both models agree the user's stated direction should change; and (4) the Phase 4 Final
+  Approval Gate itself. Everything else is auto-decided using the 6 principles.
 - **Log every decision.** No silent auto-decisions. Every choice gets a row in the audit trail.
 - **Full depth means full depth.** Do not compress or skip sections from the loaded skill files (except the skip list in Phase 0). "Full depth" means: read the code the section asks you to read, produce the outputs the section requires, identify every issue, and decide each one. A one-sentence summary of a section is not "full depth" — it is a skip. If you catch yourself writing fewer than 3 sentences for any review section, you are likely compressing.
 - **Artifacts are deliverables.** Test plan artifact, failure modes registry, error/rescue table, ASCII diagrams — these must exist on disk or in the plan file when the review completes. If they don't exist, the review is incomplete.

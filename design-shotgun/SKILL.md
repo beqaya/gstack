@@ -839,9 +839,10 @@ else
 fi
 ```
 
-If `DESIGN_NOT_AVAILABLE`: skip visual mockup generation and fall back to the
-existing HTML wireframe approach (`DESIGN_SKETCH`). Design mockups are a
-progressive enhancement, not a hard requirement.
+If `DESIGN_NOT_AVAILABLE`: design mockups are a progressive enhancement, not a
+hard requirement. Skip visual mockup generation and continue in text: describe the
+proposed layout, colors, and typography in prose instead. (If this skill has its
+own separate HTML-wireframe fallback step, use that instead of a text description.)
 
 If `BROWSE_NOT_AVAILABLE`: use `open file://...` instead of `$B goto` to open
 comparison boards. The user just needs to see the HTML file in any browser.
@@ -1376,7 +1377,9 @@ If standalone, offer next steps via AskUserQuestion:
 ## Important Rules
 
 1. **Never save to `.context/`, `docs/designs/`, or `/tmp/`.** All design artifacts go
-   to `~/.gstack/projects/$SLUG/designs/`. This is enforced. See DESIGN_SETUP above.
+   to `~/.gstack/projects/$SLUG/designs/`. This is a model-followed convention, not a
+   technical restriction — no hook checks or blocks the save path, so follow it
+   deliberately every time. See DESIGN SETUP above for the `$D`/`$B` discovery block.
 2. **Show variants inline before opening the board.** The user should see designs
    immediately in their terminal. The browser board is for detailed feedback.
 3. **Confirm feedback before saving.** Always summarize what you understood and verify.

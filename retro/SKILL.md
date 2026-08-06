@@ -923,6 +923,16 @@ If `RETRO_CONTEXT_FOUND`: read `~/.gstack/retro-context.md`. This file is user-a
 
 ### Step 0.5: Stale-base + bad-today-anchor pre-flight guard
 
+**`<default>` placeholder convention (applies everywhere below, repo-scoped and global alike):**
+`<default>` is a literal template placeholder, not shell syntax — it never appears verbatim
+in a command you actually run. Before running ANY command containing `<default>` in this
+skill, resolve the repo's default branch once
+(`git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null | sed 's@^origin/@@'`,
+falling back to `main`, then `master`, then `git rev-parse --abbrev-ref HEAD` if all else
+fails — same detection Global Step 3 below uses) and substitute that branch name for every
+`<default>` token in every command for the rest of this run. Do this resolution once per repo
+and reuse it — don't re-detect per command.
+
 The retro skill computes a window from "today" and queries `git log --since=<window> origin/<default>`. If "today" drifts (model session-context error) or the local worktree's `origin/<default>` is materially behind the actual remote, the window can return zero or near-zero commits and the retro will fabricate a coherent-looking narrative from nothing. This guard prevents silent confidently-wrong output.
 
 Run the pre-flight in this exact order. The first branch that matches wins:
@@ -990,7 +1000,9 @@ git config user.email
 
 The name returned by `git config user.name` is **"you"** — the person reading this retro. All other authors are teammates. Use this to orient the narrative: "your" commits vs teammate contributions.
 
-Run ALL of these git commands in parallel (they are independent):
+Run ALL of these git commands in parallel (they are independent). Reminder:
+`<default>` = the default branch resolved in Step 0.5 above — substitute it, don't run these
+commands with the literal text `<default>` in them.
 
 ```bash
 # 1. All commits in window with timestamps, subject, hash, AUTHOR, files changed, insertions, deletions
@@ -1838,7 +1850,9 @@ When the user runs `/retro compare` (or `/retro compare 14d`):
 ## Important Rules
 
 - ALL narrative output goes directly to the user in the conversation. The ONLY file written is the `.context/retros/` JSON snapshot.
-- Use `origin/<default>` for all git queries (not local main which may be stale)
+- Use `origin/<default>` for all git queries (not local main which may be stale) — `<default>`
+  is the placeholder substitution rule from Step 0.5: resolve the repo's default branch once,
+  then use that resolved name everywhere `<default>` appears, in this section too.
 - Display all timestamps in the user's local timezone (do not override `TZ`)
 - If the window has zero commits, say so and suggest a different window
 - Round LOC/hour to nearest 50

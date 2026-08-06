@@ -6,6 +6,9 @@ description: |
   Pre-landing PR review. Analyzes diff against the base branch for SQL safety, LLM trust
   boundary violations, conditional side effects, and other structural issues. Use when
   asked to "review this PR", "code review", "pre-landing review", or "check my diff".
+  For an independent second-opinion review from a different model, use /codex review
+  instead. For reviewing a plan/architecture before any code exists, use /plan-eng-review
+  instead — this skill reviews an actual diff.
   Proactively suggest when the user is about to merge or land code changes. (gstack)
 allowed-tools:
   - Bash

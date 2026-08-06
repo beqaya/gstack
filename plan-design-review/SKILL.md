@@ -1080,9 +1080,10 @@ else
 fi
 ```
 
-If `DESIGN_NOT_AVAILABLE`: skip visual mockup generation and fall back to the
-existing HTML wireframe approach (`DESIGN_SKETCH`). Design mockups are a
-progressive enhancement, not a hard requirement.
+If `DESIGN_NOT_AVAILABLE`: design mockups are a progressive enhancement, not a
+hard requirement. Skip visual mockup generation and continue in text: describe the
+proposed layout, colors, and typography in prose instead. (If this skill has its
+own separate HTML-wireframe fallback step, use that instead of a text description.)
 
 If `BROWSE_NOT_AVAILABLE`: use `open file://...` instead of `$B goto` to open
 comparison boards. The user just needs to see the HTML file in any browser.

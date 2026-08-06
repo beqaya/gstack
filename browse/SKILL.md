@@ -7,8 +7,9 @@ description: |
   elements, verify page state, diff before/after actions, take annotated screenshots, check
   responsive layouts, test forms and uploads, handle dialogs, and assert element states.
   ~100ms per command. Use when you need to test a feature, verify a deployment, dogfood a
-  user flow, or file a bug with evidence. Use when asked to "open in browser", "test the
-  site", "take a screenshot", or "dogfood this". (gstack)
+  user flow, or file a bug with evidence. Use when asked to "open in browser", "check one
+  page", "take a screenshot", or "dogfood this". For a full bug-find-and-fix pass, use /qa
+  instead — browse is for one specific check, not a systematic sweep. (gstack)
 triggers:
   - browse a page
   - headless browser

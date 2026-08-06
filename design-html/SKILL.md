@@ -828,9 +828,10 @@ else
 fi
 ```
 
-If `DESIGN_NOT_AVAILABLE`: skip visual mockup generation and fall back to the
-existing HTML wireframe approach (`DESIGN_SKETCH`). Design mockups are a
-progressive enhancement, not a hard requirement.
+If `DESIGN_NOT_AVAILABLE`: design mockups are a progressive enhancement, not a
+hard requirement. Skip visual mockup generation and continue in text: describe the
+proposed layout, colors, and typography in prose instead. (If this skill has its
+own separate HTML-wireframe fallback step, use that instead of a text description.)
 
 If `BROWSE_NOT_AVAILABLE`: use `open file://...` instead of `$B goto` to open
 comparison boards. The user just needs to see the HTML file in any browser.
@@ -1220,8 +1221,8 @@ Pretext API usage patterns. Follow them exactly.
 
 **Pattern 1: Basic height computation (Simple layout, Card/grid)**
 ```js
-import { prepare, layout } from './pretext-inline.js'
-// Or if inlined: const { prepare, layout } = window.Pretext
+import { prepare, layout } from 'https://esm.sh/@chenglou/pretext'
+// Or, if the vendor bundle was inlined: const { prepare, layout } = window.Pretext
 
 // 1. PREPARE — one-time, after fonts load
 await document.fonts.ready
@@ -1260,7 +1261,8 @@ for (const el of elements) {
 
 **Pattern 2: Shrinkwrap / tight-fit containers (Chat bubbles)**
 ```js
-import { prepareWithSegments, walkLineRanges } from './pretext-inline.js'
+import { prepare, layout, prepareWithSegments, walkLineRanges } from 'https://esm.sh/@chenglou/pretext'
+// Or, if the vendor bundle was inlined: const { prepare, layout, prepareWithSegments, walkLineRanges } = window.Pretext
 
 // Find the tightest width that produces the same line count
 function shrinkwrap(text, font, maxWidth, lineHeight) {
@@ -1286,7 +1288,8 @@ function shrinkwrap(text, font, maxWidth, lineHeight) {
 
 **Pattern 3: Text around obstacles (Editorial layout)**
 ```js
-import { prepareWithSegments, layoutNextLine } from './pretext-inline.js'
+import { prepareWithSegments, layoutNextLine } from 'https://esm.sh/@chenglou/pretext'
+// Or, if the vendor bundle was inlined: const { prepareWithSegments, layoutNextLine } = window.Pretext
 
 function layoutAroundObstacles(text, font, containerWidth, lineHeight, obstacles) {
   const segs = prepareWithSegments(text, font)
@@ -1317,7 +1320,8 @@ function layoutAroundObstacles(text, font, containerWidth, lineHeight, obstacles
 
 **Pattern 4: Full line-by-line rendering (Complex editorial)**
 ```js
-import { prepareWithSegments, layoutWithLines } from './pretext-inline.js'
+import { prepareWithSegments, layoutWithLines } from 'https://esm.sh/@chenglou/pretext'
+// Or, if the vendor bundle was inlined: const { prepareWithSegments, layoutWithLines } = window.Pretext
 
 const segs = prepareWithSegments(text, font)
 const { lines, height } = layoutWithLines(segs, containerWidth, lineHeight)

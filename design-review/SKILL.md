@@ -845,7 +845,8 @@ If the output is non-empty (working tree is dirty), **STOP** and use AskUserQues
 
 RECOMMENDATION: Choose A because uncommitted work should be preserved as a commit before design review adds its own fix commits.
 
-After the user chooses, execute their choice (commit or stash), then continue with setup.
+After the user chooses: for A or B, execute their choice (commit or stash), then continue
+with setup. For C (Abort), stop here — do not run any further steps of this skill.
 
 **Find the browse binary:**
 
@@ -1086,9 +1087,10 @@ else
 fi
 ```
 
-If `DESIGN_NOT_AVAILABLE`: skip visual mockup generation and fall back to the
-existing HTML wireframe approach (`DESIGN_SKETCH`). Design mockups are a
-progressive enhancement, not a hard requirement.
+If `DESIGN_NOT_AVAILABLE`: design mockups are a progressive enhancement, not a
+hard requirement. Skip visual mockup generation and continue in text: describe the
+proposed layout, colors, and typography in prose instead. (If this skill has its
+own separate HTML-wireframe fallback step, use that instead of a text description.)
 
 If `BROWSE_NOT_AVAILABLE`: use `open file://...` instead of `$B goto` to open
 comparison boards. The user just needs to see the HTML file in any browser.
@@ -1835,10 +1837,10 @@ For each fixable finding, in impact order:
 
 ### 8a. Locate source
 
-```bash
-# Search for CSS classes, component names, style files
-# Glob for file patterns matching the affected page
-```
+Use the Grep tool to search for the CSS class names, component names, or style
+identifiers named in the finding, and the Glob tool to find file patterns
+matching the affected page (e.g. `**/*<PageName>*`). There is no single fixed
+command for this — the search terms come from the specific finding.
 
 - Find the source file(s) responsible for the design issue
 - ONLY modify files directly related to the finding

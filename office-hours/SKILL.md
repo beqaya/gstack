@@ -1461,8 +1461,8 @@ fi
 [ -x "$D" ] && echo "DESIGN_READY" || echo "DESIGN_NOT_AVAILABLE"
 ```
 
-**If `DESIGN_NOT_AVAILABLE`:** Fall back to the HTML wireframe approach below
-(the existing DESIGN_SKETCH section). Visual mockups require the design binary.
+**If `DESIGN_NOT_AVAILABLE`:** Fall back to the HTML wireframe approach in the
+section below this one. Visual mockups require the design binary.
 
 **If `DESIGN_READY`:** Generate visual mockup explorations for the user.
 

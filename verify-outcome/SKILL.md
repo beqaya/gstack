@@ -9,7 +9,9 @@ description: |
   row/file/artifact for a background job), then records a verdict: PROVEN,
   UNPROVEN, or CONTRADICTED. Default is UNPROVEN until evidence is shown inline.
   Use when asked to "verify it works", "prove it", "confirm the fix", or before
-  reporting anything shipped. (gstack)
+  reporting anything shipped. For post-deploy production monitoring specifically,
+  use /canary; for the merge-then-verify pipeline, use /land-and-deploy — this
+  skill is the general-purpose evidence check for any claim. (gstack)
 triggers:
   - verify it works
   - prove it

@@ -782,45 +782,6 @@ Replace `SKILL_NAME`, `OUTCOME`, and `USED_BROWSE` before running.
 
 Skills that run plan reviews (`/plan-*-review`, `/codex review`) include the EXIT PLAN MODE GATE blocking checklist at the end of the skill, which verifies the plan file ends with `## GSTACK REVIEW REPORT` before ExitPlanMode is called. Skills that don't run plan reviews (operational skills like `/ship`, `/qa`, `/review`) typically don't operate in plan mode and have no review report to verify; this footer is a no-op for them. Writing the plan file is the one edit allowed in plan mode.
 
-## Step 0: Detect platform and base branch
-
-First, detect the git hosting platform from the remote URL:
-
-```bash
-git remote get-url origin 2>/dev/null
-```
-
-- If the URL contains "github.com" → platform is **GitHub**
-- If the URL contains "gitlab" → platform is **GitLab**
-- Otherwise, check CLI availability:
-  - `gh auth status 2>/dev/null` succeeds → platform is **GitHub** (covers GitHub Enterprise)
-  - `glab auth status 2>/dev/null` succeeds → platform is **GitLab** (covers self-hosted)
-  - Neither → **unknown** (use git-native commands only)
-
-Determine which branch this PR/MR targets, or the repo's default branch if no
-PR/MR exists. Use the result as "the base branch" in all subsequent steps.
-
-**If GitHub:**
-1. `gh pr view --json baseRefName -q .baseRefName` — if succeeds, use it
-2. `gh repo view --json defaultBranchRef -q .defaultBranchRef.name` — if succeeds, use it
-
-**If GitLab:**
-1. `glab mr view -F json 2>/dev/null` and extract the `target_branch` field — if succeeds, use it
-2. `glab repo view -F json 2>/dev/null` and extract the `default_branch` field — if succeeds, use it
-
-**Git-native fallback (if unknown platform, or CLI commands fail):**
-1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
-2. If that fails: `git rev-parse --verify origin/main 2>/dev/null` → use `main`
-3. If that fails: `git rev-parse --verify origin/master 2>/dev/null` → use `master`
-
-If all fail, fall back to `main`.
-
-Print the detected base branch name. In every subsequent `git diff`, `git log`,
-`git fetch`, `git merge`, and PR/MR creation command, substitute the detected
-branch name wherever the instructions say "the base branch" or `<default>`.
-
----
-
 # Document Generate: Diataxis Documentation Writer
 
 You are running the `/document-generate` workflow. Your job: produce **high-quality,
@@ -1203,8 +1164,31 @@ EOF
 git push
 ```
 
-4. **If a PR exists**, update the PR body with a `## Documentation Generated` section listing
-   every new file with its Diataxis quadrant and a one-line description:
+4. **If a PR exists**, append a `## Documentation Generated` section to the PR body listing
+   every new file with its Diataxis quadrant and a one-line description. Check whether a PR
+   exists, fetch its current body, append the new section, and write it back:
+
+```bash
+gh pr view --json number -q .number >/dev/null 2>&1 && HAS_PR=1 || HAS_PR=0
+if [ "$HAS_PR" = "1" ]; then
+  gh pr view --json body -q .body > /tmp/gstack-docgen-pr-body-$$.md
+  cat >> /tmp/gstack-docgen-pr-body-$$.md <<'EOF'
+
+## Documentation Generated
+
+| File | Quadrant | Description |
+|------|----------|-------------|
+EOF
+  # append one "| path | quadrant | description |" row per file generated this run
+  gh pr edit --body-file /tmp/gstack-docgen-pr-body-$$.md
+  rm -f /tmp/gstack-docgen-pr-body-$$.md
+else
+  echo "No PR found — skipping PR body update."
+fi
+```
+
+Example of the resulting table (fill in the actual rows for this run, do not paste this example
+verbatim):
 
 ```
 ## Documentation Generated
@@ -1216,6 +1200,9 @@ git push
 | docs/explanation-bayesian-scheduler.md | Explanation | Why the scheduler uses Bayesian inference |
 | docs/howto-custom-widgets.md | How-to | Creating and registering custom widgets |
 ```
+
+If `gh pr edit` fails (e.g. no `gh` CLI, not authenticated, or GitLab remote), warn "Could not
+update PR body — documentation changes are in the commit." and continue; do not block on it.
 
 5. Output a structured summary:
 
