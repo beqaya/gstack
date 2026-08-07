@@ -73,20 +73,33 @@ def append_jsonl(run_id, name, record):
     return record
 
 
-def read_jsonl(run_id, name):
+def read_jsonl_counted(run_id, name):
+    """Read a JSONL file, returning (records, unreadable_line_count).
+
+    Callers that guarantee something to a human — the founder's approval list,
+    the work queue — must fail closed when a line is unreadable rather than
+    quietly returning a short list. Silently skipping is only safe where a
+    partial read cannot break a promise.
+    """
     path = os.path.join(run_dir(run_id), name)
     if not os.path.exists(path):
-        return []
-    out = []
+        return [], 0
+    out, bad = [], 0
     with open(path, "r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
-            if line:
-                try:
-                    out.append(json.loads(line))
-                except ValueError:
-                    continue
-    return out
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                bad += 1
+    return out, bad
+
+
+def read_jsonl(run_id, name):
+    records, _ = read_jsonl_counted(run_id, name)
+    return records
 
 
 def lock_path(run_id, item_id):
@@ -198,6 +211,14 @@ def cmd_add(args):
 
 def cmd_claim(args):
     read_manifest(args.run)
+    _, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
+    if bad_queue:
+        sys.stderr.write(
+            "%d unreadable line(s) in queue.jsonl — refusing to hand out work. "
+            "A corrupted 'add' line makes an item invisible, so the run would "
+            "report the queue drained while work was silently lost.\n" % bad_queue
+        )
+        sys.exit(11)
     reap_stale_locks(args.run)
     for item_id, title in open_items(args.run):
         if try_lock(args.run, item_id, args.worker):
@@ -307,7 +328,14 @@ def cmd_park(args):
 
 def cmd_parked(args):
     read_manifest(args.run)
-    print(json.dumps(read_jsonl(args.run, "parked.jsonl"), indent=2))
+    records, bad = read_jsonl_counted(args.run, "parked.jsonl")
+    print(json.dumps(records, indent=2))
+    if bad:
+        sys.stderr.write(
+            "%d unreadable line(s) in parked.jsonl — this list may be MISSING "
+            "approvals the founder needs to see. Treat it as incomplete.\n" % bad
+        )
+        sys.exit(10)
 
 
 def budget_state(run_id):

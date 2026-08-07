@@ -77,4 +77,17 @@ describe('gstack-run park', () => {
     const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
     expect(parked.length).toBe(0);
   });
+
+  test('a corrupt parked.jsonl line fails closed rather than hiding an approval', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'deploy'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['park', '--run', runId, '--item', item, '--action', 'deploy', '--reason', 'prod'], root);
+    fs.appendFileSync(path.join(root, 'runs', runId, 'parked.jsonl'), '{"item_id":"tru');
+
+    const p = run(['parked', '--run', runId], root);
+    expect(p.code).toBe(10);
+    expect(p.stderr).toContain('MISSING');
+  });
 });

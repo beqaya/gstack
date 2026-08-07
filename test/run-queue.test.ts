@@ -146,4 +146,14 @@ describe('gstack-run queue', () => {
     expect(other.code).toBe(4);
     expect(fs.existsSync(lock)).toBe(true);
   });
+
+  test('a corrupt queue.jsonl line stops work being handed out', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    run(['add', '--run', runId, '--title', 'job'], root);
+    fs.appendFileSync(path.join(root, 'runs', runId, 'queue.jsonl'), '{"event":"ad');
+
+    const c = run(['claim', '--run', runId, '--worker', 'w1'], root);
+    expect(c.code).toBe(11);
+  });
 });
