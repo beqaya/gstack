@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""gstack-risk-classify — assigns an action a verification tier.
+
+Returns "elevated" for actions where being wrong is expensive, "routine"
+otherwise. Elevated claims get re-derived by a DIFFERENT agent from primary
+sources; routine claims need only typecheck and tests.
+
+This is a LOOKUP TABLE on purpose. Model judgment about risk is precisely what
+failed on 2026-08-06 — every wrong claim felt correct when it was made. Keep it
+dumb, readable and testable; extend the list rather than adding cleverness.
+
+Usage:
+    gstack-risk-classify --action "<command or description>"
+"""
+import argparse
+
+ELEVATED_PATTERNS = [
+    "git push",
+    "force-push",
+    "--force",
+    "db-migrate",
+    "mode=apply",
+    "drop table",
+    "delete from",
+    "truncate",
+    "rm -rf",
+    "settings.json",
+    "prod",
+    "deploy",
+    "gcloud run",
+    "fly deploy",
+    "send",
+    "email",
+    "secret",
+    "credential",
+]
+
+
+def classify(action):
+    low = action.lower()
+    return "elevated" if any(p in low for p in ELEVATED_PATTERNS) else "routine"
+
+
+def main():
+    p = argparse.ArgumentParser(prog="gstack-risk-classify")
+    p.add_argument("--action", required=True)
+    args = p.parse_args()
+    print(classify(args.action))
+
+
+if __name__ == "__main__":
+    main()
