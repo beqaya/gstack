@@ -90,4 +90,19 @@ describe('gstack-run park', () => {
     expect(p.code).toBe(10);
     expect(p.stderr).toContain('MISSING');
   });
+
+  test('a corrupt queue line stops park writing a false approval', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    fs.appendFileSync(path.join(root, 'runs', runId, 'queue.jsonl'), '{"event":"do');
+
+    const p = run(['park', '--run', runId, '--item', item,
+                   '--action', 'a', '--reason', 'r'], root);
+    expect(p.code).toBe(11);
+
+    const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
+    expect(parked.length).toBe(0);
+  });
 });

@@ -313,6 +313,14 @@ def cmd_history(args):
 
 def cmd_park(args):
     read_manifest(args.run)
+    _, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
+    if bad_queue:
+        sys.stderr.write(
+            "%d unreadable line(s) in queue.jsonl — refusing to park. A corrupted "
+            "'done' line makes a finished item look open, and parking it would "
+            "write a false approval request into the founder's list.\n" % bad_queue
+        )
+        sys.exit(11)
     if args.item not in {i for i, _ in open_items(args.run)}:
         sys.stderr.write(
             "item %s is already terminal (done or parked) — refusing to park it "
