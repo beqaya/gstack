@@ -80,7 +80,53 @@ describe('gstack-run queue', () => {
         stderr: 'pipe',
       })
     );
-    const codes = await Promise.all(procs.map((p) => p.exited));
+
+    const results = await Promise.all(procs.map(async (p) => {
+      const code = await p.exited;
+      const out = await new Response(p.stdout).text();
+      const err = await new Response(p.stderr).text();
+      return { code, out, err };
+    }));
+
+    const codes = results.map(r => r.code);
+    const winners = codes.filter((c) => c === 0);
+    const losers = codes.filter((c) => c !== 0);
+
+    if (winners.length !== 1) {
+      console.error('Race test failed:', { codes, results });
+    }
+
+    expect(winners.length).toBe(1);
+    expect(losers).toEqual([4]);
+  });
+
+  test('three workers racing one stale lock: exactly one wins, no double-claim', async () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const itemId = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'dead'], root);
+
+    const lock = path.join(root, 'runs', runId, 'locks', `${itemId}.lock`);
+    const data = JSON.parse(fs.readFileSync(lock, 'utf-8'));
+    data.heartbeat = '2000-01-01T00:00:00+00:00';
+    fs.writeFileSync(lock, JSON.stringify(data));
+
+    const procs = ['a', 'b', 'c'].map((w) =>
+      spawn([PY, RUN, 'claim', '--run', runId, '--worker', w], {
+        env: { ...process.env, GSTACK_STATE_ROOT: root },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+    );
+
+    const results = await Promise.all(procs.map(async (p) => {
+      const code = await p.exited;
+      const out = await new Response(p.stdout).text();
+      const err = await new Response(p.stderr).text();
+      return { code, out, err };
+    }));
+
+    const codes = results.map(r => r.code);
     expect(codes.filter((c) => c === 0).length).toBe(1);
   });
 });

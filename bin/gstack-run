@@ -136,9 +136,12 @@ def try_lock(run_id, item_id, worker):
     steal = path + ".steal"
     try:
         sfd = os.open(steal, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except OSError:
-        # Someone is mid-steal. If their sidecar is itself abandoned, clear it
-        # and let the next claim retry; otherwise let them win this round.
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+        # Someone holds the steal lock. Clear it ONLY if genuinely abandoned:
+        # the sidecar carries its own heartbeat precisely so that a live holder
+        # is never mistaken for a dead one.
         if lock_is_stale(steal):
             try:
                 os.unlink(steal)
@@ -147,10 +150,11 @@ def try_lock(run_id, item_id, worker):
         return False
 
     try:
-        os.close(sfd)
+        with os.fdopen(sfd, "w") as fh:
+            fh.write(json.dumps({"worker": worker, "heartbeat": now_ts()}))
         if not lock_is_stale(path):
             return False
-        tmp = path + ".tmp"
+        tmp = "%s.%s.tmp" % (path, uuid.uuid4().hex)
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(payload)
         os.replace(tmp, path)
@@ -158,7 +162,7 @@ def try_lock(run_id, item_id, worker):
     finally:
         try:
             os.unlink(steal)
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError, OSError):
             pass
 
 
