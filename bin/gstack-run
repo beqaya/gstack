@@ -23,9 +23,11 @@ these sizes are atomic, so concurrent workers cannot corrupt each other, and
 a crash mid-write loses at most the trailing line rather than the file.
 """
 import argparse
+import errno
 import json
 import os
 import sys
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -60,6 +62,109 @@ def read_manifest(run_id):
         )
         sys.exit(3)
     return m
+
+
+def append_jsonl(run_id, name, record):
+    record.setdefault("ts", now_ts())
+    path = os.path.join(run_dir(run_id), name)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+    return record
+
+
+def read_jsonl(run_id, name):
+    path = os.path.join(run_dir(run_id), name)
+    if not os.path.exists(path):
+        return []
+    out = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                out.append(json.loads(line))
+    return out
+
+
+def lock_path(run_id, item_id):
+    return os.path.join(run_dir(run_id), "locks", "%s.lock" % item_id)
+
+
+def lock_ttl():
+    return int(os.environ.get("GSTACK_LOCK_TTL_SEC", "900"))
+
+
+def lock_is_stale(path):
+    """A worker that died holding a lock would strand its item forever."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            hb = json.load(fh).get("heartbeat")
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(hb)).total_seconds()
+        return age > lock_ttl()
+    except Exception:
+        return True  # unreadable lock is not a reason to strand work
+
+
+def try_lock(run_id, item_id, worker):
+    """Atomic create. Two workers cannot take the same item."""
+    path = lock_path(run_id, item_id)
+    payload = json.dumps({"worker": worker, "heartbeat": now_ts()})
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+        if not lock_is_stale(path):
+            return False
+        os.unlink(path)
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            return False
+    with os.fdopen(fd, "w") as fh:
+        fh.write(payload)
+    return True
+
+
+def open_items(run_id):
+    """Items added but not done, newest status wins."""
+    status = {}
+    titles = {}
+    for rec in read_jsonl(run_id, "queue.jsonl"):
+        iid = rec["item_id"]
+        if rec["event"] == "add":
+            titles[iid] = rec["title"]
+        status[iid] = rec["event"]
+    return [(i, titles.get(i, "")) for i, s in status.items() if s != "done"]
+
+
+def cmd_add(args):
+    read_manifest(args.run)
+    item_id = uuid.uuid4().hex[:10]
+    append_jsonl(args.run, "queue.jsonl",
+                 {"event": "add", "item_id": item_id, "title": args.title})
+    print(item_id)
+
+
+def cmd_claim(args):
+    read_manifest(args.run)
+    for item_id, title in open_items(args.run):
+        if try_lock(args.run, item_id, args.worker):
+            append_jsonl(args.run, "queue.jsonl",
+                         {"event": "claim", "item_id": item_id, "worker": args.worker})
+            print(json.dumps({"item_id": item_id, "title": title}))
+            return
+    sys.stderr.write("no claimable items\n")
+    sys.exit(4)
+
+
+def cmd_done(args):
+    read_manifest(args.run)
+    append_jsonl(args.run, "queue.jsonl",
+                 {"event": "done", "item_id": args.item})
+    try:
+        os.unlink(lock_path(args.run, args.item))
+    except FileNotFoundError:
+        pass
 
 
 def cmd_init(args):
@@ -97,6 +202,21 @@ def main():
     ps = sub.add_parser("status")
     ps.add_argument("--run", required=True)
     ps.set_defaults(func=cmd_status)
+
+    pa = sub.add_parser("add")
+    pa.add_argument("--run", required=True)
+    pa.add_argument("--title", required=True)
+    pa.set_defaults(func=cmd_add)
+
+    pc = sub.add_parser("claim")
+    pc.add_argument("--run", required=True)
+    pc.add_argument("--worker", required=True)
+    pc.set_defaults(func=cmd_claim)
+
+    pd = sub.add_parser("done")
+    pd.add_argument("--run", required=True)
+    pd.add_argument("--item", required=True)
+    pd.set_defaults(func=cmd_done)
 
     args = p.parse_args()
     args.func(args)
