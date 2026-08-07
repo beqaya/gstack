@@ -100,29 +100,66 @@ def lock_is_stale(path):
             hb = json.load(fh).get("heartbeat")
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(hb)).total_seconds()
         return age > lock_ttl()
+    except FileNotFoundError:
+        return False
     except Exception:
         return True  # unreadable lock is not a reason to strand work
 
 
 def try_lock(run_id, item_id, worker):
-    """Atomic create. Two workers cannot take the same item."""
+    """Claim an item. Two workers can never both succeed for the same item.
+
+    The fast path (no lock yet) is a single O_EXCL create, which is atomic.
+
+    Stealing an expired lock is the subtle path: check-then-unlink-then-create
+    is three syscalls, so two workers racing one stale lock could both believe
+    they won. The steal is therefore serialised behind its own O_EXCL sidecar,
+    the staleness is re-checked while holding it, and the swap itself is an
+    atomic os.replace.
+    """
     path = lock_path(run_id, item_id)
     payload = json.dumps({"worker": worker, "heartbeat": now_ts()})
+
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise
+    else:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+        return True
+
+    if not lock_is_stale(path):
+        return False
+
+    steal = path + ".steal"
+    try:
+        sfd = os.open(steal, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except OSError:
+        # Someone is mid-steal. If their sidecar is itself abandoned, clear it
+        # and let the next claim retry; otherwise let them win this round.
+        if lock_is_stale(steal):
+            try:
+                os.unlink(steal)
+            except FileNotFoundError:
+                pass
+        return False
+
+    try:
+        os.close(sfd)
         if not lock_is_stale(path):
             return False
-        os.unlink(path)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+        os.replace(tmp, path)
+        return True
+    finally:
         try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except OSError:
-            return False
-    with os.fdopen(fd, "w") as fh:
-        fh.write(payload)
-    return True
+            os.unlink(steal)
+        except FileNotFoundError:
+            pass
 
 
 def open_items(run_id):

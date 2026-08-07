@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { spawnSync } from 'bun';
+import { spawnSync, spawn } from 'bun';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -60,5 +60,27 @@ describe('gstack-run queue', () => {
     // Even with the lock gone, a completed item is never handed out again.
     fs.rmSync(path.join(root, 'runs', runId, 'locks', `${itemId}.lock`), { force: true });
     expect(run(['claim', '--run', runId, '--worker', 'w3'], root).code).toBe(4);
+  });
+
+  test('two workers racing one stale lock: exactly one wins', async () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const itemId = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'dead'], root);
+
+    const lock = path.join(root, 'runs', runId, 'locks', `${itemId}.lock`);
+    const data = JSON.parse(fs.readFileSync(lock, 'utf-8'));
+    data.heartbeat = '2000-01-01T00:00:00+00:00';
+    fs.writeFileSync(lock, JSON.stringify(data));
+
+    const procs = ['a', 'b'].map((w) =>
+      spawn([PY, RUN, 'claim', '--run', runId, '--worker', w], {
+        env: { ...process.env, GSTACK_STATE_ROOT: root },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+    );
+    const codes = await Promise.all(procs.map((p) => p.exited));
+    expect(codes.filter((c) => c === 0).length).toBe(1);
   });
 });
