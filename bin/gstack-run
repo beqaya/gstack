@@ -106,64 +106,49 @@ def lock_is_stale(path):
         return True  # unreadable lock is not a reason to strand work
 
 
+def reap_stale_locks(run_id):
+    """Delete lock files whose heartbeat has expired.
+
+    Idempotent and ownership-free: two workers reaping the same lock is
+    harmless, because deleting a lock grants nobody the item. Whoever then
+    wins the O_EXCL create in try_lock owns it.
+    """
+    d = os.path.join(run_dir(run_id), "locks")
+    try:
+        names = os.listdir(d)
+    except FileNotFoundError:
+        return
+    for name in names:
+        if not name.endswith(".lock"):
+            continue
+        p = os.path.join(d, name)
+        if lock_is_stale(p):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass  # someone else reaped it, or it is briefly locked on Windows
+
+
 def try_lock(run_id, item_id, worker):
-    """Claim an item. Two workers can never both succeed for the same item.
+    """Acquire an item. Correct by construction: an O_EXCL create is the ONLY
+    way to acquire, and it is atomic, so two workers can never both win.
 
-    The fast path (no lock yet) is a single O_EXCL create, which is atomic.
-
-    Stealing an expired lock is the subtle path: check-then-unlink-then-create
-    is three syscalls, so two workers racing one stale lock could both believe
-    they won. The steal is therefore serialised behind its own O_EXCL sidecar,
-    the staleness is re-checked while holding it, and the swap itself is an
-    atomic os.replace.
+    Expired locks are cleared separately by reap_stale_locks(), which grants
+    no ownership — it only deletes. Earlier designs tried to steal a stale lock
+    in place (check, unlink, recreate); that is three syscalls with gaps, and
+    two revisions failed to close the resulting double-claim window. Reaping and
+    acquiring are kept apart precisely so acquisition stays a single atomic act.
     """
     path = lock_path(run_id, item_id)
-    payload = json.dumps({"worker": worker, "heartbeat": now_ts()})
-
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise
-    else:
-        with os.fdopen(fd, "w") as fh:
-            fh.write(payload)
-        return True
-
-    if not lock_is_stale(path):
         return False
-
-    steal = path + ".steal"
-    try:
-        sfd = os.open(steal, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except OSError as e:
-        if e.errno != errno.EEXIST:
-            raise
-        # Someone holds the steal lock. Clear it ONLY if genuinely abandoned:
-        # the sidecar carries its own heartbeat precisely so that a live holder
-        # is never mistaken for a dead one.
-        if lock_is_stale(steal):
-            try:
-                os.unlink(steal)
-            except FileNotFoundError:
-                pass
-        return False
-
-    try:
-        with os.fdopen(sfd, "w") as fh:
-            fh.write(json.dumps({"worker": worker, "heartbeat": now_ts()}))
-        if not lock_is_stale(path):
-            return False
-        tmp = "%s.%s.tmp" % (path, uuid.uuid4().hex)
-        with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write(payload)
-        os.replace(tmp, path)
-        return True
-    finally:
-        try:
-            os.unlink(steal)
-        except (FileNotFoundError, PermissionError, OSError):
-            pass
+    with os.fdopen(fd, "w") as fh:
+        fh.write(json.dumps({"worker": worker, "heartbeat": now_ts()}))
+    return True
 
 
 def open_items(run_id):
@@ -188,6 +173,7 @@ def cmd_add(args):
 
 def cmd_claim(args):
     read_manifest(args.run)
+    reap_stale_locks(args.run)
     for item_id, title in open_items(args.run):
         if try_lock(args.run, item_id, args.worker):
             append_jsonl(args.run, "queue.jsonl",
