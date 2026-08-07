@@ -58,6 +58,7 @@ Conventions:
 - [/qa-only](qa-only/SKILL.md): Report-only QA testing.
 - [/retro](retro/SKILL.md): Weekly engineering retrospective.
 - [/review](review/SKILL.md): Pre-landing PR review.
+- [/run-supervisor](run-supervisor/SKILL.md): Worker loop for unattended gstack runs.
 - [/scrape](scrape/SKILL.md): Pull data from a web page.
 - [/scratch](scratch/SKILL.md): Answers a side question mid-task using the full conversation context, while making "no writes happen" structurally true instead of a promise.
 - [/setup-browser-cookies](setup-browser-cookies/SKILL.md): Import cookies from your real Chromium browser into the headless browse session.

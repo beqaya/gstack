@@ -1,0 +1,76 @@
+---
+name: run-supervisor
+version: 0.1.0
+description: |
+  Worker loop for unattended gstack runs. Claims one item at a time from a run
+  directory, does the work, gets it verified, records the verdict, then parks or
+  completes it. Holds no state of its own — killing this mid-item is safe,
+  because the next session resumes from the run's files.
+  Use when asked to "start an unattended run", "work the queue", or "resume run
+  <id>". (gstack)
+allowed-tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Grep
+  - Glob
+  - Agent
+---
+
+{{PREAMBLE}}
+
+# /run-supervisor — the unattended worker loop
+
+Set `GSTACK_ACTIVE_RUN` to the run id for this session so the budget guard
+applies. Then repeat until `claim` exits 4:
+
+## Step 1: Claim
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run claim --run "$RUN" --worker "$SESSION"
+```
+
+Exit 4 means the queue is drained — go to Step 6.
+
+## Step 2: Do the work
+
+Do the item. Every tool call passes the budget guard; if it denies, go to Step 6
+with `--why budget-exhausted`.
+
+## Step 3: Classify
+
+```bash
+~/.claude/skills/gstack/bin/gstack-risk-classify --action "<what you did>"
+```
+
+## Step 4: Verify
+
+- `routine` — run the project's typecheck and tests.
+- `elevated` — dispatch a **different** agent to re-derive the result from
+  primary sources: re-run the command, read the file from disk, query the live
+  object. Brief it with the domain facts it needs, not just the task. A verifier
+  that reads your report and agrees has verified nothing.
+
+## Step 5: Record, then park or complete
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run journal --run "$RUN" --item "$ITEM" \
+  --claim "<what you assert>" --verdict PROVEN|UNPROVEN|CONTRADICTED \
+  --evidence "<what you observed>"
+```
+
+`CONTRADICTED` gets exactly one requeue, and the retry brief must carry the
+contradicting evidence — otherwise the second attempt repeats the first's
+reasoning and reaches the same wrong answer. After that, park it.
+
+Park anything needing founder approval; the run continues past it.
+
+## Step 6: Stop
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run stop --run "$RUN" --why <reason>
+~/.claude/skills/gstack/bin/gstack-run report --run "$RUN"
+```
+
+A run may end early. It may never report success it did not achieve.
