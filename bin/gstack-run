@@ -32,6 +32,7 @@ import uuid
 from datetime import datetime, timezone
 
 SCHEMA = 1
+VERDICTS = ("PROVEN", "UNPROVEN", "CONTRADICTED")
 
 
 def now_ts():
@@ -238,6 +239,36 @@ def cmd_status(args):
     print(json.dumps(read_manifest(args.run), indent=2))
 
 
+def cmd_journal(args):
+    read_manifest(args.run)
+    if args.verdict not in VERDICTS:
+        sys.stderr.write("verdict must be one of %s\n" % (VERDICTS,))
+        sys.exit(5)
+    entry_id = uuid.uuid4().hex[:10]
+    append_jsonl(args.run, "journal.jsonl", {
+        "entry_id": entry_id,
+        "item_id": args.item,
+        "claim": args.claim,
+        "verdict": args.verdict,
+        "evidence": args.evidence,
+        "supersedes": args.supersedes,
+    })
+    print(entry_id)
+
+
+def cmd_history(args):
+    read_manifest(args.run)
+    entries = [e for e in read_jsonl(args.run, "journal.jsonl")
+               if e["item_id"] == args.item]
+    # Attach the reverse link so a superseded claim is never returned alone.
+    by_id = {e["entry_id"]: e for e in entries}
+    for e in entries:
+        target = e.get("supersedes")
+        if target and target in by_id:
+            by_id[target]["superseded_by"] = e["entry_id"]
+    print(json.dumps(entries, indent=2))
+
+
 def main():
     p = argparse.ArgumentParser(prog="gstack-run")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -265,6 +296,20 @@ def main():
     pd.add_argument("--run", required=True)
     pd.add_argument("--item", required=True)
     pd.set_defaults(func=cmd_done)
+
+    pj = sub.add_parser("journal")
+    pj.add_argument("--run", required=True)
+    pj.add_argument("--item", required=True)
+    pj.add_argument("--claim", required=True)
+    pj.add_argument("--verdict", required=True)
+    pj.add_argument("--evidence", required=True)
+    pj.add_argument("--supersedes", default=None)
+    pj.set_defaults(func=cmd_journal)
+
+    ph = sub.add_parser("history")
+    ph.add_argument("--run", required=True)
+    ph.add_argument("--item", required=True)
+    ph.set_defaults(func=cmd_history)
 
     args = p.parse_args()
     args.func(args)
