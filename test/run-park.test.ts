@@ -45,4 +45,36 @@ describe('gstack-run park', () => {
     expect(parked.length).toBe(1);
     expect(parked[0].action).toBe('deploy');
   });
+
+  test('parking the same item twice is refused, so the founder sees one approval', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'deploy prod'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+
+    expect(run(['park', '--run', runId, '--item', item,
+                '--action', 'deploy', '--reason', 'prod'], root).code).toBe(0);
+
+    const second = run(['park', '--run', runId, '--item', item,
+                        '--action', 'deploy', '--reason', 'prod'], root);
+    expect(second.code).toBe(8);
+
+    const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
+    expect(parked.length).toBe(1);
+  });
+
+  test('parking an already-completed item is refused', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['done', '--run', runId, '--item', item], root);
+
+    const late = run(['park', '--run', runId, '--item', item,
+                      '--action', 'a', '--reason', 'r'], root);
+    expect(late.code).toBe(8);
+
+    const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
+    expect(parked.length).toBe(0);
+  });
 });
