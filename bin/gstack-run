@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""gstack-run — sole writer of unattended-run state.
+
+A run is a directory, not a process. State lives under
+<state-root>/runs/<run-id>/ and survives the session that created it, so a
+run resumes from disk rather than from a surviving process.
+
+Usage:
+    gstack-run init --goal <text> --budget <tokens>
+    gstack-run status --run <run-id>
+
+State root: $GSTACK_STATE_ROOT, else ~/.gstack
+
+Files:
+    manifest.json   whole-file rewrite; carries "schema" for version gating
+    queue.jsonl     append-only work items and transitions
+    journal.jsonl   append-only claims with verdict + evidence
+    parked.jsonl    append-only items blocked on founder approval
+    ledger.jsonl    append-only token spend
+
+Every file except manifest.json and resume.json is append-only. Appends at
+these sizes are atomic, so concurrent workers cannot corrupt each other, and
+a crash mid-write loses at most the trailing line rather than the file.
+"""
+import argparse
+import json
+import os
+import sys
+import uuid
+from datetime import datetime, timezone
+
+SCHEMA = 1
+
+
+def now_ts():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def state_root():
+    return os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack"
+    )
+
+
+def run_dir(run_id):
+    return os.path.join(state_root(), "runs", run_id)
+
+
+def read_manifest(run_id):
+    path = os.path.join(run_dir(run_id), "manifest.json")
+    if not os.path.exists(path):
+        sys.stderr.write("no such run: %s\n" % run_id)
+        sys.exit(2)
+    with open(path, "r", encoding="utf-8") as fh:
+        m = json.load(fh)
+    if m.get("schema") != SCHEMA:
+        sys.stderr.write(
+            "unsupported schema %r (expected %d) — halting rather than guessing\n"
+            % (m.get("schema"), SCHEMA)
+        )
+        sys.exit(3)
+    return m
+
+
+def cmd_init(args):
+    run_id = uuid.uuid4().hex[:12]
+    d = run_dir(run_id)
+    os.makedirs(os.path.join(d, "locks"), exist_ok=True)
+    manifest = {
+        "schema": SCHEMA,
+        "run_id": run_id,
+        "goal": args.goal,
+        "budget_tokens": args.budget,
+        "status": "active",
+        "created_at": now_ts(),
+    }
+    with open(os.path.join(d, "manifest.json"), "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2)
+    for name in ("queue.jsonl", "journal.jsonl", "parked.jsonl", "ledger.jsonl"):
+        open(os.path.join(d, name), "a", encoding="utf-8").close()
+    print(run_id)
+
+
+def cmd_status(args):
+    print(json.dumps(read_manifest(args.run), indent=2))
+
+
+def main():
+    p = argparse.ArgumentParser(prog="gstack-run")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    pi = sub.add_parser("init")
+    pi.add_argument("--goal", required=True)
+    pi.add_argument("--budget", type=int, required=True)
+    pi.set_defaults(func=cmd_init)
+
+    ps = sub.add_parser("status")
+    ps.add_argument("--run", required=True)
+    ps.set_defaults(func=cmd_status)
+
+    args = p.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
