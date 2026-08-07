@@ -41,6 +41,8 @@ describe('gstack-run init/status', () => {
     expect(m.goal).toBe('fix the widget');
     expect(m.budget_tokens).toBe(50000);
     expect(m.status).toBe('active');
+    expect(m.run_id).toBe(runId);
+    expect(m.created_at).toBeTruthy();
   });
 
   test('status on an unknown schema halts instead of guessing', () => {
