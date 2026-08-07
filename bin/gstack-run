@@ -307,6 +307,32 @@ def cmd_parked(args):
     print(json.dumps(read_jsonl(args.run, "parked.jsonl"), indent=2))
 
 
+def budget_state(run_id):
+    m = read_manifest(run_id)
+    spent = sum(int(r.get("tokens", 0)) for r in read_jsonl(run_id, "ledger.jsonl"))
+    budget = int(m["budget_tokens"])
+    remaining = max(0, budget - spent)
+    return {
+        "spent": spent,
+        "budget": budget,
+        "remaining": remaining,
+        "exhausted": spent >= budget,
+    }
+
+
+def cmd_budget_record(args):
+    read_manifest(args.run)
+    append_jsonl(args.run, "ledger.jsonl", {
+        "agent": args.agent, "phase": args.phase, "tokens": args.tokens,
+    })
+
+
+def cmd_budget_check(args):
+    state = budget_state(args.run)
+    print(json.dumps(state, indent=2))
+    sys.exit(6 if state["exhausted"] else 0)
+
+
 def main():
     p = argparse.ArgumentParser(prog="gstack-run")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -359,6 +385,17 @@ def main():
     pl = sub.add_parser("parked")
     pl.add_argument("--run", required=True)
     pl.set_defaults(func=cmd_parked)
+
+    pbr = sub.add_parser("budget-record")
+    pbr.add_argument("--run", required=True)
+    pbr.add_argument("--agent", required=True)
+    pbr.add_argument("--phase", required=True)
+    pbr.add_argument("--tokens", type=int, required=True)
+    pbr.set_defaults(func=cmd_budget_record)
+
+    pbc = sub.add_parser("budget-check")
+    pbc.add_argument("--run", required=True)
+    pbc.set_defaults(func=cmd_budget_check)
 
     args = p.parse_args()
     args.func(args)
