@@ -129,4 +129,21 @@ describe('gstack-run queue', () => {
     const codes = results.map(r => r.code);
     expect(codes.filter((c) => c === 0).length).toBe(1);
   });
+
+  test('a freshly-created but still-empty lock is respected, not reaped', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const itemId = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+
+    // Simulate a worker that has completed its O_EXCL create — which commits
+    // ownership — but has not yet written its heartbeat.
+    const lock = path.join(root, 'runs', runId, 'locks', `${itemId}.lock`);
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, '');
+
+    // The item is owned. A claim must NOT hand it to anyone else.
+    const other = run(['claim', '--run', runId, '--worker', 'other'], root);
+    expect(other.code).toBe(4);
+    expect(fs.existsSync(lock)).toBe(true);
+  });
 });

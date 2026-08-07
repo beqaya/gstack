@@ -94,7 +94,17 @@ def lock_ttl():
 
 
 def lock_is_stale(path):
-    """A worker that died holding a lock would strand its item forever."""
+    """Has this lock expired?
+
+    The heartbeat inside the file is authoritative. When the file cannot be
+    parsed we fall back to its age, and a file younger than the TTL is NEVER
+    stale: a lock is empty for a moment between the O_EXCL create that commits
+    ownership and the heartbeat write that follows, and without the age guard
+    a concurrent reaper reads that empty file, calls it abandoned, and deletes
+    a lock its owner is actively holding. Only an unparseable file OLDER than
+    the TTL is treated as abandoned, rather than allowed to strand work
+    forever.
+    """
     try:
         with open(path, "r", encoding="utf-8") as fh:
             hb = json.load(fh).get("heartbeat")
@@ -103,7 +113,11 @@ def lock_is_stale(path):
     except FileNotFoundError:
         return False
     except Exception:
-        return True  # unreadable lock is not a reason to strand work
+        try:
+            st = os.stat(path)
+        except FileNotFoundError:
+            return False
+        return (time.time() - st.st_mtime) > lock_ttl()
 
 
 def reap_stale_locks(run_id):
