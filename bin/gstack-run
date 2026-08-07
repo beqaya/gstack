@@ -280,6 +280,26 @@ def cmd_history(args):
     print(json.dumps(entries, indent=2))
 
 
+def cmd_park(args):
+    read_manifest(args.run)
+    append_jsonl(args.run, "parked.jsonl", {
+        "item_id": args.item,
+        "action": args.action,
+        "reason": args.reason,
+    })
+    # Mark it terminal in the queue so the run continues past it.
+    append_jsonl(args.run, "queue.jsonl", {"event": "done", "item_id": args.item})
+    try:
+        os.unlink(lock_path(args.run, args.item))
+    except FileNotFoundError:
+        pass
+
+
+def cmd_parked(args):
+    read_manifest(args.run)
+    print(json.dumps(read_jsonl(args.run, "parked.jsonl"), indent=2))
+
+
 def main():
     p = argparse.ArgumentParser(prog="gstack-run")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -321,6 +341,17 @@ def main():
     ph.add_argument("--run", required=True)
     ph.add_argument("--item", required=True)
     ph.set_defaults(func=cmd_history)
+
+    pp = sub.add_parser("park")
+    pp.add_argument("--run", required=True)
+    pp.add_argument("--item", required=True)
+    pp.add_argument("--action", required=True)
+    pp.add_argument("--reason", required=True)
+    pp.set_defaults(func=cmd_park)
+
+    pl = sub.add_parser("parked")
+    pl.add_argument("--run", required=True)
+    pl.set_defaults(func=cmd_parked)
 
     args = p.parse_args()
     args.func(args)
