@@ -89,6 +89,48 @@ describe('acceptance: a false claim of success cannot survive', () => {
     expect(run(['done', '--run', runId, '--item', item], root).code).toBe(0);
   });
 
+  test('done refuses an item with no journal entry at all', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+
+    const d = run(['done', '--run', runId, '--item', item], root);
+    expect(d.code).toBe(14);
+  });
+
+  test('done refuses an item id that was never added', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+
+    const d = run(['done', '--run', runId, '--item', 'nonexistent'], root);
+    expect(d.code).toBe(14);
+  });
+
+  test('done refuses an item whose latest verdict is UNPROVEN', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+         '--verdict', 'UNPROVEN', '--evidence', 'no evidence shown yet'], root);
+
+    const d = run(['done', '--run', runId, '--item', item], root);
+    expect(d.code).toBe(13);
+  });
+
+  test('done is allowed after a PROVEN verdict', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+         '--verdict', 'PROVEN', '--evidence', 'e'], root);
+
+    const d = run(['done', '--run', runId, '--item', item], root);
+    expect(d.code).toBe(0);
+  });
+
   test('a corrupt journal line blocks done rather than letting falsified work through', () => {
     const root = tmpRoot();
     const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;

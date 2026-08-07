@@ -23,11 +23,17 @@ import os
 import sys
 
 
-def emit(decision, reason=None):
-    out = {"hookEventName": "PreToolUse", "permissionDecision": decision}
-    if reason:
-        out["permissionDecisionReason"] = reason
+def deny(reason):
+    out = {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+           "permissionDecisionReason": reason}
     sys.stdout.write(json.dumps({"hookSpecificOutput": out}))
+    sys.exit(0)
+
+
+def allow():
+    # Print nothing. An explicit "allow" is a positive permission override —
+    # once this hook is wired in, that would auto-approve every tool call
+    # rather than staying neutral. Silence lets other checks still apply.
     sys.exit(0)
 
 
@@ -56,13 +62,13 @@ def main():
                 if line:
                     spent += int(json.loads(line).get("tokens", 0))
     except Exception as e:
-        emit("deny", "Run budget could not be determined (%s). Failing closed: "
-                     "overspending cannot be undone, a paused run can be resumed." % e)
+        deny("Run budget could not be determined (%s). Failing closed: "
+             "overspending cannot be undone, a paused run can be resumed." % e)
 
     if spent >= budget:
-        emit("deny", "Run %s has reached its token budget (%d/%d). The run should "
-                     "write its resume point and stop." % (run_id, spent, budget))
-    emit("allow")
+        deny("Run %s has reached its token budget (%d/%d). The run should "
+             "write its resume point and stop." % (run_id, spent, budget))
+    allow()
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ describe('gstack-run stop/report', () => {
     const a = run(['add', '--run', runId, '--title', 'done job'], root).stdout;
     run(['add', '--run', runId, '--title', 'unfinished job'], root);
     run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['journal', '--run', runId, '--item', a, '--claim', 'done', '--verdict', 'PROVEN', '--evidence', 'e'], root);
     run(['done', '--run', runId, '--item', a], root);
 
     const s = run(['stop', '--run', runId, '--why', 'budget-exhausted'], root);
@@ -87,6 +88,7 @@ describe('gstack-run stop/report', () => {
     run(['add', '--run', runId, '--title', 'never started'], root);
 
     run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['journal', '--run', runId, '--item', a, '--claim', 'done', '--verdict', 'PROVEN', '--evidence', 'e'], root);
     run(['done', '--run', runId, '--item', a], root);
     run(['claim', '--run', runId, '--worker', 'w2'], root);
     run(['park', '--run', runId, '--item', b, '--action', 'deploy', '--reason', 'prod'], root);
@@ -114,6 +116,33 @@ describe('gstack-run stop/report', () => {
     expect(bad.code).not.toBe(0);
     expect(fs.existsSync(path.join(root, 'runs', runId, 'resume.json'))).toBe(false);
     expect(JSON.parse(run(['report', '--run', runId], root).stdout).status).toBe('active');
+  });
+
+  test('a corrupt parked.jsonl line makes report fail closed rather than reclassifying an approval as completed', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '1000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'deploy prod'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['park', '--run', runId, '--item', item, '--action', 'deploy', '--reason', 'prod'], root);
+    fs.appendFileSync(path.join(root, 'runs', runId, 'parked.jsonl'), '{"item_id":"tru');
+
+    const rep = run(['report', '--run', runId], root);
+    expect(rep.code).toBe(10);
+    const parsed = JSON.parse(rep.stdout);
+    // The item is really parked, not completed — a corrupt line must not
+    // reclassify a founder approval into the completed count.
+    expect(parsed.completed).toBe(0);
+  });
+
+  test('report includes exhausted and ledger_unreadable_lines so a corrupt ledger is visible', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10'], root).stdout;
+    run(['budget-record', '--run', runId, '--agent', 'w', '--phase', 'work', '--tokens', '5'], root);
+    fs.appendFileSync(path.join(root, 'runs', runId, 'ledger.jsonl'), '{"agent":"w","tok');
+
+    const rep = JSON.parse(run(['report', '--run', runId], root).stdout);
+    expect(rep.exhausted).toBe(true);
+    expect(rep.ledger_unreadable_lines).toBe(1);
   });
 
   test('report works mid-run, before any stop', () => {

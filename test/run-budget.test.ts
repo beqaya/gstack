@@ -60,6 +60,28 @@ describe('gstack-run budget', () => {
     expect(JSON.parse(c.stdout).exhausted).toBe(true);
   });
 
+  test('a MISSING ledger.jsonl reports exhausted — init always creates it, so absence is anomalous', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    fs.rmSync(path.join(root, 'runs', runId, 'ledger.jsonl'), { force: true });
+
+    const c = run(['budget-check', '--run', runId], root);
+    expect(c.code).toBe(6);
+    const b = JSON.parse(c.stdout);
+    expect(b.exhausted).toBe(true);
+  });
+
+  test('an EMPTY ledger.jsonl is normal — spent 0, not exhausted', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+
+    const c = run(['budget-check', '--run', runId], root);
+    expect(c.code).toBe(0);
+    const b = JSON.parse(c.stdout);
+    expect(b.spent).toBe(0);
+    expect(b.exhausted).toBe(false);
+  });
+
   test('a corrupt ledger line fails CLOSED rather than under-counting', () => {
     const root = tmpRoot();
     const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;

@@ -34,8 +34,7 @@ describe('gstack-budget-guard', () => {
 
     const out = guard(root, runId);
     expect(out.code).toBe(0);
-    const d = JSON.parse(out.stdout);
-    expect(d.hookSpecificOutput.permissionDecision).toBe('allow');
+    expect(out.stdout).toBe('');
   });
 
   test('DENIES work once the ceiling is crossed', () => {
@@ -80,8 +79,9 @@ describe('gstack-budget-guard', () => {
     const root = tmpRoot();
     const runId = cli(['init', '--goal', 'g', '--budget', '1000'], root);
 
-    const d = JSON.parse(guard(root, runId).stdout);
-    expect(d.hookSpecificOutput.permissionDecision).toBe('allow');
+    const out = guard(root, runId);
+    expect(out.code).toBe(0);
+    expect(out.stdout).toBe('');
   });
 
   test('DENIES at exactly the budget, not one token later', () => {

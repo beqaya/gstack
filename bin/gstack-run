@@ -65,6 +65,22 @@ def read_manifest(run_id):
     return m
 
 
+def atomic_write_json(path, data):
+    """Write JSON via a sibling temp file + os.replace, which is atomic.
+
+    A crash mid-write to the real path leaves a truncated manifest or resume
+    file; a crash mid-write to the temp file leaves the real file untouched.
+    The temp file is written next to the target (same directory, same
+    volume) because os.replace across volumes raises on Windows.
+    """
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+
 def append_jsonl(run_id, name, record):
     record.setdefault("ts", now_ts())
     path = os.path.join(run_dir(run_id), name)
@@ -242,13 +258,20 @@ def cmd_done(args):
         )
         sys.exit(12)
     verdicts = [e.get("verdict") for e in entries if e.get("item_id") == args.item]
-    if verdicts and verdicts[-1] == "CONTRADICTED":
+    if not verdicts:
         sys.stderr.write(
-            "item %s has a CONTRADICTED verdict as its latest journal entry — "
-            "refusing to mark it done. Work whose verification was contradicted "
-            "must be parked for the founder, not counted as completed. If a "
-            "later attempt succeeded, journal that result first so the latest "
-            "verdict is no longer CONTRADICTED.\n" % args.item
+            "item %s has no journal entry — refusing to mark it done. Work is "
+            "closed out by recording a PROVEN verdict with its evidence, not by "
+            "asserting completion. An item id that was never added also lands "
+            "here, which is intended.\n" % args.item
+        )
+        sys.exit(14)
+    if verdicts[-1] != "PROVEN":
+        sys.stderr.write(
+            "item %s has latest verdict %s — refusing to mark it done. Only "
+            "PROVEN closes an item; UNPROVEN is the default state of a claim "
+            "whose evidence was never shown, and CONTRADICTED means "
+            "verification refuted it.\n" % (args.item, verdicts[-1])
         )
         sys.exit(13)
     append_jsonl(args.run, "queue.jsonl",
@@ -271,8 +294,7 @@ def cmd_init(args):
         "status": "active",
         "created_at": now_ts(),
     }
-    with open(os.path.join(d, "manifest.json"), "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=2)
+    atomic_write_json(os.path.join(d, "manifest.json"), manifest)
     for name in ("queue.jsonl", "journal.jsonl", "parked.jsonl", "ledger.jsonl"):
         open(os.path.join(d, name), "a", encoding="utf-8").close()
     print(run_id)
@@ -387,6 +409,11 @@ def budget_state(run_id):
                     spent += int(json.loads(line).get("tokens", 0))
                 except (ValueError, TypeError, AttributeError):
                     unreadable += 1
+    else:
+        # init always creates ledger.jsonl, so its absence is anomalous, not
+        # a run that has spent nothing. Treat it the same as one unreadable
+        # line so a deleted ledger cannot reopen a ceiling already crossed.
+        unreadable += 1
     budget = int(m["budget_tokens"])
     return {
         "spent": spent,
@@ -429,19 +456,17 @@ def cmd_stop(args):
         "open_items": remaining,
         "budget": budget_state(args.run),
     }
-    with open(os.path.join(run_dir(args.run), "resume.json"), "w", encoding="utf-8") as fh:
-        json.dump(resume, fh, indent=2)
+    atomic_write_json(os.path.join(run_dir(args.run), "resume.json"), resume)
     m["status"] = "stopped"
     m["stopped_because"] = args.why
-    with open(os.path.join(run_dir(args.run), "manifest.json"), "w", encoding="utf-8") as fh:
-        json.dump(m, fh, indent=2)
+    atomic_write_json(os.path.join(run_dir(args.run), "manifest.json"), m)
 
 
 def cmd_report(args):
     m = read_manifest(args.run)
-    done_ids = {r["item_id"] for r in read_jsonl(args.run, "queue.jsonl")
-                if r["event"] == "done"}
-    parked = read_jsonl(args.run, "parked.jsonl")
+    queue_records, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
+    done_ids = {r["item_id"] for r in queue_records if r["event"] == "done"}
+    parked, bad_parked = read_jsonl_counted(args.run, "parked.jsonl")
     parked_ids = {p["item_id"] for p in parked}
     b = budget_state(args.run)
     print(json.dumps({
@@ -453,7 +478,17 @@ def cmd_report(args):
         "open": len(open_items(args.run)),
         "spent": b["spent"],
         "budget": b["budget"],
+        "exhausted": b["exhausted"],
+        "ledger_unreadable_lines": b["ledger_unreadable_lines"],
     }, indent=2))
+    if bad_queue or bad_parked:
+        sys.stderr.write(
+            "%d unreadable line(s) in queue.jsonl, %d in parked.jsonl — this "
+            "report may be wrong: a dropped 'done' or park line can reclassify "
+            "a founder approval as completed work. Treat these numbers as "
+            "unreliable.\n" % (bad_queue, bad_parked)
+        )
+        sys.exit(10)
 
 
 def main():

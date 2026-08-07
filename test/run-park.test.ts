@@ -68,6 +68,7 @@ describe('gstack-run park', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'done', '--verdict', 'PROVEN', '--evidence', 'e'], root);
     run(['done', '--run', runId, '--item', item], root);
 
     const late = run(['park', '--run', runId, '--item', item,
