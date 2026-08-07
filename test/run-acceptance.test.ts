@@ -88,4 +88,21 @@ describe('acceptance: a false claim of success cannot survive', () => {
 
     expect(run(['done', '--run', runId, '--item', item], root).code).toBe(0);
   });
+
+  test('a corrupt journal line blocks done rather than letting falsified work through', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+         '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    // Simulate a crash while appending the entry that would have contradicted it.
+    fs.appendFileSync(path.join(root, 'runs', runId, 'journal.jsonl'), '{"verdict":"CONTRA');
+
+    const d = run(['done', '--run', runId, '--item', item], root);
+    expect(d.code).toBe(12);
+
+    run(['stop', '--run', runId, '--why', 'queue-drained'], root);
+    expect(JSON.parse(run(['report', '--run', runId], root).stdout).completed).toBe(0);
+  });
 });

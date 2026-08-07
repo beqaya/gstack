@@ -232,8 +232,16 @@ def cmd_claim(args):
 
 def cmd_done(args):
     read_manifest(args.run)
-    verdicts = [e.get("verdict") for e in read_jsonl(args.run, "journal.jsonl")
-                if e.get("item_id") == args.item]
+    entries, bad = read_jsonl_counted(args.run, "journal.jsonl")
+    if bad:
+        sys.stderr.write(
+            "%d unreadable line(s) in journal.jsonl — refusing to mark %s done. "
+            "A dropped line may be the CONTRADICTED verdict that should block "
+            "this, and counting falsified work as complete is the one outcome "
+            "this runtime exists to prevent.\n" % (bad, args.item)
+        )
+        sys.exit(12)
+    verdicts = [e.get("verdict") for e in entries if e.get("item_id") == args.item]
     if verdicts and verdicts[-1] == "CONTRADICTED":
         sys.stderr.write(
             "item %s has a CONTRADICTED verdict as its latest journal entry — "
