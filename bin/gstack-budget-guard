@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""gstack-budget-guard — PreToolUse hook enforcing an unattended run's token ceiling.
+
+A budget that asks nicely is not a budget. This runs on every tool call, so a
+runaway loop is stopped by the next call rather than by a periodic sweep that
+may never arrive.
+
+Enforcement direction: budget FAILS CLOSED. Detection guards fail open (a guard
+that blocks work when it malfunctions gets disabled, and then guards nothing),
+but overspending cannot be undone while a paused run can be resumed.
+
+Active only when GSTACK_ACTIVE_RUN is set; otherwise silent and inert.
+
+Output shape matters. This harness reads ONLY:
+    hookSpecificOutput.hookEventName == "PreToolUse"
+    hookSpecificOutput.permissionDecision
+    hookSpecificOutput.permissionDecisionReason
+A flat {"permissionDecision": ...} is silently ignored — that is how an earlier
+guard shipped looking correct and blocking nothing.
+"""
+import json
+import os
+import sys
+
+
+def emit(decision, reason=None):
+    out = {"hookEventName": "PreToolUse", "permissionDecision": decision}
+    if reason:
+        out["permissionDecisionReason"] = reason
+    sys.stdout.write(json.dumps({"hookSpecificOutput": out}))
+    sys.exit(0)
+
+
+def main():
+    sys.stdin.read()  # drain payload; decision does not depend on it
+    run_id = os.environ.get("GSTACK_ACTIVE_RUN")
+    if not run_id:
+        sys.exit(0)
+
+    root = os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack")
+    d = os.path.join(root, "runs", run_id)
+
+    try:
+        with open(os.path.join(d, "manifest.json"), "r", encoding="utf-8") as fh:
+            budget = int(json.load(fh)["budget_tokens"])
+        spent = 0
+        ledger = os.path.join(d, "ledger.jsonl")
+        if os.path.exists(ledger):
+            with open(ledger, "r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line:
+                        spent += int(json.loads(line).get("tokens", 0))
+    except Exception as e:
+        emit("deny", "Run budget could not be determined (%s). Failing closed: "
+                     "overspending cannot be undone, a paused run can be resumed." % e)
+
+    if spent >= budget:
+        emit("deny", "Run %s has reached its token budget (%d/%d). The run should "
+                     "write its resume point and stop." % (run_id, spent, budget))
+    emit("allow")
+
+
+if __name__ == "__main__":
+    main()
