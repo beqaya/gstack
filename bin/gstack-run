@@ -117,6 +117,13 @@ def lock_is_stale(path):
             st = os.stat(path)
         except FileNotFoundError:
             return False
+        except OSError:
+            # Cannot judge this file right now (e.g. a Windows sharing
+            # violation). Report it live rather than stale: refusing to reap
+            # an abandoned lock merely delays reclaim until the next pass,
+            # whereas deleting a lock someone is holding hands the same item
+            # to two workers.
+            return False
         return (time.time() - st.st_mtime) > lock_ttl()
 
 
