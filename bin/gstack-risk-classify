@@ -33,6 +33,13 @@ ELEVATED_PATTERNS = [
     "email",
     "secret",
     "credential",
+    "gcloud ",
+    ".env",
+    ".pem",
+    ".ssh",
+    "workflows/",
+    "sudo ",
+    "publish",
 ]
 
 
