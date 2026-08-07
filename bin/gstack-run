@@ -401,6 +401,42 @@ def cmd_budget_check(args):
     sys.exit(6 if state["exhausted"] else 0)
 
 
+def cmd_stop(args):
+    m = read_manifest(args.run)
+    remaining = [{"item_id": i, "title": t} for i, t in open_items(args.run)]
+    resume = {
+        "stopped_at": now_ts(),
+        "stopped_because": args.why,
+        "open_items": remaining,
+        "budget": budget_state(args.run),
+    }
+    with open(os.path.join(run_dir(args.run), "resume.json"), "w", encoding="utf-8") as fh:
+        json.dump(resume, fh, indent=2)
+    m["status"] = "stopped"
+    m["stopped_because"] = args.why
+    with open(os.path.join(run_dir(args.run), "manifest.json"), "w", encoding="utf-8") as fh:
+        json.dump(m, fh, indent=2)
+
+
+def cmd_report(args):
+    m = read_manifest(args.run)
+    done_ids = {r["item_id"] for r in read_jsonl(args.run, "queue.jsonl")
+                if r["event"] == "done"}
+    parked = read_jsonl(args.run, "parked.jsonl")
+    parked_ids = {p["item_id"] for p in parked}
+    b = budget_state(args.run)
+    print(json.dumps({
+        "run_id": m["run_id"],
+        "status": m["status"],
+        "stopped_because": m.get("stopped_because"),
+        "completed": len(done_ids - parked_ids),
+        "parked": len(parked_ids),
+        "open": len(open_items(args.run)),
+        "spent": b["spent"],
+        "budget": b["budget"],
+    }, indent=2))
+
+
 def main():
     p = argparse.ArgumentParser(prog="gstack-run")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -464,6 +500,16 @@ def main():
     pbc = sub.add_parser("budget-check")
     pbc.add_argument("--run", required=True)
     pbc.set_defaults(func=cmd_budget_check)
+
+    pst = sub.add_parser("stop")
+    pst.add_argument("--run", required=True)
+    pst.add_argument("--why", required=True,
+                     choices=["queue-drained", "budget-exhausted", "breaker-tripped"])
+    pst.set_defaults(func=cmd_stop)
+
+    prp = sub.add_parser("report")
+    prp.add_argument("--run", required=True)
+    prp.set_defaults(func=cmd_report)
 
     args = p.parse_args()
     args.func(args)

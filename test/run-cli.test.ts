@@ -58,3 +58,24 @@ describe('gstack-run init/status', () => {
     expect(st.stderr).toContain('schema');
   });
 });
+
+describe('gstack-run stop/report', () => {
+  test('stopping writes a resume point and the report separates done from open', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '1000'], root).stdout;
+    const a = run(['add', '--run', runId, '--title', 'done job'], root).stdout;
+    run(['add', '--run', runId, '--title', 'unfinished job'], root);
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['done', '--run', runId, '--item', a], root);
+
+    const s = run(['stop', '--run', runId, '--why', 'budget-exhausted'], root);
+    expect(s.code).toBe(0);
+    expect(fs.existsSync(path.join(root, 'runs', runId, 'resume.json'))).toBe(true);
+
+    const rep = JSON.parse(run(['report', '--run', runId], root).stdout);
+    expect(rep.status).toBe('stopped');
+    expect(rep.stopped_because).toBe('budget-exhausted');
+    expect(rep.completed).toBe(1);
+    expect(rep.open).toBe(1);
+  });
+});
