@@ -82,7 +82,10 @@ def read_jsonl(run_id, name):
         for line in fh:
             line = line.strip()
             if line:
-                out.append(json.loads(line))
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    continue
     return out
 
 
@@ -309,19 +312,41 @@ def cmd_parked(args):
 
 def budget_state(run_id):
     m = read_manifest(run_id)
-    spent = sum(int(r.get("tokens", 0)) for r in read_jsonl(run_id, "ledger.jsonl"))
+    spent = 0
+    unreadable = 0
+    path = os.path.join(run_dir(run_id), "ledger.jsonl")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    spent += int(json.loads(line).get("tokens", 0))
+                except (ValueError, TypeError, AttributeError):
+                    unreadable += 1
     budget = int(m["budget_tokens"])
-    remaining = max(0, budget - spent)
     return {
         "spent": spent,
         "budget": budget,
-        "remaining": remaining,
-        "exhausted": spent >= budget,
+        "remaining": max(0, budget - spent),
+        # Fail closed: if any line is unreadable we cannot know true spend, and
+        # under-counting would breach the ceiling silently. Overspending cannot
+        # be undone; a paused run can be resumed.
+        "exhausted": spent >= budget or unreadable > 0,
+        "ledger_unreadable_lines": unreadable,
     }
 
 
 def cmd_budget_record(args):
     read_manifest(args.run)
+    if args.tokens < 0:
+        sys.stderr.write(
+            "--tokens must not be negative (got %d). A negative record would "
+            "deflate spend and reopen a ceiling that had already been reached.\n"
+            % args.tokens
+        )
+        sys.exit(9)
     append_jsonl(args.run, "ledger.jsonl", {
         "agent": args.agent, "phase": args.phase, "tokens": args.tokens,
     })

@@ -40,4 +40,37 @@ describe('gstack-run budget', () => {
     expect(b.exhausted).toBe(true);
     expect(b.remaining).toBe(0);
   });
+
+  test('a negative token record is refused', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '1000'], root).stdout;
+    const bad = run(['budget-record', '--run', runId, '--agent', 'w',
+                     '--phase', 'work', '--tokens', '-500'], root);
+    expect(bad.code).toBe(9);
+    const b = JSON.parse(run(['budget-check', '--run', runId], root).stdout);
+    expect(b.spent).toBe(0);
+  });
+
+  test('spending exactly the budget counts as exhausted', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    run(['budget-record', '--run', runId, '--agent', 'w', '--phase', 'work', '--tokens', '100'], root);
+    const c = run(['budget-check', '--run', runId], root);
+    expect(c.code).toBe(6);
+    expect(JSON.parse(c.stdout).exhausted).toBe(true);
+  });
+
+  test('a corrupt ledger line fails CLOSED rather than under-counting', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    run(['budget-record', '--run', runId, '--agent', 'w', '--phase', 'work', '--tokens', '5'], root);
+    // Simulate a crash mid-append.
+    fs.appendFileSync(path.join(root, 'runs', runId, 'ledger.jsonl'), '{"agent":"w","tok');
+
+    const c = run(['budget-check', '--run', runId], root);
+    expect(c.code).toBe(6);
+    const b = JSON.parse(c.stdout);
+    expect(b.exhausted).toBe(true);
+    expect(b.ledger_unreadable_lines).toBe(1);
+  });
 });
