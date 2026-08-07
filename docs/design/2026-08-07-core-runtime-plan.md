@@ -366,34 +366,81 @@ def lock_ttl():
 
 
 def lock_is_stale(path):
-    """A worker that died holding a lock would strand its item forever."""
+    """Has this lock expired?
+
+    The heartbeat inside the file is authoritative. When the file cannot be
+    parsed we fall back to its age, and a file younger than the TTL is NEVER
+    stale: a lock is empty for a moment between the O_EXCL create that commits
+    ownership and the heartbeat write that follows, and without the age guard
+    a concurrent reaper reads that empty file, calls it abandoned, and deletes
+    a lock its owner is actively holding. Only an unparseable file OLDER than
+    the TTL is treated as abandoned, rather than allowed to strand work
+    forever.
+    """
     try:
         with open(path, "r", encoding="utf-8") as fh:
             hb = json.load(fh).get("heartbeat")
         age = (datetime.now(timezone.utc) - datetime.fromisoformat(hb)).total_seconds()
         return age > lock_ttl()
+    except FileNotFoundError:
+        return False
     except Exception:
-        return True  # unreadable lock is not a reason to strand work
+        try:
+            st = os.stat(path)
+        except FileNotFoundError:
+            return False
+        except OSError:
+            # Cannot judge this file right now (e.g. a Windows sharing
+            # violation). Report it live rather than stale: refusing to reap
+            # an abandoned lock merely delays reclaim until the next pass,
+            # whereas deleting a lock someone is holding hands the same item
+            # to two workers.
+            return False
+        return (time.time() - st.st_mtime) > lock_ttl()
+
+
+def reap_stale_locks(run_id):
+    """Delete lock files whose heartbeat has expired.
+
+    Idempotent and ownership-free: two workers reaping the same lock is
+    harmless, because deleting a lock grants nobody the item. Whoever then
+    wins the O_EXCL create in try_lock owns it.
+    """
+    d = os.path.join(run_dir(run_id), "locks")
+    try:
+        names = os.listdir(d)
+    except FileNotFoundError:
+        return
+    for name in names:
+        if not name.endswith(".lock"):
+            continue
+        p = os.path.join(d, name)
+        if lock_is_stale(p):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass  # someone else reaped it, or it is briefly locked on Windows
 
 
 def try_lock(run_id, item_id, worker):
-    """Atomic create. Two workers cannot take the same item."""
+    """Acquire an item. Correct by construction: an O_EXCL create is the ONLY
+    way to acquire, and it is atomic, so two workers can never both win.
+
+    Expired locks are cleared separately by reap_stale_locks(), which grants
+    no ownership — it only deletes. Earlier designs tried to steal a stale lock
+    in place (check, unlink, recreate); that is three syscalls with gaps, and
+    two revisions failed to close the resulting double-claim window. Reaping and
+    acquiring are kept apart precisely so acquisition stays a single atomic act.
+    """
     path = lock_path(run_id, item_id)
-    payload = json.dumps({"worker": worker, "heartbeat": now_ts()})
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except OSError as e:
         if e.errno != errno.EEXIST:
             raise
-        if not lock_is_stale(path):
-            return False
-        os.unlink(path)
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except OSError:
-            return False
+        return False
     with os.fdopen(fd, "w") as fh:
-        fh.write(payload)
+        fh.write(json.dumps({"worker": worker, "heartbeat": now_ts()}))
     return True
 
 
