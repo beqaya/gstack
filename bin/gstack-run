@@ -293,8 +293,8 @@ def cmd_journal(args):
 
 def cmd_history(args):
     read_manifest(args.run)
-    entries = [e for e in read_jsonl(args.run, "journal.jsonl")
-               if e["item_id"] == args.item]
+    all_entries, bad = read_jsonl_counted(args.run, "journal.jsonl")
+    entries = [e for e in all_entries if e.get("item_id") == args.item]
     # Attach the reverse link so a superseded claim is never returned alone.
     by_id = {e["entry_id"]: e for e in entries}
     for e in entries:
@@ -302,6 +302,13 @@ def cmd_history(args):
         if target and target in by_id:
             by_id[target]["superseded_by"] = e["entry_id"]
     print(json.dumps(entries, indent=2))
+    if bad:
+        sys.stderr.write(
+            "%d unreadable line(s) in journal.jsonl — a dropped line may be a "
+            "SUPERSEDING entry, in which case a contradicted claim above is "
+            "shown as if it still stands. Treat this history as unreliable.\n" % bad
+        )
+        sys.exit(12)
 
 
 def cmd_park(args):

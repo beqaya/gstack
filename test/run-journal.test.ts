@@ -110,4 +110,18 @@ describe('gstack-run journal', () => {
     expect(h.filter((x: any) => x.supersedes === first).map((x: any) => x.entry_id).sort())
       .toEqual([second, third].sort());
   });
+
+  test('a corrupt journal line fails closed rather than showing a contradicted claim as current', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the fix works',
+         '--verdict', 'PROVEN', '--evidence', 'looked right'], root);
+    // Simulate a crash while appending the entry that would have overturned it.
+    fs.appendFileSync(path.join(root, 'runs', runId, 'journal.jsonl'), '{"entry_id":"tru');
+
+    const h = run(['history', '--run', runId, '--item', item], root);
+    expect(h.code).toBe(12);
+    expect(h.stderr).toContain('unreliable');
+  });
 });
