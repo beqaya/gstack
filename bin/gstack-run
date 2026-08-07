@@ -232,6 +232,17 @@ def cmd_claim(args):
 
 def cmd_done(args):
     read_manifest(args.run)
+    verdicts = [e.get("verdict") for e in read_jsonl(args.run, "journal.jsonl")
+                if e.get("item_id") == args.item]
+    if verdicts and verdicts[-1] == "CONTRADICTED":
+        sys.stderr.write(
+            "item %s has a CONTRADICTED verdict as its latest journal entry — "
+            "refusing to mark it done. Work whose verification was contradicted "
+            "must be parked for the founder, not counted as completed. If a "
+            "later attempt succeeded, journal that result first so the latest "
+            "verdict is no longer CONTRADICTED.\n" % args.item
+        )
+        sys.exit(13)
     append_jsonl(args.run, "queue.jsonl",
                  {"event": "done", "item_id": args.item})
     try:

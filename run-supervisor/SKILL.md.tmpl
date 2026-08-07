@@ -60,6 +60,15 @@ with `--why budget-exhausted`.
   --evidence "<what you observed>"
 ```
 
+**If the verdict is PROVEN**, close the item out:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run done --run "$RUN" --item "$ITEM"
+```
+
+`done` refuses an item whose latest verdict is CONTRADICTED — the runtime will
+not let falsified work be counted as complete, whatever this skill says.
+
 `CONTRADICTED` gets exactly one requeue, and the retry brief must carry the
 contradicting evidence — otherwise the second attempt repeats the first's
 reasoning and reaches the same wrong answer. After that, park it.

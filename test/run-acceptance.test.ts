@@ -50,4 +50,42 @@ describe('acceptance: a false claim of success cannot survive', () => {
     expect(report.completed).toBe(0);
     expect(report.parked).toBe(1);
   });
+
+  test('a CONTRADICTED item cannot be marked done, only parked', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'make the guard block edits'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'lying-worker'], root);
+
+    const claimEntry = run(['journal', '--run', runId, '--item', item,
+      '--claim', 'the guard now blocks edits', '--verdict', 'PROVEN',
+      '--evidence', 'I am confident it works'], root).stdout;
+    run(['journal', '--run', runId, '--item', item,
+      '--claim', 'the guard now blocks edits', '--verdict', 'CONTRADICTED',
+      '--evidence', 'live edit succeeded; file bytes changed on disk',
+      '--supersedes', claimEntry], root);
+
+    // The worker tries to close it out as finished anyway.
+    const sneaky = run(['done', '--run', runId, '--item', item], root);
+    expect(sneaky.code).toBe(13);
+
+    run(['stop', '--run', runId, '--why', 'queue-drained'], root);
+    const report = JSON.parse(run(['report', '--run', runId], root).stdout);
+    expect(report.completed).toBe(0);
+  });
+
+  test('a retry that succeeds CAN be marked done', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'fix it properly'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+
+    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+      '--verdict', 'CONTRADICTED', '--evidence', 'did not work'], root).stdout;
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+      '--verdict', 'PROVEN', '--evidence', 'reran the command, output correct',
+      '--supersedes', first], root);
+
+    expect(run(['done', '--run', runId, '--item', item], root).code).toBe(0);
+  });
 });
