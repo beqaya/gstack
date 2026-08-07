@@ -56,4 +56,58 @@ describe('gstack-run journal', () => {
                      '--verdict', 'PROBABLY', '--evidence', 'e'], root);
     expect(bad.code).not.toBe(0);
   });
+
+  test('a --supersedes target that does not exist is rejected', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    const bad = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                     '--verdict', 'CONTRADICTED', '--evidence', 'e',
+                     '--supersedes', 'deadbeef00'], root);
+    expect(bad.code).toBe(7);
+    const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
+    expect(h.length).toBe(0);
+  });
+
+  test('a --supersedes target belonging to a DIFFERENT item is rejected', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const itemA = run(['add', '--run', runId, '--title', 'a'], root).stdout;
+    const itemB = run(['add', '--run', runId, '--title', 'b'], root).stdout;
+
+    const entryA = run(['journal', '--run', runId, '--item', itemA, '--claim', 'x works',
+                        '--verdict', 'PROVEN', '--evidence', 'looked right'], root).stdout;
+
+    // Filing the correction under the wrong item must not silently orphan it.
+    const wrong = run(['journal', '--run', runId, '--item', itemB, '--claim', 'x works',
+                       '--verdict', 'CONTRADICTED', '--evidence', 'it does not',
+                       '--supersedes', entryA], root);
+    expect(wrong.code).toBe(7);
+
+    // The original claim must not be left standing alone as PROVEN by accident.
+    const h = JSON.parse(run(['history', '--run', runId, '--item', itemA], root).stdout);
+    expect(h.length).toBe(1);
+    expect(h[0].superseded_by).toBeUndefined();
+  });
+
+  test('two entries superseding the same claim: last wins, both links recoverable', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                       '--verdict', 'PROVEN', '--evidence', 'e1'], root).stdout;
+    const second = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                        '--verdict', 'UNPROVEN', '--evidence', 'e2',
+                        '--supersedes', first], root).stdout;
+    const third = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                       '--verdict', 'CONTRADICTED', '--evidence', 'e3',
+                       '--supersedes', first], root).stdout;
+
+    const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
+    const original = h.find((x: any) => x.entry_id === first);
+    expect(original.superseded_by).toBe(third);
+    // Both superseders still record what they overturned.
+    expect(h.filter((x: any) => x.supersedes === first).map((x: any) => x.entry_id).sort())
+      .toEqual([second, third].sort());
+  });
 });

@@ -244,6 +244,17 @@ def cmd_journal(args):
     if args.verdict not in VERDICTS:
         sys.stderr.write("verdict must be one of %s\n" % (VERDICTS,))
         sys.exit(5)
+    if args.supersedes:
+        known = {e["entry_id"] for e in read_jsonl(args.run, "journal.jsonl")
+                 if e["item_id"] == args.item}
+        if args.supersedes not in known:
+            sys.stderr.write(
+                "--supersedes %s is not an entry of item %s. A superseding entry "
+                "must be filed under the same item as the claim it overturns, or "
+                "the contradiction is never linked and the stale claim is returned "
+                "alone.\n" % (args.supersedes, args.item)
+            )
+            sys.exit(7)
     entry_id = uuid.uuid4().hex[:10]
     append_jsonl(args.run, "journal.jsonl", {
         "entry_id": entry_id,
