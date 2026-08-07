@@ -78,4 +78,54 @@ describe('gstack-run stop/report', () => {
     expect(rep.completed).toBe(1);
     expect(rep.open).toBe(1);
   });
+
+  test('parked work is reported separately, never counted as completed', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '1000'], root).stdout;
+    const a = run(['add', '--run', runId, '--title', 'finished'], root).stdout;
+    const b = run(['add', '--run', runId, '--title', 'needs approval'], root).stdout;
+    run(['add', '--run', runId, '--title', 'never started'], root);
+
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['done', '--run', runId, '--item', a], root);
+    run(['claim', '--run', runId, '--worker', 'w2'], root);
+    run(['park', '--run', runId, '--item', b, '--action', 'deploy', '--reason', 'prod'], root);
+
+    const rep = JSON.parse(run(['report', '--run', runId], root).stdout);
+    expect(rep.completed).toBe(1);
+    expect(rep.parked).toBe(1);
+    expect(rep.open).toBe(1);
+  });
+
+  test('all three stop reasons write a resume point', () => {
+    for (const why of ['queue-drained', 'budget-exhausted', 'breaker-tripped']) {
+      const root = tmpRoot();
+      const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+      expect(run(['stop', '--run', runId, '--why', why], root).code).toBe(0);
+      expect(fs.existsSync(path.join(root, 'runs', runId, 'resume.json'))).toBe(true);
+      expect(JSON.parse(run(['report', '--run', runId], root).stdout).stopped_because).toBe(why);
+    }
+  });
+
+  test('an unrecognised stop reason is rejected and nothing is written', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const bad = run(['stop', '--run', runId, '--why', 'because-i-said-so'], root);
+    expect(bad.code).not.toBe(0);
+    expect(fs.existsSync(path.join(root, 'runs', runId, 'resume.json'))).toBe(false);
+    expect(JSON.parse(run(['report', '--run', runId], root).stdout).status).toBe('active');
+  });
+
+  test('report works mid-run, before any stop', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '500'], root).stdout;
+    run(['add', '--run', runId, '--title', 'in flight'], root);
+    run(['budget-record', '--run', runId, '--agent', 'w', '--phase', 'work', '--tokens', '25'], root);
+
+    const rep = JSON.parse(run(['report', '--run', runId], root).stdout);
+    expect(rep.status).toBe('active');
+    expect(rep.stopped_because).toBeNull();
+    expect(rep.open).toBe(1);
+    expect(rep.spent).toBe(25);
+  });
 });
