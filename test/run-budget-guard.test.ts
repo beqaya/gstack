@@ -65,4 +65,31 @@ describe('gstack-budget-guard', () => {
     expect(out.code).toBe(0);
     expect(out.stdout).toBe('');
   });
+
+  test('DENIES when the ledger file has been removed', () => {
+    const root = tmpRoot();
+    const runId = cli(['init', '--goal', 'g', '--budget', '1000'], root);
+    cli(['budget-record', '--run', runId, '--agent', 'w', '--phase', 'work', '--tokens', '10'], root);
+    fs.rmSync(path.join(root, 'runs', runId, 'ledger.jsonl'), { force: true });
+
+    const d = JSON.parse(guard(root, runId).stdout);
+    expect(d.hookSpecificOutput.permissionDecision).toBe('deny');
+  });
+
+  test('ALLOWS an empty ledger — a run that has spent nothing', () => {
+    const root = tmpRoot();
+    const runId = cli(['init', '--goal', 'g', '--budget', '1000'], root);
+
+    const d = JSON.parse(guard(root, runId).stdout);
+    expect(d.hookSpecificOutput.permissionDecision).toBe('allow');
+  });
+
+  test('DENIES at exactly the budget, not one token later', () => {
+    const root = tmpRoot();
+    const runId = cli(['init', '--goal', 'g', '--budget', '100'], root);
+    cli(['budget-record', '--run', runId, '--agent', 'w', '--phase', 'work', '--tokens', '100'], root);
+
+    const d = JSON.parse(guard(root, runId).stdout);
+    expect(d.hookSpecificOutput.permissionDecision).toBe('deny');
+  });
 });

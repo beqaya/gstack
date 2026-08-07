@@ -46,12 +46,15 @@ def main():
             budget = int(json.load(fh)["budget_tokens"])
         spent = 0
         ledger = os.path.join(d, "ledger.jsonl")
-        if os.path.exists(ledger):
-            with open(ledger, "r", encoding="utf-8") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if line:
-                        spent += int(json.loads(line).get("tokens", 0))
+        if not os.path.exists(ledger):
+            raise RuntimeError(
+                "ledger.jsonl is missing — init always creates it, so its absence "
+                "means the spend record was removed")
+        with open(ledger, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    spent += int(json.loads(line).get("tokens", 0))
     except Exception as e:
         emit("deny", "Run budget could not be determined (%s). Failing closed: "
                      "overspending cannot be undone, a paused run can be resumed." % e)
