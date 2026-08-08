@@ -837,8 +837,18 @@ with `--why budget-exhausted`.
 ~/.claude/skills/gstack/bin/gstack-run done --run "$RUN" --item "$ITEM"
 ```
 
-`done` refuses an item whose latest verdict is CONTRADICTED — the runtime will
-not let falsified work be counted as complete, whatever this skill says.
+`done` is the ONLY way to close an item, and it refuses unless the item's latest
+journal verdict is exactly `PROVEN`:
+
+- no journal entry at all → exit 14 (an item id that was never added lands here too)
+- latest verdict `UNPROVEN` → exit 13 — the default state of a claim whose
+  evidence was never shown
+- latest verdict `CONTRADICTED` → exit 13
+- journal unreadable → exit 12
+
+The runtime will not let unverified work be counted as complete, whatever this
+skill says. Recording the verdict is not paperwork after the fact; it IS how
+work gets closed out.
 
 `CONTRADICTED` gets exactly one requeue, and the retry brief must carry the
 contradicting evidence — otherwise the second attempt repeats the first's
