@@ -46,6 +46,11 @@ ELEVATED_PATTERNS = [
     # of a command rather than on what a change MEANS.
     "edit bin/",
     "modify bin/",
+    "update bin/",
+    "patch bin/",
+    "rewrite bin/",
+    "refactor bin/",
+    "change bin/",
     "budget-guard",
     "generated-guard",
     "risk-classify",

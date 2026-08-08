@@ -530,9 +530,15 @@ def cmd_parked(args):
     awaiting, decisions, bad = parked_state(args.run)
     for p in awaiting:
         p["status"] = "awaiting"
+    parks_by_id = {p.get("item_id"): p for p in
+                   [r for r in read_jsonl(args.run, "parked.jsonl") if "action" in r]}
     settled = []
     for iid, d in decisions.items():
+        orig = parks_by_id.get(iid, {})
+        # Keep what it was ABOUT, not just what was decided — a decision
+        # with no action is unreadable a week later.
         settled.append({"item_id": iid, "status": "resolved",
+                        "action": orig.get("action"), "reason": orig.get("reason"),
                         "decision": d.get("decision"), "note": d.get("note")})
     records = awaiting + settled
     print(json.dumps(records, indent=2))
