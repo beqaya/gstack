@@ -81,8 +81,13 @@ verified it:
 ~/.claude/skills/gstack/bin/gstack-run journal --run "$RUN" --item "$ITEM" \
   --claim "<what you assert>" --verdict PROVEN|UNPROVEN|CONTRADICTED \
   --evidence "<what you observed>" \
-  --tier "$TIER" [--verifier "<the agent that verified>"]
+  --tier "$TIER" [--verifier "<the agent that verified>"] \
+  [--stage "$STAGE"]
 ```
+
+Pass `--stage` whenever the item has a pipeline. That is what advances
+`next_stage`: only a stage closed PROVEN counts as finished, so a stage that came
+back UNPROVEN or CONTRADICTED is handed out again rather than skipped past.
 
 `--tier elevated` without `--verifier` is refused (exit 16), and a verifier that
 also claimed the item is refused (exit 15). Recording who verified is what makes
