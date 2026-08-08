@@ -11,7 +11,11 @@ const PY = process.env.GSTACK_PY || 'python';
 function tmpRoot(): string { return fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-a-')); }
 function run(args: string[], root: string) {
   const o = spawnSync([PY, RUN, ...args], { env: { ...process.env, GSTACK_STATE_ROOT: root } });
-  return { code: o.exitCode, stdout: o.stdout.toString().trim() };
+  return {
+    code: o.exitCode,
+    stdout: o.stdout.toString().trim(),
+    stderr: o.stderr.toString().trim(),
+  };
 }
 
 describe('acceptance: a false claim of success cannot survive', () => {
@@ -146,5 +150,47 @@ describe('acceptance: a false claim of success cannot survive', () => {
 
     run(['stop', '--run', runId, '--why', 'queue-drained'], root);
     expect(JSON.parse(run(['report', '--run', runId], root).stdout).completed).toBe(0);
+  });
+});
+
+describe('tier derived from touched paths, not from prose', () => {
+  function ready(root: string) {
+    const runId = run(['init', '--goal', 'g', '--budget', '1000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    return { runId, item };
+  }
+
+  test('touching enforcement code while claiming routine is refused', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+         '--verdict', 'PROVEN', '--evidence', 'e', '--tier', 'routine'], root);
+
+    const sneaky = run(['done', '--run', runId, '--item', item,
+                        '--touched', 'bin/example-tool'], root);
+    expect(sneaky.code).toBe(19);
+    expect(sneaky.stderr).toContain('not from what was claimed');
+  });
+
+  test('touching enforcement code with elevated + verifier is allowed', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+         '--verdict', 'PROVEN', '--evidence', 'e',
+         '--tier', 'elevated', '--verifier', 'w2'], root);
+
+    expect(run(['done', '--run', runId, '--item', item,
+                '--touched', 'bin/example-tool'], root).code).toBe(0);
+  });
+
+  test('ordinary files are unaffected — routine still closes', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+         '--verdict', 'PROVEN', '--evidence', 'e', '--tier', 'routine'], root);
+
+    expect(run(['done', '--run', runId, '--item', item,
+                '--touched', 'docs/notes.md'], root).code).toBe(0);
   });
 });

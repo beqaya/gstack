@@ -273,6 +273,31 @@ def cmd_claim(args):
     sys.exit(4)
 
 
+# Path fragments that make an item elevated regardless of how it was described.
+# Deliberately about WHAT WAS TOUCHED, because a prose description is written by
+# the same worker whose claim is being checked.
+SENSITIVE_PATH_FRAGMENTS = (
+    "bin/",                 # the runtime's own enforcement code
+    "hooks/",               # anything the harness executes as a gate
+    ".github/workflows/",   # CI, which can deploy
+    "settings.json",        # where hooks are registered
+    ".env",
+    ".pem",
+    ".ssh",
+    "migrations/",          # schema changes reach prod
+)
+
+
+def sensitive_paths(paths):
+    """Which of these paths make the item elevated?"""
+    hits = []
+    for p in paths:
+        norm = p.replace("\\", "/").lower()
+        if any(f in norm for f in SENSITIVE_PATH_FRAGMENTS):
+            hits.append(p)
+    return hits
+
+
 def uncommitted(paths):
     """Which of these paths still have uncommitted changes?
 
@@ -345,6 +370,25 @@ def cmd_done(args):
                 % (args.item, "\n  ".join(dirty))
             )
             sys.exit(17)
+        # Tier derived from the files actually touched, not from prose the
+        # worker wrote. Two independent verifiers defeated the prose classifier
+        # by word choice alone ("edit bin/x" elevated, "update bin/x" routine),
+        # and the declared tier was self-reported besides. Paths are observed,
+        # so neither phrasing nor mislabelling gets past this.
+        sensitive = sensitive_paths(args.touched)
+        if sensitive:
+            latest = [e for e in entries if e.get("item_id") == args.item][-1]
+            if latest.get("tier") != "elevated" or not latest.get("verifier"):
+                sys.stderr.write(
+                    "refusing to mark %s done — it touched files that make it "
+                    "elevated:\n  %s\nbut its latest journal entry declared "
+                    "tier=%r with verifier=%r. Elevated work must be re-derived "
+                    "from primary sources by a DIFFERENT agent, and the tier is "
+                    "taken from what was touched, not from what was claimed.\n"
+                    % (args.item, "\n  ".join(sensitive),
+                       latest.get("tier"), latest.get("verifier"))
+                )
+                sys.exit(19)
     append_jsonl(args.run, "queue.jsonl",
                  {"event": "done", "item_id": args.item})
     try:
