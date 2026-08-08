@@ -129,8 +129,15 @@ A test resolves every cyber stage against
 named a non-existent skill would send a worker to run nothing, and the stage
 would look complete because nothing failed.
 
-Still to do: the coverage map (item 1), and evidence discipline for findings
-(item 4).
+Coverage map DONE — `2026-08-08-cyberteam-coverage-map.md`. All 61 skills are
+placed against department functions, verified programmatically (none missing,
+none invented). It also names 9 genuine gaps nothing in the suite covers,
+including secure SDLC, identity governance, physical security and crisis
+communications — the last mattering especially in KSA, where NCA and SAMA
+notification windows make comms a regulatory event of its own.
+
+Still to do: evidence discipline for findings (item 4), and pipelines for the
+34 skills not yet in one.
 
 ## Acceptance criteria
 
