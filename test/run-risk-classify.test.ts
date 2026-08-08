@@ -39,3 +39,21 @@ describe('gstack-risk-classify', () => {
     expect(classify('npm publish')).toBe('elevated');
   });
 });
+
+describe('enforcement-code changes are elevated', () => {
+  test('editing the runtime own enforcement files is elevated', () => {
+    expect(classify('edit bin/gstack-run to add a resolve subcommand')).toBe('elevated');
+    expect(classify('modify bin/gstack-budget-guard')).toBe('elevated');
+    expect(classify('update the risk-classify table')).toBe('elevated');
+    expect(classify('patch the generated-guard hook')).toBe('elevated');
+  });
+
+  test('merely INVOKING the runtime stays routine', () => {
+    // The supervisor calls these constantly; if invocation were elevated,
+    // every loop step would demand an independent verifier and the tier would
+    // stop meaning anything.
+    expect(classify('~/.claude/skills/gstack/bin/gstack-run done --run x --item y')).toBe('routine');
+    expect(classify('~/.claude/skills/gstack/bin/gstack-run claim --run x --worker w')).toBe('routine');
+    expect(classify('write a design doc')).toBe('routine');
+  });
+});

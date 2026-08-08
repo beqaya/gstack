@@ -40,6 +40,15 @@ ELEVATED_PATTERNS = [
     "workflows/",
     "sudo ",
     "publish",
+    # Changes to the runtime's OWN enforcement code. Being wrong here means
+    # unverified work gets closed out — the failure this whole system exists to
+    # prevent — yet the table rated it routine, because it matches on the shape
+    # of a command rather than on what a change MEANS.
+    "edit bin/",
+    "modify bin/",
+    "budget-guard",
+    "generated-guard",
+    "risk-classify",
 ]
 
 
