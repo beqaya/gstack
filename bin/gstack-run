@@ -110,9 +110,18 @@ def read_jsonl_counted(run_id, name):
             if not line:
                 continue
             try:
-                out.append(json.loads(line))
+                rec = json.loads(line)
             except ValueError:
                 bad += 1
+                continue
+            # Valid JSON of the wrong shape is unreadable for our purposes: every
+            # consumer expects an object and would otherwise raise a KeyError or
+            # AttributeError deep in a caller, producing a raw traceback and exit
+            # 1 instead of one of this file's deliberate codes.
+            if not isinstance(rec, dict):
+                bad += 1
+                continue
+            out.append(rec)
     return out, bad
 
 
@@ -226,7 +235,9 @@ def open_items(run_id):
     status = {}
     titles = {}
     for rec in read_jsonl(run_id, "queue.jsonl"):
-        iid = rec["item_id"]
+        iid = rec.get("item_id")
+        if iid is None or "event" not in rec:
+            continue  # wrong-shaped line: skip rather than raise a KeyError
         if rec["event"] == "add":
             titles[iid] = rec["title"]
         status[iid] = rec["event"]
@@ -326,8 +337,8 @@ def cmd_journal(args):
         sys.stderr.write("verdict must be one of %s\n" % (VERDICTS,))
         sys.exit(5)
     if args.supersedes:
-        known = {e["entry_id"] for e in read_jsonl(args.run, "journal.jsonl")
-                 if e["item_id"] == args.item}
+        known = {e.get("entry_id") for e in read_jsonl(args.run, "journal.jsonl")
+                 if e.get("item_id") == args.item}
         if args.supersedes not in known:
             sys.stderr.write(
                 "--supersedes %s is not an entry of item %s. A superseding entry "
@@ -369,11 +380,11 @@ def cmd_history(args):
     all_entries, bad = read_jsonl_counted(args.run, "journal.jsonl")
     entries = [e for e in all_entries if e.get("item_id") == args.item]
     # Attach the reverse link so a superseded claim is never returned alone.
-    by_id = {e["entry_id"]: e for e in entries}
+    by_id = {e["entry_id"]: e for e in entries if "entry_id" in e}
     for e in entries:
         target = e.get("supersedes")
         if target and target in by_id:
-            by_id[target]["superseded_by"] = e["entry_id"]
+            by_id[target]["superseded_by"] = e.get("entry_id")
     print(json.dumps(entries, indent=2))
     if bad:
         sys.stderr.write(
@@ -497,9 +508,9 @@ def cmd_stop(args):
 def cmd_report(args):
     m = read_manifest(args.run)
     queue_records, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
-    done_ids = {r["item_id"] for r in queue_records if r["event"] == "done"}
+    done_ids = {r.get("item_id") for r in queue_records if r.get("event") == "done"}
     parked, bad_parked = read_jsonl_counted(args.run, "parked.jsonl")
-    parked_ids = {p["item_id"] for p in parked}
+    parked_ids = {p.get("item_id") for p in parked}
     b = budget_state(args.run)
     print(json.dumps({
         "run_id": m["run_id"],

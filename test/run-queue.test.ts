@@ -158,3 +158,29 @@ describe('gstack-run queue', () => {
     expect(c.code).toBe(11);
   });
 });
+
+describe('wrong-shaped JSON lines', () => {
+  test('a line that is valid JSON but not an object counts as unreadable, not a crash', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    run(['add', '--run', runId, '--title', 'job'], root);
+    // Valid JSON, wrong shape — previously raised a raw KeyError (exit 1).
+    fs.appendFileSync(path.join(root, 'runs', runId, 'queue.jsonl'), '"just a string"\n');
+
+    const c = run(['claim', '--run', runId, '--worker', 'w1'], root);
+    expect(c.code).toBe(11);
+    expect(c.stderr).toContain('unreadable');
+  });
+
+  test('an object missing required keys is skipped, not fatal', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    // Well-formed JSON object, but no event/item_id — must not raise.
+    fs.appendFileSync(path.join(root, 'runs', runId, 'queue.jsonl'), '{"note":"hi"}\n');
+
+    const c = run(['claim', '--run', runId, '--worker', 'w1'], root);
+    expect(c.code).toBe(0);
+    expect(JSON.parse(c.stdout).item_id).toBe(item);
+  });
+});
