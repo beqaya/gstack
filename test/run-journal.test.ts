@@ -241,4 +241,52 @@ describe('a journal entry must actually say something', () => {
                     '--verifier', 'verifier-a4cc293e'], root);
     expect(ok.code).toBe(0);
   });
+
+  // The denylist is a wordlist; the length floors are what catch everything
+  // NOT on it. Mutation testing showed every floor could be lowered to 1 with
+  // the suite still green, because every existing case used a denylisted word.
+  // These use strings no denylist would ever contain, one character either
+  // side of each boundary.
+  const LONG_CLAIM = 'the change under test behaves exactly as specified';
+  const LONG_EVIDENCE = 'reran the command and compared its output against the spec';
+
+  test('a claim one character under the floor is refused, and one at it is accepted', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    const short = run(['journal', '--run', runId, '--item', item, '--claim', 'situation ok',
+                       '--verdict', 'PROVEN', '--evidence', LONG_EVIDENCE], root);
+    expect(short.code).toBe(22);
+    expect(run(['journal', '--run', runId, '--item', item, '--claim', 'situation okay',
+                '--verdict', 'PROVEN', '--evidence', LONG_EVIDENCE], root).code).toBe(22);
+    expect(run(['journal', '--run', runId, '--item', item, '--claim', 'situation okayy',
+                '--verdict', 'PROVEN', '--evidence', LONG_EVIDENCE], root).code).toBe(0);
+  });
+
+  test('evidence one character under the floor is refused, and one at it is accepted', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    expect(run(['journal', '--run', runId, '--item', item, '--claim', LONG_CLAIM,
+                '--verdict', 'PROVEN', '--evidence', 'checked it and looked fine'.slice(0, 24)], root).code).toBe(22);
+    expect(run(['journal', '--run', runId, '--item', item, '--claim', LONG_CLAIM,
+                '--verdict', 'PROVEN', '--evidence', 'checked it and looked fine'.slice(0, 25)], root).code).toBe(0);
+  });
+
+  test('a verifier under the floor is refused even though it is not a known placeholder', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    expect(run(['journal', '--run', runId, '--item', item, '--claim', LONG_CLAIM,
+                '--verdict', 'PROVEN', '--evidence', LONG_EVIDENCE,
+                '--verifier', 'ab'], root).code).toBe(22);
+    expect(run(['journal', '--run', runId, '--item', item, '--claim', LONG_CLAIM,
+                '--verdict', 'PROVEN', '--evidence', LONG_EVIDENCE,
+                '--verifier', 'abc'], root).code).toBe(0);
+  });
+
+  test('a bad verdict reports as a bad verdict, not as a thin field', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    const bad = run(['journal', '--run', runId, '--item', item, '--claim', 'x',
+                     '--verdict', 'PROBABLY', '--evidence', 'x'], root);
+    expect(bad.code).toBe(5);
+  });
 });

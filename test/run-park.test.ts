@@ -24,7 +24,7 @@ describe('gstack-run park', () => {
     run(['claim', '--run', runId, '--worker', 'w1'], root);
     expect(run(['park', '--run', runId, '--item', blocked,
                 '--action', 'git push origin main',
-                '--reason', 'needs founder approval'], root).code).toBe(0);
+                '--reason', 'pushing to main needs founder approval'], root).code).toBe(0);
 
     // The run continues: the other item is still claimable.
     const next = run(['claim', '--run', runId, '--worker', 'w2'], root);
@@ -37,13 +37,13 @@ describe('gstack-run park', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const only = run(['add', '--run', runId, '--title', 'deploy prod'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['park', '--run', runId, '--item', only, '--action', 'deploy', '--reason', 'prod'], root);
+    run(['park', '--run', runId, '--item', only, '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
 
     expect(run(['claim', '--run', runId, '--worker', 'w2'], root).code).toBe(4);
 
     const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
     expect(parked.length).toBe(1);
-    expect(parked[0].action).toBe('deploy');
+    expect(parked[0].action).toBe('deploy the release to production');
   });
 
   test('parking the same item twice is refused, so the founder sees one approval', () => {
@@ -53,10 +53,10 @@ describe('gstack-run park', () => {
     run(['claim', '--run', runId, '--worker', 'w1'], root);
 
     expect(run(['park', '--run', runId, '--item', item,
-                '--action', 'deploy', '--reason', 'prod'], root).code).toBe(0);
+                '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root).code).toBe(0);
 
     const second = run(['park', '--run', runId, '--item', item,
-                        '--action', 'deploy', '--reason', 'prod'], root);
+                        '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
     expect(second.code).toBe(8);
 
     const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
@@ -72,11 +72,37 @@ describe('gstack-run park', () => {
     run(['done', '--run', runId, '--item', item], root);
 
     const late = run(['park', '--run', runId, '--item', item,
-                      '--action', 'a', '--reason', 'r'], root);
+                      '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
     expect(late.code).toBe(8);
 
     const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
     expect(parked.length).toBe(0);
+  });
+
+  // The founder reads --action and --reason and nothing else when deciding.
+  // The journal gained this gate first and park did not, which put stand-in
+  // values into the one list a human is asked to act on.
+  test('a parked item must say what to approve and why', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+
+    expect(run(['park', '--run', runId, '--item', item,
+                '--action', 'x', '--reason', 'x'], root).code).toBe(22);
+    // Not a known placeholder, still too short to act on.
+    expect(run(['park', '--run', runId, '--item', item,
+                '--action', 'approve',
+                '--reason', 'the founder has to decide this'], root).code).toBe(22);
+    expect(run(['park', '--run', runId, '--item', item,
+                '--action', 'merge PR #72', '--reason', 'blocked'], root).code).toBe(22);
+
+    // Nothing reached the approval list.
+    expect(JSON.parse(run(['parked', '--run', runId], root).stdout).length).toBe(0);
+
+    expect(run(['park', '--run', runId, '--item', item,
+                '--action', 'merge PR #72',
+                '--reason', 'merging to main auto-deploys production'], root).code).toBe(0);
   });
 
   test('a corrupt parked.jsonl line fails closed rather than hiding an approval', () => {
@@ -84,7 +110,7 @@ describe('gstack-run park', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'deploy'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['park', '--run', runId, '--item', item, '--action', 'deploy', '--reason', 'prod'], root);
+    run(['park', '--run', runId, '--item', item, '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
     fs.appendFileSync(path.join(root, 'runs', runId, 'parked.jsonl'), '{"item_id":"tru');
 
     const p = run(['parked', '--run', runId], root);
@@ -100,7 +126,7 @@ describe('gstack-run park', () => {
     fs.appendFileSync(path.join(root, 'runs', runId, 'queue.jsonl'), '{"event":"do');
 
     const p = run(['park', '--run', runId, '--item', item,
-                   '--action', 'a', '--reason', 'r'], root);
+                   '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
     expect(p.code).toBe(11);
 
     const parked = JSON.parse(run(['parked', '--run', runId], root).stdout);
@@ -113,7 +139,7 @@ describe('gstack-run resolve', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'deploy prod'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['park', '--run', runId, '--item', item, '--action', 'deploy', '--reason', 'prod'], root);
+    run(['park', '--run', runId, '--item', item, '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
     return { runId, item };
   }
 

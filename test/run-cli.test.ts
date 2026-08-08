@@ -91,7 +91,7 @@ describe('gstack-run stop/report', () => {
     run(['journal', '--run', runId, '--item', a, '--claim', 'the item behaves as specified after the change', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     run(['done', '--run', runId, '--item', a], root);
     run(['claim', '--run', runId, '--worker', 'w2'], root);
-    run(['park', '--run', runId, '--item', b, '--action', 'deploy', '--reason', 'prod'], root);
+    run(['park', '--run', runId, '--item', b, '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
 
     const rep = JSON.parse(run(['report', '--run', runId], root).stdout);
     expect(rep.completed).toBe(1);
@@ -123,7 +123,7 @@ describe('gstack-run stop/report', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '1000'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'deploy prod'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['park', '--run', runId, '--item', item, '--action', 'deploy', '--reason', 'prod'], root);
+    run(['park', '--run', runId, '--item', item, '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
     fs.appendFileSync(path.join(root, 'runs', runId, 'parked.jsonl'), '{"item_id":"tru');
 
     const rep = run(['report', '--run', runId], root);

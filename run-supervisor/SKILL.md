@@ -866,12 +866,20 @@ also claimed the item is refused (exit 15). Recording who verified is what makes
 assurance — the first run of this skill closed four items with no verifier
 recorded at all, because the field was merely available.
 
-A stand-in value in any of these three fields is refused (exit 22): `--claim`
-under 15 characters, `--evidence` under 25, `--verifier` under 3, or any of them
-set to a filler like `x`, `n/a`, `tbd`, `pending`, `me`, `self`. The gate exists
-because one command after building the verifier requirement, this skill filed
-`--claim "x" --evidence "x" --verifier "pending"` and the runtime accepted it. A
-field that can be satisfied with a single character enforces nothing.
+A stand-in value in any of these fields is refused (exit 22): `--claim` under 15
+characters, `--evidence` under 25, `--verifier` under 3, `park --action` under
+10, `park --reason` under 25 — or any of them set to a filler like `x`, `n/a`,
+`tbd`, `pending`, `me`, `self`. The gate exists because one command after
+building the verifier requirement, this skill filed `--claim "x" --evidence "x"
+--verifier "pending"` and the runtime accepted it. A field that can be satisfied
+with a single character enforces nothing.
+
+Two limits, stated so you do not rely on more than it gives. It catches typed
+stand-ins, not vacuous prose: `--evidence "I am confident it all works fine"`
+clears every floor. And a denylist is always one character from being stepped
+around (`n/a.` passes). What actually catches unfounded work is the independent
+verifier and the `CONTRADICTED` verdict; this gate only stops the field from
+being filled in with nothing at all.
 
 **If the verdict is PROVEN**, close the item out:
 

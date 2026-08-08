@@ -544,13 +544,16 @@ def reject_thin(field, value, minimum):
 
 def cmd_journal(args):
     read_manifest(args.run)
+    # Verdict first: it is the cheaper, more specific error. Validating the
+    # fields first made a bad --verdict report as exit 22, which names the
+    # wrong problem.
+    if args.verdict not in VERDICTS:
+        sys.stderr.write("verdict must be one of %s\n" % (VERDICTS,))
+        sys.exit(5)
     reject_thin("claim", args.claim, 15)
     reject_thin("evidence", args.evidence, 25)
     if args.verifier is not None:
         reject_thin("verifier", args.verifier, 3)
-    if args.verdict not in VERDICTS:
-        sys.stderr.write("verdict must be one of %s\n" % (VERDICTS,))
-        sys.exit(5)
     if args.supersedes:
         known = {e.get("entry_id") for e in read_jsonl(args.run, "journal.jsonl")
                  if e.get("item_id") == args.item}
@@ -626,6 +629,12 @@ def cmd_history(args):
 
 def cmd_park(args):
     read_manifest(args.run)
+    # The founder reads these two fields and nothing else when deciding whether
+    # to approve. A stand-in here is worse than in the journal: the journal is
+    # read after the fact, this is read before a decision. `--action` takes the
+    # lower floor because a real one can be genuinely terse ("merge PR #72").
+    reject_thin("action", args.action, 10)
+    reject_thin("reason", args.reason, 25)
     _, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
     if bad_queue:
         sys.stderr.write(

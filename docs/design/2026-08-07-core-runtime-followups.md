@@ -60,14 +60,17 @@ steps.
 |---|---|
 | Exit 2 collided with argparse | `read_manifest` now exits **21** for no-such-run, so a caller can distinguish it from a usage error. Found by running the `bug` pipeline on it (run `caf5a03d4c1a`), fixed in `2f40230d`. |
 | `run-supervisor` doc is stale | It was already current on the `done` refusals — the row was wrong when written. It is now also current on `release` and the placeholder gate. |
-| A journal entry could be filled with stand-ins | `--claim`/`--evidence`/`--verifier` are length-checked and denylisted; a filler value exits **22**. This skill filed `--claim "x" --verifier "pending"` one command after building the verifier requirement, and the runtime took it. |
-| No way to release a claim mid-pipeline | `release --worker` frees an item the caller actually holds (exit **24** otherwise). Previously the only exits were `done`, `park`, or waiting out the two-hour TTL. |
+| A journal entry could be filled with stand-ins | `--claim`/`--evidence`/`--verifier` are length-checked and denylisted; a filler value exits **22** (`340b73b6`). This skill filed `--claim "x" --verifier "pending"` one command after building the verifier requirement, and the runtime took it. Verified adversarially: `--verifier pending` clears the 3-char floor and is caught by the denylist alone, case- and whitespace-insensitively. |
+| No way to release a claim mid-pipeline | `release --worker` frees an item the caller actually holds (exit **24** otherwise), and `claim` hands that same item to the next worker (`340b73b6`). The release is recorded in `queue.jsonl` symmetrically with the claim. Previously the only exits were `done`, `park`, or waiting out the two-hour TTL. |
 
 ## Deferred — real, non-blocking
 
 | Item | Detail |
 |---|---|
 | `atomic_write_json` uses a fixed `.tmp` name | Two concurrent `stop` calls on one run share the temp filename and could interleave. |
+| A corrupt lock file can be released by nobody | `cmd_release` sets `holder = None` on any parse exception and then compares it to `--worker`, so no name matches and only the 2-hour TTL recovers it — the wait `release` was built to remove. Fails in the safe direction (never hands in-flight work to a second worker), so it is deferred rather than fixed. |
+| The denylist is one character from being stepped around | `--verifier "n/a."` and a Cyrillic-`е` `"pеnding"` both pass. Left open deliberately: growing a wordlist to chase this costs real maintenance for no real gain, and the independent verifier is what actually catches unfounded work. |
+| Every error message renders `?` on a Windows console | All ~30 operator-facing messages use an em-dash. Under PowerShell/conhost the dash comes out as a replacement character, which is where these messages are actually read. The fix is an encoding decision (reconfigure stderr vs. ASCII-only prose), and which one is right cannot be verified from an MSYS shell — its output pipeline is not the founder's terminal. Needs one check in conhost before choosing. |
 | Wrong-shaped JSON raises KeyError | `open_items` and `cmd_report` index `rec["item_id"]`/`rec["event"]` unguarded, so a line that is valid JSON of the wrong shape produces a raw traceback (exit 1) rather than a deliberate code. |
 | `--why breaker-tripped` is unreachable | `stop` accepts it but nothing produces it: the supervisor skill has no circuit-breaker path, despite the plan claiming it "references `gstack-failure-count` rather than rebuilding it". |
 | `stop --why queue-drained` accepted with open items | The contradiction is at least visible in the same JSON object. |
