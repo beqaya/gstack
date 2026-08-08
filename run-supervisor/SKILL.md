@@ -882,22 +882,25 @@ padding and Latin lookalikes from other scripts do not get one past it: `n/a.`,
 all the same non-answer and all refused. Whole values are compared, not
 substrings, so a real name like `nomad-7` or `donovan` is unaffected.
 
-**Evidence for a `PROVEN` verdict must report an observation, not assert a
-conclusion.** `--evidence "I am confident it all works fine"` is refused: it
-gives the next reader nothing to re-derive. Cite what you ran, read or measured
-— a command, a file, a count, a quoted line of output. Prose that concludes
-without observing (`looks good`, `works as intended`, `no issues`, `verified
-it`) is refused in `--claim` and in `park --action/--reason` too.
+**A value that is nothing but a conclusion is refused.** `--evidence "I am
+confident it all works fine"` gives the next reader nothing, and so does `"it
+just works, all good"`. This applies to `--claim` and `park --action/--reason`
+as well.
 
-Only `PROVEN` carries the observation requirement. `UNPROVEN` exists precisely
-to record that evidence could not be shown, and making the honest verdict the
-hardest one to file would push workers toward the dishonest one.
+The test is deliberately narrow: a vacuous phrase is only fatal when removing
+it leaves nothing behind. `"reran the failing test and nothing broke
+elsewhere"` passes, because it opens by naming what was run — the trailing
+clause is ordinary English, not the whole message. An earlier, stricter version
+of this rule refused 65% of evidence that competent workers actually write,
+including every non-English sample. A gate that refuses honest work does not
+produce better evidence; it teaches you to pad prose until the tool goes quiet,
+which is the vacuity it was meant to stop.
 
-What this still does not do is judge whether a specific, checkable-sounding
-statement is *true* — a fabricated `ran the suite, 100 pass` satisfies every
-rule here. That is what the independent verifier and the `CONTRADICTED` verdict
-are for. These gates only ensure the field says something a verifier can go and
-check.
+So do not read this as a standard for good evidence. It removes the floor, not
+the ceiling. Good evidence still cites what you ran, read or measured, and
+nothing here checks that you did — a fabricated `"ran the suite, 114 pass"`
+satisfies every rule on this page. Only an independent verifier and the
+`CONTRADICTED` verdict catch that.
 
 **If the verdict is PROVEN**, close the item out:
 

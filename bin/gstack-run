@@ -567,17 +567,21 @@ VACUOUS = re.compile(
     re.IGNORECASE,
 )
 
-# Signals that a sentence reports something observed rather than concluded: an
-# action actually taken, a number, a path, or a quoted fragment of output.
-OBSERVED = re.compile(
-    r"\b(?:ran|reran|re-ran|executed|invoked|called|read|opened|queried|fetched"
-    r"|observed|compared|inspected|printed|returned|measured|reproduced|diffed"
-    r"|grepped|captured|logged|dumped|stepped|traced|mutated|patched)\b"
-    r"|[0-9]"
-    r"|[/\\][A-Za-z0-9_.-]"
-    r"|[`\"']",
-    re.IGNORECASE,
-)
+# Words that carry no information about what was done. Used only to decide
+# whether anything of substance survives once the vacuous phrases are removed.
+FILLER = frozenset("""
+a an and the this that these those there here it its is are was were be been am
+i we my our you your they them so but then than as at by for from in into of on
+to with about after before all also just now only really quite very still too
+again more most much some any no not yes ok okay fine good great right correct
+done thing things stuff everything anything nothing something
+""".split())
+
+
+def content_words(text):
+    """The words left once filler is discarded - a rough measure of substance."""
+    return [w for w in re.findall(r"[^\W\d_]+", text.lower(), re.UNICODE)
+            if w not in FILLER]
 
 
 def _refuse(field, why, value, tail):
@@ -606,25 +610,22 @@ def reject_thin(field, value, minimum):
 
 
 def reject_vacuous(field, value):
-    """Refuse prose that states a conclusion in place of an observation."""
-    m = VACUOUS.search(value or "")
-    if m:
-        _refuse(field, "asserts a conclusion rather than reporting anything",
-                m.group(0),
-                "Replace it with what you did and what happened as a result.")
+    """Refuse a value that is NOTHING BUT a conclusion.
 
+    The first version searched for a vacuous phrase anywhere and refused on a
+    hit. Measured against evidence a competent worker would really write, that
+    refused 65% of it: "reran the failing test and nothing broke elsewhere" was
+    rejected for its trailing clause even though it opens by naming what was
+    run. These phrases are ordinary English tails on a real observation.
 
-def require_observation(field, value):
-    """Require evidence for a PROVEN claim to name something re-derivable.
-
-    Only PROVEN is gated. UNPROVEN exists precisely to record that evidence
-    could not be shown, and demanding observation-shaped prose there would make
-    the honest verdict the hardest one to file.
+    So the test is whether anything survives their removal. If the phrase was
+    the whole message, nothing does. Evidence in a language this pattern does
+    not match is never refused here, which is the correct direction to fail.
     """
-    if not OBSERVED.search(value or ""):
-        _refuse(field, "names nothing that could be checked again", value,
-                "PROVEN evidence has to cite what you ran, read or measured — "
-                "a command, a file, a count, or a quoted line of output.")
+    text = value or ""
+    if VACUOUS.search(text) and len(content_words(VACUOUS.sub(" ", text))) < 2:
+        _refuse(field, "says only that the work is fine, not what was done", text,
+                "Say what you ran, read or changed, and what happened as a result.")
 
 
 def cmd_journal(args):
@@ -639,8 +640,6 @@ def cmd_journal(args):
     reject_thin("evidence", args.evidence, 25)
     reject_vacuous("claim", args.claim)
     reject_vacuous("evidence", args.evidence)
-    if args.verdict == "PROVEN":
-        require_observation("evidence", args.evidence)
     if args.verifier is not None:
         reject_thin("verifier", args.verifier, 3)
     if args.supersedes:
