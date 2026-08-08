@@ -244,11 +244,64 @@ def open_items(run_id):
     return [(i, titles.get(i, "")) for i, s in status.items() if s != "done"]
 
 
+def pipeline_stages(kind):
+    """Stages for a kind, asked of gstack-pipeline rather than duplicated here.
+
+    A second copy of the table would drift from the first — that already happened
+    once in this codebase, when a missing-ledger fix landed in the budget hook but
+    not in the CLI that shares its logic, and the two disagreed. One table, one
+    owner, a subprocess hop to reach it.
+    """
+    if not kind:
+        return []
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gstack-pipeline")
+    try:
+        out = subprocess.run([sys.executable, script, "--kind", kind],
+                             capture_output=True, text=True, timeout=15)
+    except Exception:
+        return []
+    if out.returncode != 0:
+        return []
+    return [s.strip() for s in out.stdout.splitlines() if s.strip()]
+
+
+def item_kind(run_id, item_id):
+    for rec in read_jsonl(run_id, "queue.jsonl"):
+        if rec.get("event") == "add" and rec.get("item_id") == item_id:
+            return rec.get("kind")
+    return None
+
+
+def next_stage(run_id, item_id):
+    """The first stage of this item's pipeline not yet closed with PROVEN.
+
+    Stage completion is read from the journal, so it survives the session that
+    did the work — resuming mid-pipeline is the same code path as starting it.
+    """
+    seq = pipeline_stages(item_kind(run_id, item_id))
+    if not seq:
+        return None
+    done_stages = {e.get("stage") for e in read_jsonl(run_id, "journal.jsonl")
+                   if e.get("item_id") == item_id and e.get("verdict") == "PROVEN"}
+    for s in seq:
+        if s not in done_stages:
+            return s
+    return None
+
+
 def cmd_add(args):
     read_manifest(args.run)
+    if args.kind and not pipeline_stages(args.kind):
+        sys.stderr.write(
+            "unknown kind %r — it has no pipeline, so nothing would tell a worker "
+            "what to run. See: gstack-pipeline --kinds\n" % args.kind
+        )
+        sys.exit(20)
     item_id = uuid.uuid4().hex[:10]
     append_jsonl(args.run, "queue.jsonl",
-                 {"event": "add", "item_id": item_id, "title": args.title})
+                 {"event": "add", "item_id": item_id, "title": args.title,
+                  "kind": args.kind})
     print(item_id)
 
 
@@ -267,7 +320,12 @@ def cmd_claim(args):
         if try_lock(args.run, item_id, args.worker):
             append_jsonl(args.run, "queue.jsonl",
                          {"event": "claim", "item_id": item_id, "worker": args.worker})
-            print(json.dumps({"item_id": item_id, "title": title}))
+            print(json.dumps({
+                "item_id": item_id,
+                "title": title,
+                "kind": item_kind(args.run, item_id),
+                "next_stage": next_stage(args.run, item_id),
+            }))
             return
     sys.stderr.write("no claimable items\n")
     sys.exit(4)
@@ -472,6 +530,7 @@ def cmd_journal(args):
         "supersedes": args.supersedes,
         "verifier": args.verifier,
         "tier": args.tier,
+        "stage": args.stage,
     })
     print(entry_id)
 
@@ -711,6 +770,8 @@ def main():
     pa = sub.add_parser("add")
     pa.add_argument("--run", required=True)
     pa.add_argument("--title", required=True)
+    pa.add_argument("--kind", default=None,
+                    help="selects the pipeline; see gstack-pipeline --kinds")
     pa.set_defaults(func=cmd_add)
 
     pc = sub.add_parser("claim")
@@ -736,6 +797,8 @@ def main():
     pj.add_argument("--verifier", default=None,
                     help="agent that verified this claim; refused if it also "
                          "claimed the item")
+    pj.add_argument("--stage", default=None,
+                    help="pipeline stage this entry closes")
     pj.add_argument("--tier", default=None, choices=["routine", "elevated"],
                     help="verification tier from gstack-risk-classify; "
                          "elevated requires --verifier")
