@@ -273,6 +273,40 @@ def cmd_claim(args):
     sys.exit(4)
 
 
+def uncommitted(paths):
+    """Which of these paths still have uncommitted changes?
+
+    Scoped to the paths the worker names, deliberately. A blunt "is the repo
+    dirty?" check would block this run because a DIFFERENT session had unrelated
+    files open — the multi-session collision this project exists to avoid. Only
+    the files this item touched are its business.
+
+    Returns [] when git is unavailable or a path is not in a repo: this is a
+    completeness check on the worker's own claim, not a security boundary, and
+    it must not block work in a non-git tree.
+    """
+    import subprocess
+    dirty = []
+    for p in paths:
+        # The pathspec MUST be absolute. git resolves a relative pathspec against
+        # its own cwd, and we run it from the file's directory — so a relative
+        # path silently matched nothing and every file looked clean.
+        ap = os.path.abspath(p)
+        try:
+            out = subprocess.run(
+                ["git", "status", "--porcelain", "--", ap],
+                cwd=os.path.dirname(ap) or ".",
+                capture_output=True, text=True, timeout=15,
+            )
+        except Exception:
+            return []
+        if out.returncode != 0:
+            return []
+        if out.stdout.strip():
+            dirty.append(p)
+    return dirty
+
+
 def cmd_done(args):
     read_manifest(args.run)
     entries, bad = read_jsonl_counted(args.run, "journal.jsonl")
@@ -301,6 +335,16 @@ def cmd_done(args):
             "verification refuted it.\n" % (args.item, verdicts[-1])
         )
         sys.exit(13)
+    if args.touched:
+        dirty = uncommitted(args.touched)
+        if dirty:
+            sys.stderr.write(
+                "refusing to mark %s done — these files still have uncommitted "
+                "changes:\n  %s\nA PROVEN verdict on work that never landed is "
+                "the false completion this runtime exists to prevent.\n"
+                % (args.item, "\n  ".join(dirty))
+            )
+            sys.exit(17)
     append_jsonl(args.run, "queue.jsonl",
                  {"event": "done", "item_id": args.item})
     try:
@@ -573,6 +617,9 @@ def main():
     pd = sub.add_parser("done")
     pd.add_argument("--run", required=True)
     pd.add_argument("--item", required=True)
+    pd.add_argument("--touched", action="append", default=None,
+                    help="a file this item changed; repeatable. done refuses "
+                         "if any still has uncommitted changes")
     pd.set_defaults(func=cmd_done)
 
     pj = sub.add_parser("journal")

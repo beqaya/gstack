@@ -158,3 +158,48 @@ describe('gstack-run stop/report', () => {
     expect(rep.spent).toBe(25);
   });
 });
+
+describe('gstack-run done --touched', () => {
+  function git(args: string[], cwd: string) {
+    return spawnSync(['git', ...args], { cwd, env: { ...process.env } });
+  }
+
+  function readyItem(root: string) {
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+         '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    return { runId, item };
+  }
+
+  test('uncommitted work is refused, and the same file passes once committed', () => {
+    const root = tmpRoot();
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-repo-'));
+    git(['init'], repo);
+    git(['config', 'user.email', 't@example.com'], repo);
+    git(['config', 'user.name', 'test'], repo);
+    const f = path.join(repo, 'work.txt');
+    fs.writeFileSync(f, 'changed but not committed\n');
+
+    const { runId, item } = readyItem(root);
+    const dirty = run(['done', '--run', runId, '--item', item, '--touched', f], root);
+    expect(dirty.code).toBe(17);
+    expect(dirty.stderr).toContain('uncommitted');
+
+    git(['add', 'work.txt'], repo);
+    git(['commit', '-m', 'land it'], repo);
+
+    const clean = run(['done', '--run', runId, '--item', item, '--touched', f], root);
+    expect(clean.code).toBe(0);
+  });
+
+  test('a path outside any git repo does not block done', () => {
+    const root = tmpRoot();
+    const loose = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-nogit-')), 'x.txt');
+    fs.writeFileSync(loose, 'no repo here\n');
+
+    const { runId, item } = readyItem(root);
+    expect(run(['done', '--run', runId, '--item', item, '--touched', loose], root).code).toBe(0);
+  });
+});
