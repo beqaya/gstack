@@ -125,3 +125,35 @@ describe('gstack-run journal', () => {
     expect(h.stderr).toContain('unreliable');
   });
 });
+
+describe('gstack-run journal --verifier', () => {
+  test('a verifier who also claimed the item is refused', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'worker-a'], root);
+
+    const self = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                      '--verdict', 'PROVEN', '--evidence', 'e',
+                      '--verifier', 'worker-a'], root);
+    expect(self.code).toBe(15);
+
+    const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
+    expect(h.length).toBe(0);
+  });
+
+  test('a different verifier is accepted and recorded', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'worker-a'], root);
+
+    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                    '--verdict', 'PROVEN', '--evidence', 'e',
+                    '--verifier', 'worker-b'], root);
+    expect(ok.code).toBe(0);
+
+    const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
+    expect(h[0].verifier).toBe('worker-b');
+  });
+});

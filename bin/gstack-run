@@ -336,6 +336,21 @@ def cmd_journal(args):
                 "alone.\n" % (args.supersedes, args.item)
             )
             sys.exit(7)
+    if args.verifier:
+        # "Verified by a DIFFERENT agent" was previously unauditable — nothing
+        # recorded who verified, so the claim could never be checked after the
+        # fact. Recording the verifier makes it auditable; refusing a verifier
+        # who is also the worker that claimed the item makes it enforced.
+        claimers = {e.get("worker") for e in read_jsonl(args.run, "queue.jsonl")
+                    if e.get("item_id") == args.item and e.get("event") == "claim"}
+        if args.verifier in claimers:
+            sys.stderr.write(
+                "--verifier %s also claimed item %s. An agent that re-reads its "
+                "own work and agrees has verified nothing; an elevated claim must "
+                "be re-derived from primary sources by a different agent.\n"
+                % (args.verifier, args.item)
+            )
+            sys.exit(15)
     entry_id = uuid.uuid4().hex[:10]
     append_jsonl(args.run, "journal.jsonl", {
         "entry_id": entry_id,
@@ -344,6 +359,7 @@ def cmd_journal(args):
         "verdict": args.verdict,
         "evidence": args.evidence,
         "supersedes": args.supersedes,
+        "verifier": args.verifier,
     })
     print(entry_id)
 
@@ -542,6 +558,9 @@ def main():
     pj.add_argument("--verdict", required=True)
     pj.add_argument("--evidence", required=True)
     pj.add_argument("--supersedes", default=None)
+    pj.add_argument("--verifier", default=None,
+                    help="agent that verified this claim; refused if it also "
+                         "claimed the item")
     pj.set_defaults(func=cmd_journal)
 
     ph = sub.add_parser("history")
