@@ -123,7 +123,20 @@ def lock_path(run_id, item_id):
 
 
 def lock_ttl():
-    return int(os.environ.get("GSTACK_LOCK_TTL_SEC", "900"))
+    """How long a claim survives without being renewed.
+
+    Nothing refreshes a lock's heartbeat, so this is a hard cap on how long a
+    single item may take before another worker treats it as abandoned and takes
+    it. At the previous 900s an ordinary long item — a refactor, a broad test
+    run — outlived its own claim and got picked up a second time, with both
+    workers editing the same files.
+
+    Two hours is a mitigation, not the fix: `done` and `park` still take no
+    --worker, so they do not check who owns the lock they release. The real fix
+    is an ownership check, or a heartbeat the supervisor refreshes between
+    steps. Until then this makes the failure rare rather than routine.
+    """
+    return int(os.environ.get("GSTACK_LOCK_TTL_SEC", "7200"))
 
 
 def lock_is_stale(path):

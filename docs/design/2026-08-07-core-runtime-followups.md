@@ -34,11 +34,16 @@ broad matcher is safe, but it must be deliberate.
 
 ## Highest-probability real-world defect
 
-### No heartbeat refresh — a live lock is reaped after 15 minutes
+### No heartbeat refresh — a live lock is reaped when the TTL expires
 
-`GSTACK_LOCK_TTL_SEC` defaults to 900 and nothing ever refreshes a lock's heartbeat. Any item
-that legitimately takes longer than 15 minutes has its **live** lock reaped by the next
-`claim`, and a second worker takes the same item. No race is required; this is the normal path.
+**PARTIALLY MITIGATED 2026-08-08: `GSTACK_LOCK_TTL_SEC` default raised 900 → 7200 (two hours),
+founder's call.** That makes the failure rare rather than routine — an ordinary long item no
+longer outlives its own claim — but it does not fix the underlying gap, and an item exceeding
+two hours still hits it.
+
+Nothing ever refreshes a lock's heartbeat. Any item that legitimately takes longer than the TTL
+has its **live** lock reaped by the next `claim`, and a second worker takes the same item. No
+race is required; this is the normal path.
 
 Compounding it: `cmd_done` and `cmd_park` take no `--worker` and unlink the lock
 unconditionally, so either of two live workers can delete the other's lock and free the item
