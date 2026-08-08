@@ -66,6 +66,32 @@ steps.
 | `stop --why queue-drained` accepted with open items | The contradiction is at least visible in the same JSON object. |
 | park's two appends are not atomic | A crash between them, followed by TTL reclaim and a normal `done`, leaves a stale parked record so `report` labels finished work as awaiting approval. Fails in the SAFE direction (over-reports parked). Both records carry `ts`, so timestamp reconciliation is cheap when next touching that code. |
 
+## The real fix for tier classification — derive it from paths, not prose
+
+Two independent verifiers found the same shape of hole in `gstack-risk-classify`,
+and patching the pattern list only narrows it:
+
+- The tier is **self-reported**. A worker can pass `--tier routine` on genuinely
+  elevated work and the runtime cannot know better.
+- The table matches literal substrings against **free text the worker writes**.
+  `edit bin/gstack-run` was elevated while `update`/`patch`/`rewrite bin/gstack-run`
+  were routine — word choice alone defeated the gate on the file that enforces
+  every other gate. Verb variants were added, but `bin/gstack-run: add resolve`
+  (no verb at all) still slips through, and always will.
+
+**The structural fix already has its input available.** `done --touched <path>`
+collects the exact files an item changed. Tier could be derived from those PATHS
+rather than from a prose description: if an item touched `bin/`, a guard, a
+workflow, `.env`, or a `.pem`, it is elevated — regardless of how the worker
+described it, and regardless of what tier it claimed.
+
+That closes both holes at once: paths are observed, not asserted, so a worker
+cannot phrase its way out or mislabel. The prose classifier would remain useful
+as an *early* signal during the work, but `done` would be the enforcement point,
+comparing declared tier against touched paths and refusing a mismatch.
+
+Not built. It is the single highest-value remaining change to this runtime.
+
 ## Adjudicated as not worth doing
 
 - **`resume.json` written before the manifest rewrite.** Both writes are idempotent, re-running
