@@ -66,7 +66,7 @@ describe('gstack-run stop/report', () => {
     const a = run(['add', '--run', runId, '--title', 'done job'], root).stdout;
     run(['add', '--run', runId, '--title', 'unfinished job'], root);
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', a, '--claim', 'done', '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    run(['journal', '--run', runId, '--item', a, '--claim', 'the item behaves as specified after the change', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     run(['done', '--run', runId, '--item', a], root);
 
     const s = run(['stop', '--run', runId, '--why', 'budget-exhausted'], root);
@@ -88,7 +88,7 @@ describe('gstack-run stop/report', () => {
     run(['add', '--run', runId, '--title', 'never started'], root);
 
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', a, '--claim', 'done', '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    run(['journal', '--run', runId, '--item', a, '--claim', 'the item behaves as specified after the change', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     run(['done', '--run', runId, '--item', a], root);
     run(['claim', '--run', runId, '--worker', 'w2'], root);
     run(['park', '--run', runId, '--item', b, '--action', 'deploy', '--reason', 'prod'], root);
@@ -168,8 +168,8 @@ describe('gstack-run done --touched', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-         '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     return { runId, item };
   }
 

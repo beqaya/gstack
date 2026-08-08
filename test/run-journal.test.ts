@@ -21,13 +21,13 @@ describe('gstack-run journal', () => {
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
 
     const e = run(['journal', '--run', runId, '--item', item, '--claim', 'guard blocks edits',
-                   '--verdict', 'PROVEN', '--evidence', 'edit denied by hook'], root);
+                   '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     expect(e.code).toBe(0);
 
     const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
     expect(h.length).toBe(1);
     expect(h[0].verdict).toBe('PROVEN');
-    expect(h[0].evidence).toBe('edit denied by hook');
+    expect(h[0].evidence).toBe('ran the command and observed the documented exit code and output');
   });
 
   test('a superseding entry links back so the stale claim never stands alone', () => {
@@ -35,9 +35,9 @@ describe('gstack-run journal', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
 
-    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'CSP is fixed',
-                       '--verdict', 'PROVEN', '--evidence', 'header changed'], root).stdout;
-    const second = run(['journal', '--run', runId, '--item', item, '--claim', 'CSP is fixed',
+    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                       '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root).stdout;
+    const second = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
                         '--verdict', 'CONTRADICTED', '--evidence', 'console shows 5 blocked scripts',
                         '--supersedes', first], root).stdout;
 
@@ -52,8 +52,8 @@ describe('gstack-run journal', () => {
     const root = tmpRoot();
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
-    const bad = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                     '--verdict', 'PROBABLY', '--evidence', 'e'], root);
+    const bad = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                     '--verdict', 'PROBABLY', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     expect(bad.code).not.toBe(0);
   });
 
@@ -61,8 +61,8 @@ describe('gstack-run journal', () => {
     const root = tmpRoot();
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
-    const bad = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                     '--verdict', 'CONTRADICTED', '--evidence', 'e',
+    const bad = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                     '--verdict', 'CONTRADICTED', '--evidence', 'ran the command and observed the documented exit code and output',
                      '--supersedes', 'deadbeef00'], root);
     expect(bad.code).toBe(7);
     const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
@@ -75,12 +75,12 @@ describe('gstack-run journal', () => {
     const itemA = run(['add', '--run', runId, '--title', 'a'], root).stdout;
     const itemB = run(['add', '--run', runId, '--title', 'b'], root).stdout;
 
-    const entryA = run(['journal', '--run', runId, '--item', itemA, '--claim', 'x works',
-                        '--verdict', 'PROVEN', '--evidence', 'looked right'], root).stdout;
+    const entryA = run(['journal', '--run', runId, '--item', itemA, '--claim', 'the change under test behaves as specified',
+                        '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root).stdout;
 
     // Filing the correction under the wrong item must not silently orphan it.
-    const wrong = run(['journal', '--run', runId, '--item', itemB, '--claim', 'x works',
-                       '--verdict', 'CONTRADICTED', '--evidence', 'it does not',
+    const wrong = run(['journal', '--run', runId, '--item', itemB, '--claim', 'the change under test behaves as specified',
+                       '--verdict', 'CONTRADICTED', '--evidence', 'ran the command and observed the documented exit code and output',
                        '--supersedes', entryA], root);
     expect(wrong.code).toBe(7);
 
@@ -94,13 +94,13 @@ describe('gstack-run journal', () => {
     const root = tmpRoot();
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
-    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                       '--verdict', 'PROVEN', '--evidence', 'e1'], root).stdout;
-    const second = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                        '--verdict', 'UNPROVEN', '--evidence', 'e2',
+    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                       '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root).stdout;
+    const second = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                        '--verdict', 'UNPROVEN', '--evidence', 'ran the command and observed the documented exit code and output',
                         '--supersedes', first], root).stdout;
-    const third = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                       '--verdict', 'CONTRADICTED', '--evidence', 'e3',
+    const third = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                       '--verdict', 'CONTRADICTED', '--evidence', 'ran the command and observed the documented exit code and output',
                        '--supersedes', first], root).stdout;
 
     const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
@@ -115,8 +115,8 @@ describe('gstack-run journal', () => {
     const root = tmpRoot();
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
-    run(['journal', '--run', runId, '--item', item, '--claim', 'the fix works',
-         '--verdict', 'PROVEN', '--evidence', 'looked right'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     // Simulate a crash while appending the entry that would have overturned it.
     fs.appendFileSync(path.join(root, 'runs', runId, 'journal.jsonl'), '{"entry_id":"tru');
 
@@ -133,8 +133,8 @@ describe('gstack-run journal --verifier', () => {
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'worker-a'], root);
 
-    const self = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                      '--verdict', 'PROVEN', '--evidence', 'e',
+    const self = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                      '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output',
                       '--verifier', 'worker-a'], root);
     expect(self.code).toBe(15);
 
@@ -148,8 +148,8 @@ describe('gstack-run journal --verifier', () => {
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'worker-a'], root);
 
-    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                    '--verdict', 'PROVEN', '--evidence', 'e',
+    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                    '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output',
                     '--verifier', 'worker-b'], root);
     expect(ok.code).toBe(0);
 
@@ -165,8 +165,8 @@ describe('gstack-run journal --tier elevated', () => {
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'worker-a'], root);
 
-    const bare = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                      '--verdict', 'PROVEN', '--evidence', 'e',
+    const bare = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                      '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output',
                       '--tier', 'elevated'], root);
     expect(bare.code).toBe(16);
 
@@ -180,8 +180,8 @@ describe('gstack-run journal --tier elevated', () => {
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'worker-a'], root);
 
-    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                    '--verdict', 'PROVEN', '--evidence', 'e',
+    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                    '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output',
                     '--tier', 'elevated', '--verifier', 'worker-b'], root);
     expect(ok.code).toBe(0);
 
@@ -196,9 +196,49 @@ describe('gstack-run journal --tier elevated', () => {
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'worker-a'], root);
 
-    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-                    '--verdict', 'PROVEN', '--evidence', 'e',
+    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'the change under test behaves as specified',
+                    '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output',
                     '--tier', 'routine'], root);
+    expect(ok.code).toBe(0);
+  });
+});
+
+describe('a journal entry must actually say something', () => {
+  function ready(root: string) {
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    return { runId, item };
+  }
+
+  test('placeholder claim and evidence are refused', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    const junk = run(['journal', '--run', runId, '--item', item,
+                      '--claim', 'x', '--verdict', 'PROVEN', '--evidence', 'x'], root);
+    expect(junk.code).toBe(22);
+    expect(JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout).length).toBe(0);
+  });
+
+  test('a placeholder verifier is refused even though it differs from the worker', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    const junk = run(['journal', '--run', runId, '--item', item,
+                      '--claim', 'the guard now blocks edits to generated files',
+                      '--verdict', 'PROVEN',
+                      '--evidence', 'ran a live Edit and the hook denied it, file bytes unchanged',
+                      '--verifier', 'pending'], root);
+    expect(junk.code).toBe(22);
+  });
+
+  test('substantive claim, evidence and verifier are accepted', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    const ok = run(['journal', '--run', runId, '--item', item,
+                    '--claim', 'the guard now blocks edits to generated files',
+                    '--verdict', 'PROVEN',
+                    '--evidence', 'ran a live Edit and the hook denied it, file bytes unchanged',
+                    '--verifier', 'verifier-a4cc293e'], root);
     expect(ok.code).toBe(0);
   });
 });

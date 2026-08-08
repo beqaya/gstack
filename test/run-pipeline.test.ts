@@ -82,8 +82,8 @@ describe('pipeline wired into the runtime', () => {
     const item = run(['add', '--run', runId, '--title', 'fix it', '--kind', 'bug'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
 
-    run(['journal', '--run', runId, '--item', item, '--claim', 'built it',
-         '--verdict', 'PROVEN', '--evidence', 'e', '--stage', 'build'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'built the change required by this stage',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output', '--stage', 'build'], root);
 
     // A fresh claim (as a later session would do) must resume at qa, not build.
     fs.rmSync(path.join(root, 'runs', runId, 'locks', `${item}.lock`), { force: true });
@@ -96,8 +96,8 @@ describe('pipeline wired into the runtime', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'fix it', '--kind', 'bug'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'tried',
-         '--verdict', 'UNPROVEN', '--evidence', 'no evidence', '--stage', 'build'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'attempted the stage without proving it',
+         '--verdict', 'UNPROVEN', '--evidence', 'no evidence gathered; the stage produced no output', '--stage', 'build'], root);
 
     fs.rmSync(path.join(root, 'runs', runId, 'locks', `${item}.lock`), { force: true });
     const again = JSON.parse(run(['claim', '--run', runId, '--worker', 'w2'], root).stdout);

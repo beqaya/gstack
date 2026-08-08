@@ -866,6 +866,13 @@ also claimed the item is refused (exit 15). Recording who verified is what makes
 assurance — the first run of this skill closed four items with no verifier
 recorded at all, because the field was merely available.
 
+A stand-in value in any of these three fields is refused (exit 22): `--claim`
+under 15 characters, `--evidence` under 25, `--verifier` under 3, or any of them
+set to a filler like `x`, `n/a`, `tbd`, `pending`, `me`, `self`. The gate exists
+because one command after building the verifier requirement, this skill filed
+`--claim "x" --evidence "x" --verifier "pending"` and the runtime accepted it. A
+field that can be satisfied with a single character enforces nothing.
+
 **If the verdict is PROVEN**, close the item out:
 
 ```bash
@@ -890,6 +897,21 @@ contradicting evidence — otherwise the second attempt repeats the first's
 reasoning and reaches the same wrong answer. After that, park it.
 
 Park anything needing founder approval; the run continues past it.
+
+**If you must abandon a claim without closing or parking it** — the item turned
+out to belong to another run, or you are handing it to a different worker — use
+`release`:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run release --run "$RUN" --item "$ITEM" \
+  --worker "$WORKER"
+```
+
+It refuses (exit 24) unless `$WORKER` actually holds the lock, so one worker
+cannot free another's item. Without it the only ways out were `done` (which
+refuses unverified work, correctly) and `park` (which tells the founder there is
+something to approve when there is not) — leaving the two-hour TTL as the real
+answer, which is not an answer.
 
 ## Step 6: Stop
 

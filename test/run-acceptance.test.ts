@@ -28,7 +28,7 @@ describe('acceptance: a false claim of success cannot survive', () => {
     // The worker claims success without doing the work.
     const claimEntry = run(['journal', '--run', runId, '--item', item,
       '--claim', 'the guard now blocks edits to generated files',
-      '--verdict', 'PROVEN', '--evidence', 'I am confident it works'], root).stdout;
+      '--verdict', 'PROVEN', '--evidence', 'I am confident that it works as intended'], root).stdout;
 
     // An independent verifier re-derives from a primary source and disagrees.
     run(['journal', '--run', runId, '--item', item,
@@ -63,7 +63,7 @@ describe('acceptance: a false claim of success cannot survive', () => {
 
     const claimEntry = run(['journal', '--run', runId, '--item', item,
       '--claim', 'the guard now blocks edits', '--verdict', 'PROVEN',
-      '--evidence', 'I am confident it works'], root).stdout;
+      '--evidence', 'I am confident that it works as intended'], root).stdout;
     run(['journal', '--run', runId, '--item', item,
       '--claim', 'the guard now blocks edits', '--verdict', 'CONTRADICTED',
       '--evidence', 'live edit succeeded; file bytes changed on disk',
@@ -84,9 +84,9 @@ describe('acceptance: a false claim of success cannot survive', () => {
     const item = run(['add', '--run', runId, '--title', 'fix it properly'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
 
-    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-      '--verdict', 'CONTRADICTED', '--evidence', 'did not work'], root).stdout;
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+    const first = run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+      '--verdict', 'CONTRADICTED', '--evidence', 'reran the command; it failed in the same way'], root).stdout;
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
       '--verdict', 'PROVEN', '--evidence', 'reran the command, output correct',
       '--supersedes', first], root);
 
@@ -116,8 +116,8 @@ describe('acceptance: a false claim of success cannot survive', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-         '--verdict', 'UNPROVEN', '--evidence', 'no evidence shown yet'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+         '--verdict', 'UNPROVEN', '--evidence', 'no evidence gathered yet; verification is still pending'], root);
 
     const d = run(['done', '--run', runId, '--item', item], root);
     expect(d.code).toBe(13);
@@ -128,8 +128,8 @@ describe('acceptance: a false claim of success cannot survive', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-         '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
 
     const d = run(['done', '--run', runId, '--item', item], root);
     expect(d.code).toBe(0);
@@ -140,8 +140,8 @@ describe('acceptance: a false claim of success cannot survive', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '10000'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-         '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     // Simulate a crash while appending the entry that would have contradicted it.
     fs.appendFileSync(path.join(root, 'runs', runId, 'journal.jsonl'), '{"verdict":"CONTRA');
 
@@ -164,8 +164,8 @@ describe('tier derived from touched paths, not from prose', () => {
   test('touching enforcement code while claiming routine is refused', () => {
     const root = tmpRoot();
     const { runId, item } = ready(root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-         '--verdict', 'PROVEN', '--evidence', 'e', '--tier', 'routine'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output', '--tier', 'routine'], root);
 
     const sneaky = run(['done', '--run', runId, '--item', item,
                         '--touched', 'bin/example-tool'], root);
@@ -176,9 +176,9 @@ describe('tier derived from touched paths, not from prose', () => {
   test('touching enforcement code with elevated + verifier is allowed', () => {
     const root = tmpRoot();
     const { runId, item } = ready(root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-         '--verdict', 'PROVEN', '--evidence', 'e',
-         '--tier', 'elevated', '--verifier', 'w2'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output',
+         '--tier', 'elevated', '--verifier', 'worker-b'], root);
 
     expect(run(['done', '--run', runId, '--item', item,
                 '--touched', 'bin/example-tool'], root).code).toBe(0);
@@ -187,8 +187,8 @@ describe('tier derived from touched paths, not from prose', () => {
   test('ordinary files are unaffected — routine still closes', () => {
     const root = tmpRoot();
     const { runId, item } = ready(root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'c',
-         '--verdict', 'PROVEN', '--evidence', 'e', '--tier', 'routine'], root);
+    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+         '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output', '--tier', 'routine'], root);
 
     expect(run(['done', '--run', runId, '--item', item,
                 '--touched', 'docs/notes.md'], root).code).toBe(0);

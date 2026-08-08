@@ -177,7 +177,7 @@ def read_manifest(run_id):
     path = os.path.join(run_dir(run_id), "manifest.json")
     if not os.path.exists(path):
         sys.stderr.write("no such run: %s\n" % run_id)
-        sys.exit(2)
+        sys.exit(21)  # not 2 — argparse already owns 2 for usage errors
     with open(path, "r", encoding="utf-8") as fh:
         m = json.load(fh)
     if m.get("schema") != SCHEMA:
@@ -1524,4 +1524,4 @@ Two spec items are deliberately **not** separate tasks: the circuit breaker alre
 
 **2. Placeholder scan** — no `TBD`, `TODO`, "add error handling", or "similar to Task N". Every code step contains runnable code; every test step contains the actual assertions.
 
-**3. Type consistency** — verified across tasks: `run_dir()`, `read_manifest()`, `append_jsonl()`, `read_jsonl()`, `budget_state()`, `open_items()`, `lock_path()` are defined in Tasks 1-5 and used with identical names and signatures in Tasks 2-8. Exit codes are distinct and non-overlapping: 2 = no such run, 3 = bad schema, 4 = no claimable items, 5 = bad verdict, 6 = budget exhausted.
+**3. Type consistency** — verified across tasks: `run_dir()`, `read_manifest()`, `append_jsonl()`, `read_jsonl()`, `budget_state()`, `open_items()`, `lock_path()` are defined in Tasks 1-5 and used with identical names and signatures in Tasks 2-8. Exit codes are distinct and non-overlapping: 21 = no such run (moved off 2, which argparse owns for usage errors), 3 = bad schema, 4 = no claimable items, 5 = bad verdict, 6 = budget exhausted.

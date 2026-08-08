@@ -55,7 +55,7 @@ describe('gstack-run queue', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const itemId = run(['add', '--run', runId, '--title', 'job'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', itemId, '--claim', 'done', '--verdict', 'PROVEN', '--evidence', 'e'], root);
+    run(['journal', '--run', runId, '--item', itemId, '--claim', 'the change under test behaves as specified', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     expect(run(['done', '--run', runId, '--item', itemId], root).code).toBe(0);
 
     // Even with the lock gone, a completed item is never handed out again.
@@ -182,5 +182,40 @@ describe('wrong-shaped JSON lines', () => {
     const c = run(['claim', '--run', runId, '--worker', 'w1'], root);
     expect(c.code).toBe(0);
     expect(JSON.parse(c.stdout).item_id).toBe(item);
+  });
+});
+
+describe('release: hand an item back without completing it', () => {
+  test('the holder can release, and the item becomes claimable again', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+
+    expect(run(['release', '--run', runId, '--item', item, '--worker', 'w1'], root).code).toBe(0);
+
+    const again = run(['claim', '--run', runId, '--worker', 'w2'], root);
+    expect(again.code).toBe(0);
+    expect(JSON.parse(again.stdout).item_id).toBe(item);
+  });
+
+  test('releasing someone else claim is refused', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+
+    const thief = run(['release', '--run', runId, '--item', item, '--worker', 'w2'], root);
+    expect(thief.code).toBe(24);
+    expect(thief.stderr).toContain('held by');
+    // w1 still holds it.
+    expect(run(['claim', '--run', runId, '--worker', 'w3'], root).code).toBe(4);
+  });
+
+  test('releasing an unclaimed item is refused', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    expect(run(['release', '--run', runId, '--item', item, '--worker', 'w1'], root).code).toBe(24);
   });
 });

@@ -392,6 +392,39 @@ def uncommitted(paths):
     return dirty
 
 
+def cmd_release(args):
+    """Hand an item back without completing it.
+
+    A worker that finishes a pipeline STAGE has not finished the ITEM, and until
+    now had no way to let go: `done` closes the item, `park` sends it to the
+    founder, and nothing else released the lock. The only exit was to wait out
+    the two-hour TTL.
+
+    Checks ownership, which `done` and `park` still do not — releasing someone
+    else's claim would hand their in-flight item to a second worker.
+    """
+    read_manifest(args.run)
+    path = lock_path(args.run, args.item)
+    if not os.path.exists(path):
+        sys.stderr.write("item %s is not claimed — nothing to release.\n" % args.item)
+        sys.exit(24)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            holder = json.load(fh).get("worker")
+    except Exception:
+        holder = None
+    if holder != args.worker:
+        sys.stderr.write(
+            "item %s is held by %r, not %r — refusing to release someone else's "
+            "claim, which would hand their in-flight work to a second worker.\n"
+            % (args.item, holder, args.worker)
+        )
+        sys.exit(24)
+    os.unlink(path)
+    append_jsonl(args.run, "queue.jsonl",
+                 {"event": "release", "item_id": args.item, "worker": args.worker})
+
+
 def cmd_done(args):
     read_manifest(args.run)
     entries, bad = read_jsonl_counted(args.run, "journal.jsonl")
@@ -479,8 +512,42 @@ def cmd_status(args):
     print(json.dumps(read_manifest(args.run), indent=2))
 
 
+# Strings that look like a value but assert nothing. A journal entry exists to be
+# read later by someone deciding whether to trust the work; "pending" is not a
+# verifier and "x" is not evidence.
+PLACEHOLDERS = {
+    "x", "y", "z", "-", "--", "n/a", "na", "none", "null", "nil", "tbd", "todo",
+    "pending", "test", "testing", "temp", "tmp", "foo", "bar", "baz", "asdf",
+    "self", "me", "same", "ok", "done", "yes", "no",
+}
+
+
+def reject_thin(field, value, minimum):
+    """Refuse a value that is empty, a placeholder, or too short to mean anything.
+
+    Written after I filed an entry with --claim "x" --evidence "x" --verifier
+    "pending" one command after building the gate meant to prevent exactly that.
+    The runtime accepted it. Discipline that depends on remembering does not
+    survive convenience.
+    """
+    v = (value or "").strip()
+    if v.lower() in PLACEHOLDERS or len(v) < minimum:
+        sys.stderr.write(
+            "--%s is %s — a journal entry is read later by someone deciding "
+            "whether to trust this work, and %r tells them nothing. Give at "
+            "least %d characters of substance.\n"
+            % (field, "a placeholder" if v.lower() in PLACEHOLDERS else "too short",
+               v, minimum)
+        )
+        sys.exit(22)
+
+
 def cmd_journal(args):
     read_manifest(args.run)
+    reject_thin("claim", args.claim, 15)
+    reject_thin("evidence", args.evidence, 25)
+    if args.verifier is not None:
+        reject_thin("verifier", args.verifier, 3)
     if args.verdict not in VERDICTS:
         sys.stderr.write("verdict must be one of %s\n" % (VERDICTS,))
         sys.exit(5)
@@ -780,6 +847,12 @@ def main():
     pc.add_argument("--run", required=True)
     pc.add_argument("--worker", required=True)
     pc.set_defaults(func=cmd_claim)
+
+    prl = sub.add_parser("release")
+    prl.add_argument("--run", required=True)
+    prl.add_argument("--item", required=True)
+    prl.add_argument("--worker", required=True)
+    prl.set_defaults(func=cmd_release)
 
     pd = sub.add_parser("done")
     pd.add_argument("--run", required=True)

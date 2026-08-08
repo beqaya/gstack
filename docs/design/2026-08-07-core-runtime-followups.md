@@ -54,13 +54,20 @@ in increasing order of effort: raise the TTL substantially; add an ownership che
 holder may `done`/`park`; add a real heartbeat-refresh subcommand the supervisor calls between
 steps.
 
+## Closed since — fixed, with the evidence
+
+| Item | How it was closed |
+|---|---|
+| Exit 2 collided with argparse | `read_manifest` now exits **21** for no-such-run, so a caller can distinguish it from a usage error. Found by running the `bug` pipeline on it (run `caf5a03d4c1a`), fixed in `2f40230d`. |
+| `run-supervisor` doc is stale | It was already current on the `done` refusals — the row was wrong when written. It is now also current on `release` and the placeholder gate. |
+| A journal entry could be filled with stand-ins | `--claim`/`--evidence`/`--verifier` are length-checked and denylisted; a filler value exits **22**. This skill filed `--claim "x" --verifier "pending"` one command after building the verifier requirement, and the runtime took it. |
+| No way to release a claim mid-pipeline | `release --worker` frees an item the caller actually holds (exit **24** otherwise). Previously the only exits were `done`, `park`, or waiting out the two-hour TTL. |
+
 ## Deferred — real, non-blocking
 
 | Item | Detail |
 |---|---|
-| `run-supervisor` doc is stale | The skill says `done` refuses only a CONTRADICTED item. It now also refuses an item with no journal entry (exit 14) and one whose latest verdict is UNPROVEN (exit 13). Fails closed, so this is friction, not danger. |
 | `atomic_write_json` uses a fixed `.tmp` name | Two concurrent `stop` calls on one run share the temp filename and could interleave. |
-| Exit 2 collides with argparse | A caller branching on exit 2 cannot distinguish "no such run" from a usage error. Cheapest fix is moving no-such-run off 2. |
 | Wrong-shaped JSON raises KeyError | `open_items` and `cmd_report` index `rec["item_id"]`/`rec["event"]` unguarded, so a line that is valid JSON of the wrong shape produces a raw traceback (exit 1) rather than a deliberate code. |
 | `--why breaker-tripped` is unreachable | `stop` accepts it but nothing produces it: the supervisor skill has no circuit-breaker path, despite the plan claiming it "references `gstack-failure-count` rather than rebuilding it". |
 | `stop --why queue-drained` accepted with open items | The contradiction is at least visible in the same JSON object. |
