@@ -94,9 +94,12 @@ C is therefore **integration and gap-closing**, not authorship.
    security department actually performs (governance, risk, compliance, AppSec,
    cloud, detection, response, awareness, third-party, BCDR). Produce the coverage
    map and, more importantly, the gaps.
-2. **Resolve the `cso` overlap.** gstack has `cso`; cyberteam has an advisory and
-   BISO line. Decide which owns "run a security audit" and make the other defer,
-   using the disambiguation pattern already applied to the six routing collisions.
+2. ~~**Resolve the `cso` overlap.**~~ **CORRECTED by the founder 2026-08-08: there
+   is no overlap to resolve.** `cso` belongs to the *development* team — it reviews
+   the security of what we build, and stays in the dev pipelines. Cyberteam is a
+   *separate practice* with its own clients and deliverables. They serve different
+   audiences and both should exist. What C must avoid is the two colliding in the
+   pipeline table, which is why cyber kinds are namespaced (see below).
 3. **Wire into A.** Security work becomes runnable as run items with pipelines,
    like B's — an `incident` kind, an `audit` kind, a `review` kind.
 4. **Evidence discipline.** Security findings are claims about a system's state.
@@ -108,6 +111,26 @@ C is therefore **integration and gap-closing**, not authorship.
 - Rewriting the 61 skills. Read before proposing changes.
 - KSA/NCA regulatory content decisions — founder domain, not mine.
 - Merging cyberteam into gstack. They are separate suites; C connects them.
+
+## Built so far (2026-08-08)
+
+Eight namespaced engagement pipelines are in `gstack-pipeline`, their stages
+naming real cyberteam skills: `cyber:assessment`, `cyber:audit`,
+`cyber:incident`, `cyber:pentest`, `cyber:vciso`, `cyber:vendor`,
+`cyber:threat`, `cyber:privacy`.
+
+The `cyber:` prefix is load-bearing. `incident` already means something else
+on the dev side (investigate -> build -> ship -> canary) and cyberteam's
+incident is triage -> forensics -> breach-response. Two kinds sharing one
+name is the collision class this suite was already bitten by.
+
+A test resolves every cyber stage against
+`~/.claude/skills/cyberteam/skills/<stage>/SKILL.md` on disk. A pipeline that
+named a non-existent skill would send a worker to run nothing, and the stage
+would look complete because nothing failed.
+
+Still to do: the coverage map (item 1), and evidence discipline for findings
+(item 4).
 
 ## Acceptance criteria
 

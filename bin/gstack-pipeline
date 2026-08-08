@@ -33,6 +33,31 @@ PIPELINES = {
     "docs":     ["build", "document-release"],
     "incident": ["investigate", "build", "qa", "review", "ship", "canary"],
     "chore":    ["build", "review"],
+
+    # --- cyberteam engagements (sub-project C) -----------------------------
+    # A SEPARATE practice from the development team, with its own clients and
+    # deliverables. gstack's own `cso` skill belongs to the DEV pipelines above
+    # — it reviews what we build. These stages name skills in the cyberteam
+    # suite at ~/.claude/skills/cyberteam/skills/.
+    #
+    # Namespaced with a "cyber:" prefix on purpose: "incident" already means
+    # something different on the dev side (investigate -> build -> ship ->
+    # canary), and two kinds sharing one name is the collision this suite has
+    # already been bitten by once.
+    "cyber:assessment": ["risk-assessment", "maturity", "soa", "compliance-map", "advisory"],
+    "cyber:audit":      ["audit-prep", "questionnaire", "soa", "audit-response", "soc-report"],
+    "cyber:incident":   ["triage", "forensics", "breach-response", "incident"],
+    "cyber:pentest":    ["pentest", "vuln-mgmt", "security-review", "advisory"],
+    "cyber:vciso":      ["posture", "maturity", "policy-review", "metrics", "advisory"],
+    "cyber:vendor":     ["vendor-risk", "questionnaire", "supply-chain", "advisory"],
+    "cyber:threat":     ["intel", "cti-strategic", "threat-hunt", "detection-eng"],
+    "cyber:privacy":    ["privacy-dpia", "data-security", "policy-review", "advisory"],
+}
+
+# Where a pipeline's stages resolve to skills. Dev stages are gstack skills (plus
+# "build", which is the work itself); cyber stages are cyberteam skills.
+SKILL_SUITE = {
+    "cyber:": "cyberteam",
 }
 
 

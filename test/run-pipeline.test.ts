@@ -120,3 +120,41 @@ describe('pipeline wired into the runtime', () => {
     expect(c.next_stage).toBeNull();
   });
 });
+
+describe('cyberteam engagements (sub-project C)', () => {
+  const fs = require('fs');
+  const CYBER = path.join(path.dirname(ROOT), 'cyberteam', 'skills');
+
+  test('every cyber stage names a real cyberteam skill', () => {
+    // The single most valuable check here: a pipeline that names a skill which
+    // does not exist sends a worker to run nothing, and the stage would look
+    // complete because there was nothing to fail.
+    const kinds = pipe(['--kinds']).stdout.split(/\r?\n/).filter(k => k.startsWith('cyber:'));
+    expect(kinds.length).toBeGreaterThan(0);
+
+    const missing: string[] = [];
+    for (const k of kinds) {
+      for (const stage of pipe(['--kind', k]).stdout.split(/\r?\n/)) {
+        if (!fs.existsSync(path.join(CYBER, stage, 'SKILL.md'))) {
+          missing.push(`${k}:${stage}`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('cyber and dev kinds do not collide on the word incident', () => {
+    const dev = pipe(['--kind', 'incident']).stdout.split(/\r?\n/);
+    const cyber = pipe(['--kind', 'cyber:incident']).stdout.split(/\r?\n/);
+    expect(dev).toContain('ship');       // dev incident ends in shipping code
+    expect(cyber).toContain('forensics'); // cyber incident does not
+    expect(cyber).not.toContain('ship');
+    expect(dev).not.toEqual(cyber);
+  });
+
+  test('an audit engagement runs its stages in order', () => {
+    expect(pipe(['--kind', 'cyber:audit']).stdout.split(/\r?\n/)).toEqual(
+      ['audit-prep', 'questionnaire', 'soa', 'audit-response', 'soc-report']);
+    expect(pipe(['--kind', 'cyber:audit', '--after', 'soa']).stdout).toBe('audit-response');
+  });
+});
