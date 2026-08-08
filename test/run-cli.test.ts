@@ -203,3 +203,20 @@ describe('gstack-run done --touched', () => {
     expect(run(['done', '--run', runId, '--item', item, '--touched', loose], root).code).toBe(0);
   });
 });
+
+describe('exit codes are distinguishable from argparse', () => {
+  test('an unknown run exits 21, not argparse usage code 2', () => {
+    const root = tmpRoot();
+    const missing = run(['status', '--run', 'doesnotexist'], root);
+    expect(missing.code).toBe(21);
+    expect(missing.stderr).toContain('no such run');
+  });
+
+  test('a genuine usage error still exits 2 — the two are now separable', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '10'], root).stdout;
+    // --nonsense is not a flag; argparse owns this failure.
+    const bad = run(['status', '--run', runId, '--nonsense'], root);
+    expect(bad.code).toBe(2);
+  });
+});

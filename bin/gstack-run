@@ -52,8 +52,10 @@ def run_dir(run_id):
 def read_manifest(run_id):
     path = os.path.join(run_dir(run_id), "manifest.json")
     if not os.path.exists(path):
+        # 21, not 2: argparse exits 2 on a usage error, so a caller branching on
+        # 2 could not tell "this run does not exist" from "you passed a bad flag".
         sys.stderr.write("no such run: %s\n" % run_id)
-        sys.exit(2)
+        sys.exit(21)
     with open(path, "r", encoding="utf-8") as fh:
         m = json.load(fh)
     if m.get("schema") != SCHEMA:
