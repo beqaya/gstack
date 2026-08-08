@@ -157,3 +157,48 @@ describe('gstack-run journal --verifier', () => {
     expect(h[0].verifier).toBe('worker-b');
   });
 });
+
+describe('gstack-run journal --tier elevated', () => {
+  test('elevated work without a verifier is refused', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'worker-a'], root);
+
+    const bare = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                      '--verdict', 'PROVEN', '--evidence', 'e',
+                      '--tier', 'elevated'], root);
+    expect(bare.code).toBe(16);
+
+    const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
+    expect(h.length).toBe(0);
+  });
+
+  test('elevated work WITH a different verifier is accepted and records the tier', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'worker-a'], root);
+
+    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                    '--verdict', 'PROVEN', '--evidence', 'e',
+                    '--tier', 'elevated', '--verifier', 'worker-b'], root);
+    expect(ok.code).toBe(0);
+
+    const h = JSON.parse(run(['history', '--run', runId, '--item', item], root).stdout);
+    expect(h[0].tier).toBe('elevated');
+    expect(h[0].verifier).toBe('worker-b');
+  });
+
+  test('routine work still needs no verifier', () => {
+    const root = tmpRoot();
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'worker-a'], root);
+
+    const ok = run(['journal', '--run', runId, '--item', item, '--claim', 'c',
+                    '--verdict', 'PROVEN', '--evidence', 'e',
+                    '--tier', 'routine'], root);
+    expect(ok.code).toBe(0);
+  });
+});

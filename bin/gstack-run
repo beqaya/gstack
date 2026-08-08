@@ -347,6 +347,18 @@ def cmd_journal(args):
                 "alone.\n" % (args.supersedes, args.item)
             )
             sys.exit(7)
+    if args.tier == "elevated" and not args.verifier:
+        # Recording a verifier was optional, so elevated work could be closed
+        # with nobody named — which is how the very first dogfood run closed
+        # four items with zero verifiers recorded. Optional means it happens
+        # when convenient, and "convenient" is exactly when it is skipped.
+        sys.stderr.write(
+            "elevated work requires --verifier. An elevated claim must be "
+            "re-derived from primary sources by a DIFFERENT agent than the one "
+            "that did the work; naming that agent is what makes the claim "
+            "auditable afterwards.\n"
+        )
+        sys.exit(16)
     if args.verifier:
         # "Verified by a DIFFERENT agent" was previously unauditable — nothing
         # recorded who verified, so the claim could never be checked after the
@@ -371,6 +383,7 @@ def cmd_journal(args):
         "evidence": args.evidence,
         "supersedes": args.supersedes,
         "verifier": args.verifier,
+        "tier": args.tier,
     })
     print(entry_id)
 
@@ -572,6 +585,9 @@ def main():
     pj.add_argument("--verifier", default=None,
                     help="agent that verified this claim; refused if it also "
                          "claimed the item")
+    pj.add_argument("--tier", default=None, choices=["routine", "elevated"],
+                    help="verification tier from gstack-risk-classify; "
+                         "elevated requires --verifier")
     pj.set_defaults(func=cmd_journal)
 
     ph = sub.add_parser("history")

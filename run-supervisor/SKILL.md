@@ -825,11 +825,21 @@ with `--why budget-exhausted`.
 
 ## Step 5: Record, then park or complete
 
+Pass the tier from Step 3 through, and for elevated work name the agent that
+verified it:
+
 ```bash
 ~/.claude/skills/gstack/bin/gstack-run journal --run "$RUN" --item "$ITEM" \
   --claim "<what you assert>" --verdict PROVEN|UNPROVEN|CONTRADICTED \
-  --evidence "<what you observed>"
+  --evidence "<what you observed>" \
+  --tier "$TIER" [--verifier "<the agent that verified>"]
 ```
+
+`--tier elevated` without `--verifier` is refused (exit 16), and a verifier that
+also claimed the item is refused (exit 15). Recording who verified is what makes
+"verified by a different agent" checkable after the fact rather than an
+assurance — the first run of this skill closed four items with no verifier
+recorded at all, because the field was merely available.
 
 **If the verdict is PROVEN**, close the item out:
 
