@@ -26,8 +26,10 @@ import argparse
 import errno
 import json
 import os
+import re
 import sys
 import time
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 
@@ -522,6 +524,70 @@ PLACEHOLDERS = {
 }
 
 
+# Latin lookalikes from other scripts. A worker does not attack itself, so this
+# exists for the realistic case — a pasted or autocompleted character that reads
+# as "pending" to a human and misses a byte comparison.
+CONFUSABLES = str.maketrans({
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x", "у": "y",
+    "і": "i", "ѕ": "s", "ԁ": "d", "ј": "j", "ԛ": "q", "ѡ": "w", "г": "r",
+    "α": "a", "ε": "e", "ο": "o", "ρ": "p", "τ": "t", "ι": "i", "κ": "k",
+    "μ": "m", "ν": "v", "χ": "x", "υ": "u",
+})
+
+
+def canonical(value):
+    """Reduce a value to the letters and digits a reader would actually see.
+
+    `n/a.` and `n / a` and `N.A.` are the same non-answer, and a denylist
+    comparing raw bytes catches none of them. This also defeats padding a
+    placeholder to clear a length floor: `x . . . . . . . .` canonicalises to
+    `x`.
+    """
+    v = unicodedata.normalize("NFKC", value or "").casefold().translate(CONFUSABLES)
+    return re.sub(r"[^0-9a-z]+", "", v)
+
+
+CANONICAL_PLACEHOLDERS = {canonical(p) for p in PLACEHOLDERS} - {""}
+
+# Prose that asserts a conclusion instead of reporting an observation. Evidence
+# is what someone else could re-derive; none of these give them anything to
+# re-derive from.
+VACUOUS = re.compile(
+    r"\b(?:"
+    r"i(?:'m| am) (?:confident|certain|sure|positive)"
+    r"|it (?:just )?works?(?: fine| well| correctly)?\b"
+    r"|works? (?:as (?:intended|expected|advertised)|fine|well|correctly)"
+    r"|look(?:s|ed)? (?:good|fine|right|correct|ok)"
+    r"|seem(?:s|ed)? (?:to work|fine|good|right|correct|ok)"
+    r"|should (?:be fine|work|be ok|be correct)"
+    r"|trust me|no issues|all good|nothing broke|everything (?:works|passes)"
+    r"|did the work|completed the work|finished it|is done now"
+    r"|verified it|confirmed it|checked it out"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Signals that a sentence reports something observed rather than concluded: an
+# action actually taken, a number, a path, or a quoted fragment of output.
+OBSERVED = re.compile(
+    r"\b(?:ran|reran|re-ran|executed|invoked|called|read|opened|queried|fetched"
+    r"|observed|compared|inspected|printed|returned|measured|reproduced|diffed"
+    r"|grepped|captured|logged|dumped|stepped|traced|mutated|patched)\b"
+    r"|[0-9]"
+    r"|[/\\][A-Za-z0-9_.-]"
+    r"|[`\"']",
+    re.IGNORECASE,
+)
+
+
+def _refuse(field, why, value, tail):
+    sys.stderr.write(
+        "--%s %s. This is read later by someone deciding whether to trust the "
+        "work, and %r does not help them. %s\n" % (field, why, value, tail)
+    )
+    sys.exit(22)
+
+
 def reject_thin(field, value, minimum):
     """Refuse a value that is empty, a placeholder, or too short to mean anything.
 
@@ -531,15 +597,34 @@ def reject_thin(field, value, minimum):
     survive convenience.
     """
     v = (value or "").strip()
-    if v.lower() in PLACEHOLDERS or len(v) < minimum:
-        sys.stderr.write(
-            "--%s is %s — a journal entry is read later by someone deciding "
-            "whether to trust this work, and %r tells them nothing. Give at "
-            "least %d characters of substance.\n"
-            % (field, "a placeholder" if v.lower() in PLACEHOLDERS else "too short",
-               v, minimum)
-        )
-        sys.exit(22)
+    if canonical(v) in CANONICAL_PLACEHOLDERS:
+        _refuse(field, "is a placeholder", v,
+                "Say what was actually done or seen.")
+    if len(v) < minimum:
+        _refuse(field, "is too short", v,
+                "Give at least %d characters of substance." % minimum)
+
+
+def reject_vacuous(field, value):
+    """Refuse prose that states a conclusion in place of an observation."""
+    m = VACUOUS.search(value or "")
+    if m:
+        _refuse(field, "asserts a conclusion rather than reporting anything",
+                m.group(0),
+                "Replace it with what you did and what happened as a result.")
+
+
+def require_observation(field, value):
+    """Require evidence for a PROVEN claim to name something re-derivable.
+
+    Only PROVEN is gated. UNPROVEN exists precisely to record that evidence
+    could not be shown, and demanding observation-shaped prose there would make
+    the honest verdict the hardest one to file.
+    """
+    if not OBSERVED.search(value or ""):
+        _refuse(field, "names nothing that could be checked again", value,
+                "PROVEN evidence has to cite what you ran, read or measured — "
+                "a command, a file, a count, or a quoted line of output.")
 
 
 def cmd_journal(args):
@@ -552,6 +637,10 @@ def cmd_journal(args):
         sys.exit(5)
     reject_thin("claim", args.claim, 15)
     reject_thin("evidence", args.evidence, 25)
+    reject_vacuous("claim", args.claim)
+    reject_vacuous("evidence", args.evidence)
+    if args.verdict == "PROVEN":
+        require_observation("evidence", args.evidence)
     if args.verifier is not None:
         reject_thin("verifier", args.verifier, 3)
     if args.supersedes:
@@ -635,6 +724,8 @@ def cmd_park(args):
     # lower floor because a real one can be genuinely terse ("merge PR #72").
     reject_thin("action", args.action, 10)
     reject_thin("reason", args.reason, 25)
+    reject_vacuous("action", args.action)
+    reject_vacuous("reason", args.reason)
     _, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
     if bad_queue:
         sys.stderr.write(

@@ -28,7 +28,7 @@ describe('acceptance: a false claim of success cannot survive', () => {
     // The worker claims success without doing the work.
     const claimEntry = run(['journal', '--run', runId, '--item', item,
       '--claim', 'the guard now blocks edits to generated files',
-      '--verdict', 'PROVEN', '--evidence', 'I am confident that it works as intended'], root).stdout;
+      '--verdict', 'PROVEN', '--evidence', 'ran the guard on a generated file and it denied the edit'], root).stdout;
 
     // An independent verifier re-derives from a primary source and disagrees.
     run(['journal', '--run', runId, '--item', item,
@@ -63,7 +63,7 @@ describe('acceptance: a false claim of success cannot survive', () => {
 
     const claimEntry = run(['journal', '--run', runId, '--item', item,
       '--claim', 'the guard now blocks edits', '--verdict', 'PROVEN',
-      '--evidence', 'I am confident that it works as intended'], root).stdout;
+      '--evidence', 'ran the guard on a generated file and it denied the edit'], root).stdout;
     run(['journal', '--run', runId, '--item', item,
       '--claim', 'the guard now blocks edits', '--verdict', 'CONTRADICTED',
       '--evidence', 'live edit succeeded; file bytes changed on disk',

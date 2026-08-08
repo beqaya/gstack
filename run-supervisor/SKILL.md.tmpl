@@ -103,12 +103,30 @@ building the verifier requirement, this skill filed `--claim "x" --evidence "x"
 --verifier "pending"` and the runtime accepted it. A field that can be satisfied
 with a single character enforces nothing.
 
-Two limits, stated so you do not rely on more than it gives. It catches typed
-stand-ins, not vacuous prose: `--evidence "I am confident it all works fine"`
-clears every floor. And a denylist is always one character from being stepped
-around (`n/a.` passes). What actually catches unfounded work is the independent
-verifier and the `CONTRADICTED` verdict; this gate only stops the field from
-being filled in with nothing at all.
+Two further rules, because a floor and a wordlist were not enough on their own.
+
+**Placeholders are compared after normalising**, so punctuation, spacing, case,
+padding and Latin lookalikes from other scripts do not get one past it: `n/a.`,
+`N.A.`, `P E N D I N G`, `x . . . . . .` and a `pеnding` with a Cyrillic `е` are
+all the same non-answer and all refused. Whole values are compared, not
+substrings, so a real name like `nomad-7` or `donovan` is unaffected.
+
+**Evidence for a `PROVEN` verdict must report an observation, not assert a
+conclusion.** `--evidence "I am confident it all works fine"` is refused: it
+gives the next reader nothing to re-derive. Cite what you ran, read or measured
+— a command, a file, a count, a quoted line of output. Prose that concludes
+without observing (`looks good`, `works as intended`, `no issues`, `verified
+it`) is refused in `--claim` and in `park --action/--reason` too.
+
+Only `PROVEN` carries the observation requirement. `UNPROVEN` exists precisely
+to record that evidence could not be shown, and making the honest verdict the
+hardest one to file would push workers toward the dishonest one.
+
+What this still does not do is judge whether a specific, checkable-sounding
+statement is *true* — a fabricated `ran the suite, 100 pass` satisfies every
+rule here. That is what the independent verifier and the `CONTRADICTED` verdict
+are for. These gates only ensure the field says something a verifier can go and
+check.
 
 **If the verdict is PROVEN**, close the item out:
 

@@ -266,9 +266,9 @@ describe('a journal entry must actually say something', () => {
     const root = tmpRoot();
     const { runId, item } = ready(root);
     expect(run(['journal', '--run', runId, '--item', item, '--claim', LONG_CLAIM,
-                '--verdict', 'PROVEN', '--evidence', 'checked it and looked fine'.slice(0, 24)], root).code).toBe(22);
+                '--verdict', 'PROVEN', '--evidence', 'ran it and compared bytes'.slice(0, 24)], root).code).toBe(22);
     expect(run(['journal', '--run', runId, '--item', item, '--claim', LONG_CLAIM,
-                '--verdict', 'PROVEN', '--evidence', 'checked it and looked fine'.slice(0, 25)], root).code).toBe(0);
+                '--verdict', 'PROVEN', '--evidence', 'ran it and compared bytes'.slice(0, 25)], root).code).toBe(0);
   });
 
   test('a verifier under the floor is refused even though it is not a known placeholder', () => {
@@ -288,5 +288,94 @@ describe('a journal entry must actually say something', () => {
     const bad = run(['journal', '--run', runId, '--item', item, '--claim', 'x',
                      '--verdict', 'PROBABLY', '--evidence', 'x'], root);
     expect(bad.code).toBe(5);
+  });
+});
+
+// Both of these were documented as accepted limits before being closed. A
+// documented limit that quietly returns is worse than one never claimed fixed,
+// which is why each has a test rather than a paragraph.
+describe('a placeholder cannot be smuggled past the denylist', () => {
+  function ready(root: string) {
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    return { runId, item };
+  }
+  const CLAIM = 'the change under test behaves as specified';
+  const EVIDENCE = 'reran the command and compared its output against the spec';
+
+  // 'pеnding' carries a Cyrillic е — it reads as "pending" and is not equal to it.
+  for (const verifier of ['n/a.', 'pending.', 'N.A.', 'pеnding',
+                          'P E N D I N G', 'x . . . . . . . . . .']) {
+    test(`--verifier ${JSON.stringify(verifier)} is refused`, () => {
+      const root = tmpRoot();
+      const { runId, item } = ready(root);
+      expect(run(['journal', '--run', runId, '--item', item, '--claim', CLAIM,
+                  '--verdict', 'PROVEN', '--evidence', EVIDENCE,
+                  '--verifier', verifier], root).code).toBe(22);
+    });
+  }
+
+  test('a real name that merely contains a placeholder substring is still accepted', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    // 'nomad' contains 'no'; 'donovan' contains 'done'. Canonicalisation must
+    // compare whole values, not search for a placeholder inside them.
+    for (const verifier of ['nomad-7', 'donovan', 'testarossa']) {
+      expect(run(['journal', '--run', runId, '--item', item, '--claim', CLAIM,
+                  '--verdict', 'PROVEN', '--evidence', EVIDENCE,
+                  '--verifier', verifier], root).code).toBe(0);
+    }
+  });
+});
+
+describe('evidence must report an observation, not assert a conclusion', () => {
+  function ready(root: string) {
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    return { runId, item };
+  }
+  const CLAIM = 'the change under test behaves as specified';
+
+  for (const evidence of ['I am confident that it works as intended',
+                          'everything works fine and nothing broke',
+                          'checked it out and it all looks good now',
+                          'the behaviour is correct and acceptable']) {
+    test(`PROVEN evidence ${JSON.stringify(evidence)} is refused`, () => {
+      const root = tmpRoot();
+      const { runId, item } = ready(root);
+      expect(run(['journal', '--run', runId, '--item', item, '--claim', CLAIM,
+                  '--verdict', 'PROVEN', '--evidence', evidence], root).code).toBe(22);
+    });
+  }
+
+  test('a vacuous claim is refused even when the evidence is sound', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    expect(run(['journal', '--run', runId, '--item', item,
+                '--claim', 'it works as intended after my change here',
+                '--verdict', 'PROVEN',
+                '--evidence', 'ran the suite and saw 100 pass 0 fail'], root).code).toBe(22);
+  });
+
+  // The rule must not make the honest verdict the hardest one to file.
+  test('UNPROVEN may say that no evidence exists — that is its purpose', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    expect(run(['journal', '--run', runId, '--item', item, '--claim', CLAIM,
+                '--verdict', 'UNPROVEN',
+                '--evidence', 'no evidence gathered yet; verification is still pending'], root).code).toBe(0);
+  });
+
+  test('an observation with no numbers or paths in it is still evidence', () => {
+    const root = tmpRoot();
+    const { runId, item } = ready(root);
+    for (const evidence of ['ran a live Edit and the hook denied it, file bytes unchanged',
+                            'compared the two outputs and they differed at the header',
+                            'read the file from disk and the section was absent']) {
+      expect(run(['journal', '--run', runId, '--item', item, '--claim', CLAIM,
+                  '--verdict', 'PROVEN', '--evidence', evidence], root).code).toBe(0);
+    }
   });
 });
