@@ -109,6 +109,19 @@ describe('gstack-run stop/report', () => {
     }
   });
 
+  // Accepting a reason nothing ever emits is the same as not having it: a run
+  // failing systematically stopped as 'queue-drained', which reads in the
+  // report exactly like one that succeeded. The runtime side was always
+  // tested; what was missing was any caller producing it.
+  test('breaker-tripped is reachable — the supervisor documents how to emit it', () => {
+    const skill = fs.readFileSync(path.join(ROOT, 'run-supervisor', 'SKILL.md'), 'utf8');
+    expect(skill).toContain('gstack-failure-count');
+    expect(skill).toContain('--why breaker-tripped');
+    // BREAK is the branch that leads to it; CONTINUE alone would mean the
+    // counter is consulted and its answer ignored.
+    expect(skill).toContain('BREAK');
+  });
+
   test('an unrecognised stop reason is rejected and nothing is written', () => {
     const root = tmpRoot();
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;

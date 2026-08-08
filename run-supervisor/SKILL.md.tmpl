@@ -133,6 +133,43 @@ work gets closed out.
 contradicting evidence — otherwise the second attempt repeats the first's
 reasoning and reaches the same wrong answer. After that, park it.
 
+### Count the retries — do not judge them
+
+Every failed attempt gets recorded, and the decision to stop retrying is read
+off a counter rather than estimated. A worker asking itself "have I tried this
+enough times?" reliably answers no, because the last attempt always feels like
+it was nearly right.
+
+```bash
+python "~/.claude/skills/gstack/bin/gstack-failure-count" "$RUN-$ITEM" \
+  --record same|different|infra
+```
+
+`same` when the attempt failed the way the previous one did, `different` when
+the approach genuinely changed, `infra` for tooling or environment errors —
+those get two free retries before counting. It prints `CONTINUE` or `BREAK` on
+stdout and exits 0 either way, so branch on the text, not the exit code.
+
+**On `BREAK` for an item:** stop retrying it. Park it with the four-part summary
+(what was attempted, what happened each time, what you believe is wrong, what
+you would try next), then record that break against the run:
+
+```bash
+python "~/.claude/skills/gstack/bin/gstack-failure-count" "$RUN" --record same
+```
+
+**On `BREAK` for the run:** several items in a row have exhausted their retries,
+which means the problem is very unlikely to be the items. Stop:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run stop --run "$RUN" --why breaker-tripped
+```
+
+This is the only thing that produces `breaker-tripped`. The runtime has always
+accepted that reason and nothing ever emitted it, so a run that was failing
+systematically ended up labelled `queue-drained` — indistinguishable in the
+report from one that succeeded.
+
 Park anything needing founder approval; the run continues past it.
 
 **If you must abandon a claim without closing or parking it** — the item turned
