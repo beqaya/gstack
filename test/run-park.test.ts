@@ -107,3 +107,54 @@ describe('gstack-run park', () => {
     expect(parked.length).toBe(0);
   });
 });
+
+describe('gstack-run resolve', () => {
+  function parkOne(root: string) {
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'deploy prod'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['park', '--run', runId, '--item', item, '--action', 'deploy', '--reason', 'prod'], root);
+    return { runId, item };
+  }
+
+  test('an approved item stops counting as awaiting the founder', () => {
+    const root = tmpRoot();
+    const { runId, item } = parkOne(root);
+
+    let rep = JSON.parse(run(['report', '--run', runId], root).stdout);
+    expect(rep.parked).toBe(1);
+    expect(rep.parked_resolved).toBe(0);
+
+    expect(run(['resolve', '--run', runId, '--item', item,
+                '--decision', 'approved', '--note', 'pushed by hand'], root).code).toBe(0);
+
+    rep = JSON.parse(run(['report', '--run', runId], root).stdout);
+    expect(rep.parked).toBe(0);
+    expect(rep.parked_resolved).toBe(1);
+    // Resolved approval is still not work this run completed.
+    expect(rep.completed).toBe(0);
+  });
+
+  test('the decision is visible in the parked list', () => {
+    const root = tmpRoot();
+    const { runId, item } = parkOne(root);
+    run(['resolve', '--run', runId, '--item', item, '--decision', 'declined',
+         '--note', 'not now'], root);
+
+    const list = JSON.parse(run(['parked', '--run', runId], root).stdout);
+    const settled = list.find((x: any) => x.item_id === item && x.status === 'resolved');
+    expect(settled.decision).toBe('declined');
+    expect(settled.note).toBe('not now');
+  });
+
+  test('resolving twice, or resolving something never parked, is refused', () => {
+    const root = tmpRoot();
+    const { runId, item } = parkOne(root);
+    run(['resolve', '--run', runId, '--item', item, '--decision', 'approved'], root);
+
+    expect(run(['resolve', '--run', runId, '--item', item,
+                '--decision', 'declined'], root).code).toBe(18);
+    expect(run(['resolve', '--run', runId, '--item', 'neverparked',
+                '--decision', 'approved'], root).code).toBe(18);
+  });
+});

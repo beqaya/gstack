@@ -482,9 +482,59 @@ def cmd_park(args):
         pass
 
 
+def parked_state(run_id):
+    """Split parked.jsonl into (awaiting, resolved_decisions, bad_line_count).
+
+    A park record has an "action"; a resolution has a "decision" and names the
+    item it settles. Without this split the approval list is write-only: it can
+    say what needs deciding but never learns what was decided, so handled items
+    accumulate in it until nobody trusts the list.
+    """
+    records, bad = read_jsonl_counted(run_id, "parked.jsonl")
+    parks = [r for r in records if "action" in r]
+    decisions = {r.get("item_id"): r for r in records if "decision" in r}
+    awaiting = [p for p in parks if p.get("item_id") not in decisions]
+    return awaiting, decisions, bad
+
+
+def cmd_resolve(args):
+    read_manifest(args.run)
+    awaiting, decisions, bad = parked_state(args.run)
+    if bad:
+        sys.stderr.write(
+            "%d unreadable line(s) in parked.jsonl — refusing to resolve, the "
+            "list of what is actually awaiting you cannot be trusted.\n" % bad
+        )
+        sys.exit(10)
+    if args.item in decisions:
+        sys.stderr.write(
+            "item %s was already resolved as %s — refusing to resolve it twice.\n"
+            % (args.item, decisions[args.item].get("decision"))
+        )
+        sys.exit(18)
+    if args.item not in {p.get("item_id") for p in awaiting}:
+        sys.stderr.write(
+            "item %s is not awaiting a decision — only a parked item can be "
+            "resolved.\n" % args.item
+        )
+        sys.exit(18)
+    append_jsonl(args.run, "parked.jsonl", {
+        "item_id": args.item,
+        "decision": args.decision,
+        "note": args.note,
+    })
+
+
 def cmd_parked(args):
     read_manifest(args.run)
-    records, bad = read_jsonl_counted(args.run, "parked.jsonl")
+    awaiting, decisions, bad = parked_state(args.run)
+    for p in awaiting:
+        p["status"] = "awaiting"
+    settled = []
+    for iid, d in decisions.items():
+        settled.append({"item_id": iid, "status": "resolved",
+                        "decision": d.get("decision"), "note": d.get("note")})
+    records = awaiting + settled
     print(json.dumps(records, indent=2))
     if bad:
         sys.stderr.write(
@@ -566,15 +616,19 @@ def cmd_report(args):
     m = read_manifest(args.run)
     queue_records, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
     done_ids = {r.get("item_id") for r in queue_records if r.get("event") == "done"}
-    parked, bad_parked = read_jsonl_counted(args.run, "parked.jsonl")
-    parked_ids = {p.get("item_id") for p in parked}
+    awaiting_recs, decisions, bad_parked = parked_state(args.run)
+    # Every item that was ever parked stays out of `completed` — parking wrote a
+    # queue `done` event, and a resolved approval is still not work this run did.
+    parked_ids = {p.get("item_id") for p in awaiting_recs} | set(decisions)
+    awaiting_ids = {p.get("item_id") for p in awaiting_recs}
     b = budget_state(args.run)
     print(json.dumps({
         "run_id": m["run_id"],
         "status": m["status"],
         "stopped_because": m.get("stopped_because"),
         "completed": len(done_ids - parked_ids),
-        "parked": len(parked_ids),
+        "parked": len(awaiting_ids),
+        "parked_resolved": len(decisions),
         "open": len(open_items(args.run)),
         "spent": b["spent"],
         "budget": b["budget"],
@@ -648,6 +702,14 @@ def main():
     pp.add_argument("--action", required=True)
     pp.add_argument("--reason", required=True)
     pp.set_defaults(func=cmd_park)
+
+    prs = sub.add_parser("resolve")
+    prs.add_argument("--run", required=True)
+    prs.add_argument("--item", required=True)
+    prs.add_argument("--decision", required=True,
+                     choices=["approved", "declined"])
+    prs.add_argument("--note", default=None)
+    prs.set_defaults(func=cmd_resolve)
 
     pl = sub.add_parser("parked")
     pl.add_argument("--run", required=True)
