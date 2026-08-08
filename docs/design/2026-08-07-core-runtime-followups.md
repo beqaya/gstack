@@ -90,7 +90,17 @@ cannot phrase its way out or mislabel. The prose classifier would remain useful
 as an *early* signal during the work, but `done` would be the enforcement point,
 comparing declared tier against touched paths and refusing a mismatch.
 
-Not built. It is the single highest-value remaining change to this runtime.
+**BUILT 2026-08-08 (`f6118bdb`).** `done` now derives the tier from `--touched`
+paths: anything under `bin/`, `hooks/`, `.github/workflows/`, `migrations/`, or a
+`settings.json` / `.env` / `.pem` / `.ssh` file makes the item elevated, and
+closing it then requires an elevated journal entry naming a verifier (exit 19).
+The prose classifier remains an early signal during the work; `done` is the
+enforcement point. 72 tests.
+
+Residual, and it is inherent: this only binds when the worker passes `--touched`.
+A worker that omits the flag skips the check. Making `--touched` mandatory is the
+obvious next tightening, but it would break every existing caller and needs a
+deprecation pass rather than a flip.
 
 ## Adjudicated as not worth doing
 
