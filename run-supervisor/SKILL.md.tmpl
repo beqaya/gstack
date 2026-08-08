@@ -33,10 +33,30 @@ applies. Then repeat until `claim` exits 4:
 
 Exit 4 means the queue is drained — go to Step 6.
 
+`claim` returns `item_id`, `title`, and — when the item has a kind — `kind` and
+`next_stage`. `next_stage` is the first stage of that kind's pipeline not yet
+closed with a PROVEN verdict, so a resumed run continues where the last one
+stopped rather than starting over.
+
 ## Step 2: Do the work
 
-Do the item. Every tool call passes the budget guard; if it denies, go to Step 6
-with `--why budget-exhausted`.
+**If `next_stage` is set, do THAT stage and only that stage.** The stage names the
+gstack skill to run — `spec`, `plan-eng-review`, `qa`, `review`, `ship`, `canary`
+— except `build`, which is the work itself. Running ahead is how a gate gets
+skipped: the pipeline exists so that `qa` cannot be reached before the thing is
+built, and `ship` cannot be reached before it is reviewed.
+
+To see the whole sequence, or what follows a stage:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-pipeline --kind "$KIND"
+~/.claude/skills/gstack/bin/gstack-pipeline --kind "$KIND" --after "$STAGE"
+```
+
+If `next_stage` is null the item has no pipeline — do the whole item.
+
+Every tool call passes the budget guard; if it denies, go to Step 6 with
+`--why budget-exhausted`.
 
 ## Step 3: Classify
 
