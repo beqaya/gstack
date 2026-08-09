@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""gstack-metrics — what the runs actually show, traceable to the runs.
+
+Sub-project D. This adds NO instrumentation. Every figure here is derived from
+files `gstack-run` already writes: verdicts and stages from journal.jsonl,
+spend from ledger.jsonl, approvals from parked.jsonl, outcomes from
+manifest.json.
+
+Two rules the whole file exists to keep:
+
+1. Every figure names the runs it came from. A number you cannot trace is a
+   number you cannot argue with, and D's whole purpose is to change decisions.
+2. Anything estimated says so. Token spend is SELF-REPORTED by the worker via
+   `budget-record`; the harness knows the true figure and gstack does not. A
+   cost metric that hides that is worse than no cost metric.
+
+And one it keeps by refusing: with few runs, a rate is an anecdote wearing a
+percent sign. Each metric carries its own `n`, and `--min-n` (default 20) marks
+anything thinner as `indicative` rather than `measured`.
+
+Usage:
+    gstack-metrics                    # every metric, JSON
+    gstack-metrics --metric verdicts  # one metric
+    gstack-metrics --findings         # only what is worth acting on
+    gstack-metrics --min-n 5          # lower the bar for calling a rate measured
+
+Exit codes:
+    0  ok
+    2  unknown metric
+    3  no runs found
+"""
+import argparse
+import json
+import os
+import sys
+
+MIN_N_DEFAULT = 20
+
+
+def state_root():
+    return os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack")
+
+
+def runs_dir():
+    return os.path.join(state_root(), "runs")
+
+
+def read_jsonl(run_dir, name):
+    """Records from one file, plus the count of lines that would not parse.
+
+    Unreadable lines are COUNTED, never skipped silently. A metric computed
+    over a file that was partly unreadable is wrong in a direction nobody can
+    see, so the count travels with the figure.
+    """
+    path = os.path.join(run_dir, name)
+    out, bad = [], 0
+    if not os.path.exists(path):
+        return out, bad
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                bad += 1
+                continue
+            if isinstance(rec, dict):
+                out.append(rec)
+            else:
+                bad += 1
+    return out, bad
+
+
+def load_runs():
+    root = runs_dir()
+    if not os.path.isdir(root):
+        return []
+    runs = []
+    for rid in sorted(os.listdir(root)):
+        d = os.path.join(root, rid)
+        mpath = os.path.join(d, "manifest.json")
+        if not os.path.isfile(mpath):
+            continue
+        try:
+            with open(mpath, "r", encoding="utf-8") as fh:
+                manifest = json.load(fh)
+        except ValueError:
+            continue
+        journal, bad_j = read_jsonl(d, "journal.jsonl")
+        ledger, bad_l = read_jsonl(d, "ledger.jsonl")
+        queue, bad_q = read_jsonl(d, "queue.jsonl")
+        parked, bad_p = read_jsonl(d, "parked.jsonl")
+        runs.append({
+            "run_id": rid, "manifest": manifest, "journal": journal,
+            "ledger": ledger, "queue": queue, "parked": parked,
+            "unreadable": bad_j + bad_l + bad_q + bad_p,
+        })
+    return runs
+
+
+def basis(scanned, n, min_n, estimated=False, note=None, contributing=None):
+    """The provenance block every figure carries.
+
+    `runs` is every run SCANNED, not only those that had data. "0 parks across
+    4 runs" and "we never looked" are different statements, and a basis that
+    lists nothing when a metric finds nothing collapses them into one.
+    """
+    b = {
+        "n": n,
+        "runs": sorted(scanned),
+        "strength": "measured" if n >= min_n else "indicative",
+    }
+    if contributing is not None:
+        b["runs_with_data"] = sorted(contributing)
+    if n < min_n:
+        b["why_indicative"] = (
+            "n=%d is below --min-n=%d. Treat this as a direction to look in, "
+            "not a rate." % (n, min_n))
+    if estimated:
+        b["estimated"] = (
+            "Token spend is self-reported by the worker through budget-record. "
+            "The harness knows the true figure and gstack does not.")
+    if note:
+        b["note"] = note
+    return b
+
+
+def m_verdicts(runs, min_n):
+    """Which stages produce claims that do not survive."""
+    scanned = {r["run_id"] for r in runs}
+    by_stage, ids, total = {}, set(), 0
+    for r in runs:
+        for e in r["journal"]:
+            stage = e.get("stage") or "(no stage)"
+            v = e.get("verdict")
+            s = by_stage.setdefault(stage, {"PROVEN": 0, "UNPROVEN": 0,
+                                            "CONTRADICTED": 0, "superseded": 0})
+            if v in s:
+                s[v] += 1
+            if e.get("supersedes"):
+                s["superseded"] += 1
+            ids.add(r["run_id"])
+            total += 1
+    return {"by_stage": by_stage,
+            "basis": basis(scanned, total, min_n, contributing=ids,
+                           note="'superseded' counts entries that overturned an "
+                                "earlier claim on the same item — the clearest "
+                                "signal that a stage produced a wrong answer first.")}
+
+
+def m_verifier_coverage(runs, min_n):
+    """Elevated work is supposed to name an independent verifier. Does it?"""
+    scanned = {r["run_id"] for r in runs}
+    named = unnamed = 0
+    ids, offenders = set(), []
+    for r in runs:
+        for e in r["journal"]:
+            if e.get("tier") != "elevated":
+                continue
+            ids.add(r["run_id"])
+            if e.get("verifier"):
+                named += 1
+            else:
+                unnamed += 1
+                offenders.append({"run": r["run_id"], "entry": e.get("entry_id"),
+                                  "stage": e.get("stage")})
+    total = named + unnamed
+    return {"elevated_entries": total, "verifier_named": named,
+            "verifier_missing": unnamed,
+            "missing_entries": offenders,
+            "basis": basis(scanned, total, min_n, contributing=ids)}
+
+
+def m_spend(runs, min_n):
+    """Where the tokens went, by phase. Self-reported — see the estimated note."""
+    scanned = {r["run_id"] for r in runs}
+    by_phase, ids, records = {}, set(), 0
+    for r in runs:
+        for e in r["ledger"]:
+            phase = e.get("phase") or "(no phase)"
+            by_phase[phase] = by_phase.get(phase, 0) + int(e.get("tokens") or 0)
+            ids.add(r["run_id"])
+            records += 1
+    total = sum(by_phase.values())
+    verify = by_phase.get("verify", 0)
+    work = by_phase.get("work", 0)
+    ratio = round(verify / work, 2) if work else None
+    return {"by_phase": by_phase, "total_tokens": total,
+            "verify_to_work_ratio": ratio,
+            "basis": basis(scanned, records, min_n, estimated=True, contributing=ids)}
+
+
+def m_parks(runs, min_n):
+    """What keeps needing the founder — the candidates for standing approval."""
+    scanned = {r["run_id"] for r in runs}
+    awaiting, resolved, actions, ids = 0, 0, [], set()
+    for r in runs:
+        decided = {p.get("item_id") for p in r["parked"] if "decision" in p}
+        for p in r["parked"]:
+            if "action" not in p:
+                continue
+            ids.add(r["run_id"])
+            actions.append({"run": r["run_id"], "action": p.get("action")})
+            if p.get("item_id") in decided:
+                resolved += 1
+            else:
+                awaiting += 1
+    return {"awaiting": awaiting, "resolved": resolved, "actions": actions,
+            "basis": basis(scanned, awaiting + resolved, min_n, contributing=ids)}
+
+
+def m_outcomes(runs, min_n):
+    """How runs end. A run that stops early and says nothing is the worry."""
+    why, ids = {}, set()
+    open_runs = []
+    for r in runs:
+        m = r["manifest"]
+        ids.add(r["run_id"])
+        if m.get("status") == "active":
+            open_runs.append(r["run_id"])
+            why["(still active)"] = why.get("(still active)", 0) + 1
+        else:
+            k = m.get("stopped_because") or "(no reason recorded)"
+            why[k] = why.get(k, 0) + 1
+    return {"stopped_because": why, "still_active": open_runs,
+            "basis": basis(ids, len(runs), min_n)}
+
+
+def m_integrity(runs, min_n):
+    """Lines that would not parse. Any non-zero figure taints every metric."""
+    bad = {r["run_id"]: r["unreadable"] for r in runs if r["unreadable"]}
+    return {"runs_with_unreadable_lines": bad,
+            "total_unreadable": sum(bad.values()),
+            "basis": basis({r["run_id"] for r in runs}, len(runs), min_n)}
+
+
+METRICS = {
+    "verdicts": m_verdicts,
+    "verifier-coverage": m_verifier_coverage,
+    "spend": m_spend,
+    "parks": m_parks,
+    "outcomes": m_outcomes,
+    "integrity": m_integrity,
+}
+
+
+def findings(report, runs, min_n):
+    """Only what would change a decision, phrased as work items.
+
+    A metric nobody acts on is a chart. Each finding is written so it can be
+    added to a queue with `gstack-run add` unchanged.
+    """
+    out = []
+    vc = report.get("verifier-coverage", {})
+    if vc.get("verifier_missing"):
+        out.append({
+            "title": "elevated work closed with no verifier named (%d entries)"
+                     % vc["verifier_missing"],
+            "why": "Elevated means a DIFFERENT agent re-derived the result. An "
+                   "entry with no verifier cannot be audited afterwards, so the "
+                   "tier claims a guarantee the record cannot support.",
+            "evidence": vc["missing_entries"],
+        })
+    verd = report.get("verdicts", {}).get("by_stage", {})
+    for stage, s in sorted(verd.items()):
+        overturned = s.get("CONTRADICTED", 0) + s.get("superseded", 0)
+        if overturned:
+            out.append({
+                "title": "stage %r produced %d claim(s) that were overturned"
+                         % (stage, overturned),
+                "why": "A stage whose claims get superseded or contradicted is "
+                       "where verification is paying for itself. Worth knowing "
+                       "before trusting it unverified.",
+                "evidence": {"stage": stage, "counts": s},
+            })
+    integ = report.get("integrity", {})
+    if integ.get("total_unreadable"):
+        out.append({
+            "title": "%d unreadable line(s) across run files"
+                     % integ["total_unreadable"],
+            "why": "Every figure in this report is computed over those files. "
+                   "A partial read is wrong in a direction nobody can see.",
+            "evidence": integ["runs_with_unreadable_lines"],
+        })
+    parks = report.get("parks", {})
+    if parks.get("awaiting"):
+        out.append({
+            "title": "%d approval request(s) still awaiting the founder"
+                     % parks["awaiting"],
+            "why": "A run cannot finish this work without a decision. Repeated "
+                   "requests for the same kind of action are candidates for a "
+                   "standing authorisation.",
+            "evidence": parks.get("actions"),
+        })
+    if len(runs) < min_n:
+        out.append({
+            "title": "too few runs for any rate here to be a rate (n=%d)"
+                     % len(runs),
+            "why": "D was specified not to start until a few dozen runs exist, "
+                   "precisely so it would not produce precise-looking numbers "
+                   "derived from nothing. Every figure above is marked "
+                   "'indicative' for this reason. Use them to decide where to "
+                   "look, never to claim a trend.",
+            "evidence": {"runs": sorted(r["run_id"] for r in runs)},
+        })
+    return out
+
+
+def main():
+    p = argparse.ArgumentParser(prog="gstack-metrics")
+    p.add_argument("--metric", default=None)
+    p.add_argument("--findings", action="store_true")
+    p.add_argument("--min-n", type=int, default=MIN_N_DEFAULT)
+    args = p.parse_args()
+
+    runs = load_runs()
+    if not runs:
+        sys.stderr.write(
+            "no runs found under %s — nothing to measure.\n" % runs_dir())
+        sys.exit(3)
+
+    if args.metric and args.metric not in METRICS:
+        sys.stderr.write("unknown metric %r. Known: %s\n"
+                         % (args.metric, ", ".join(sorted(METRICS))))
+        sys.exit(2)
+
+    wanted = [args.metric] if args.metric else sorted(METRICS)
+    report = {name: METRICS[name](runs, args.min_n) for name in wanted}
+
+    if args.findings:
+        print(json.dumps(findings(report, runs, args.min_n), indent=2))
+        return
+    if not args.metric:
+        report["findings"] = findings(report, runs, args.min_n)
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()

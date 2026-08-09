@@ -232,6 +232,43 @@ D becomes possible once A/B/C have produced runs across real work.
 Needs A, plus real usage. Do not start D until at least a few dozen runs exist
 across work that gstack did not author.
 
+## Built 2026-08-09 — `bin/gstack-metrics`
+
+**Started at the founder's direction with 4 runs, not the few dozen this
+section asks for.** That is a real caveat, not a formality, and the tool is
+built so the caveat cannot be lost: every metric carries its own `n`, anything
+below `--min-n` (default 20) is labelled `indicative` rather than `measured`,
+and the thin-dataset warning is itself emitted as the report's own first
+finding. The numbers below are directions to look in, not rates.
+
+Six metrics, all derived from files the runtime already writes — no new
+instrumentation, per scope item 1: `verdicts` (by stage, including entries that
+superseded an earlier claim), `verifier-coverage`, `spend`, `parks`,
+`outcomes`, `integrity`.
+
+What it found on the first real read:
+
+| Figure | Value | Reading |
+|---|---|---|
+| verify-to-work token ratio | 0.93 (estimated) | Verification costs nearly as much as the work |
+| elevated entries with a verifier named | 6 of 6 | The gate built mid-session is holding |
+| stages with an overturned claim | `build` 1, `review` 1 | Both had a claim superseded — where verification paid |
+| run outcomes | 4 of 4 `queue-drained` | No run has yet stopped for budget or a breaker |
+
+Criteria: **1** — every figure carries `runs` (all scanned) plus
+`runs_with_data`, so a number can always be traced, and "0 across 4 runs" is
+distinguishable from "never looked". **2** — the 0.93 ratio was not previously
+known; the design doc had guessed from a single item. **3** — spend carries an
+`estimated` note naming why (self-reported through `budget-record`; the harness
+knows the true figure and gstack does not). **4** — D's own build is recorded
+in run `17ca8cafe958`, verdict PROVEN with the figures above as evidence.
+
+Findings are emitted as work items with titles and evidence, ready for
+`gstack-run add` (scope item 3), rather than as a chart.
+
+Still true and unfixed: token spend cannot be measured, only self-reported.
+Every cost figure stays an estimate until the harness reports the real number.
+
 ---
 
 # Suggested order, and the reasoning
