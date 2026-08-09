@@ -964,6 +964,21 @@ report from one that succeeded.
 
 Park anything needing founder approval; the run continues past it.
 
+**If a parked request goes out of date, correct it** — do not park a second one
+(refused, exit 8) and do not leave the founder reading something that is no
+longer true:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run amend --run "$RUN" --item "$ITEM" \
+  --action "<the corrected ask>" --reason "<why it changed>"
+```
+
+An amended request goes back to `awaiting` even if it had already been decided.
+That is deliberate: a request whose substance changed after it was answered has
+not been answered. This exists because a real one went stale — an item asked
+approval to push three commits, two more landed while it waited, and nothing
+could correct the text.
+
 **If you must abandon a claim without closing or parking it** — the item turned
 out to belong to another run, or you are handing it to a different worker — use
 `release`:

@@ -136,8 +136,31 @@ including secure SDLC, identity governance, physical security and crisis
 communications — the last mattering especially in KSA, where NCA and SAMA
 notification windows make comms a regulatory event of its own.
 
-Still to do: evidence discipline for findings (item 4), and pipelines for the
-34 skills not yet in one.
+**C is complete as of 2026-08-09.**
+
+Item 4, evidence discipline, needed no new mechanism — the runtime already
+enforces it, and building a second one would have been duplication. Verified
+end to end on a real `cyber:pentest` item, a cross-tenant leak finding, at four
+levels:
+
+| Attempt to close the finding | Result |
+|---|---|
+| No journal entry at all | exit 14 |
+| `--evidence "I am confident this is exploitable"` | exit 22 |
+| Filed honestly as `UNPROVEN` | `done` refuses, exit 13 |
+| `issued GET /api/assets with tenant B's token and received 14 rows belonging to tenant A`, verifier named | closes |
+
+A finding that is a belief cannot be recorded as PROVEN, and a finding that is
+not PROVEN cannot be closed. That is criterion 4.
+
+Pipelines: three added — `cyber:appsec`, `cyber:detection`, `cyber:awareness` —
+the three the coverage map had identified as having real demand. That brings 34
+of 61 skills into a pipeline. The remaining 27 stay out deliberately, grouped
+and justified in the coverage map: standing advisory roles, domain assessments
+chosen per client from inside another engagement, one-off exercises with their
+own cadence, and the commercial/router skills. A row per skill would reach
+61/61 and mean nothing, since a pipeline asserts that a fixed sequence is how
+the work runs — and where that is false, a worker follows the lie.
 
 ## Acceptance criteria
 

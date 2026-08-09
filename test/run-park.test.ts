@@ -184,3 +184,103 @@ describe('gstack-run resolve', () => {
                 '--decision', 'approved'], root).code).toBe(18);
   });
 });
+
+// An approval request that has gone stale must be correctable. One did: an
+// item was parked asking to push three commits, two more landed while it
+// waited, and no command could change the text — park refused as terminal,
+// resolve closed it instead of correcting it, claim would not hand it back.
+describe('gstack-run amend', () => {
+  function parked(root: string) {
+    const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'job'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    run(['park', '--run', runId, '--item', item,
+         '--action', 'push three commits to the fork',
+         '--reason', 'pushing needs founder approval before it happens'], root);
+    return { runId, item };
+  }
+  const list = (runId: string, root: string) =>
+    JSON.parse(run(['parked', '--run', runId], root).stdout);
+  const report = (runId: string, root: string) =>
+    JSON.parse(run(['report', '--run', runId], root).stdout);
+
+  test('amending replaces what the founder is asked to approve', () => {
+    const root = tmpRoot();
+    const { runId, item } = parked(root);
+
+    expect(run(['amend', '--run', runId, '--item', item,
+                '--action', 'push five commits to the fork',
+                '--reason', 'two more commits landed while this waited'], root).code).toBe(0);
+
+    const l = list(runId, root);
+    expect(l.length).toBe(1);
+    expect(l[0].action).toBe('push five commits to the fork');
+    expect(l[0].status).toBe('awaiting');
+    expect(report(runId, root).parked).toBe(1);
+  });
+
+  // The founder's ruling: a request whose substance changed after it was
+  // answered has not been answered.
+  test('amending an already-decided request puts it back in front of the founder', () => {
+    const root = tmpRoot();
+    const { runId, item } = parked(root);
+    run(['resolve', '--run', runId, '--item', item, '--decision', 'approved'], root);
+    expect(report(runId, root).parked).toBe(0);
+    expect(report(runId, root).parked_resolved).toBe(1);
+
+    run(['amend', '--run', runId, '--item', item,
+         '--action', 'push five commits to the fork',
+         '--reason', 'two more commits landed after you approved this'], root);
+
+    expect(list(runId, root)[0].status).toBe('awaiting');
+    expect(report(runId, root).parked).toBe(1);
+    expect(report(runId, root).parked_resolved).toBe(0);
+
+    // And it can be decided again — the reset is not a dead end.
+    expect(run(['resolve', '--run', runId, '--item', item,
+                '--decision', 'approved'], root).code).toBe(0);
+    const settled = list(runId, root);
+    expect(settled[0].status).toBe('resolved');
+    expect(settled[0].action).toBe('push five commits to the fork');
+  });
+
+  test('resolving twice without an amend in between is still refused', () => {
+    const root = tmpRoot();
+    const { runId, item } = parked(root);
+    run(['resolve', '--run', runId, '--item', item, '--decision', 'approved'], root);
+    expect(run(['resolve', '--run', runId, '--item', item,
+                '--decision', 'declined'], root).code).toBe(18);
+  });
+
+  test('amending something never parked is refused', () => {
+    const root = tmpRoot();
+    const { runId } = parked(root);
+    expect(run(['amend', '--run', runId, '--item', 'neverparked',
+                '--action', 'git push',
+                '--reason', 'this item was never parked in the first place'], root).code).toBe(18);
+  });
+
+  test('an amended request must say as much as the original did', () => {
+    const root = tmpRoot();
+    const { runId, item } = parked(root);
+    expect(run(['amend', '--run', runId, '--item', item, '--action', 'x',
+                '--reason', 'x'], root).code).toBe(22);
+    expect(list(runId, root)[0].action).toBe('push three commits to the fork');
+  });
+
+  // A parked action is short by nature. A floor that rejects `git push`
+  // teaches the caller to pad, which is the vacuity the gate exists to stop.
+  test('the action floor admits real terse actions and still rejects stubs', () => {
+    const root = tmpRoot();
+    const { runId, item } = parked(root);
+    const REASON = 'pushing needs founder approval before it happens';
+    for (const action of ['git push', 'merge PR #72', 'rotate key']) {
+      expect(run(['amend', '--run', runId, '--item', item,
+                  '--action', action, '--reason', REASON], root).code).toBe(0);
+    }
+    for (const action of ['deploy', 'approve', 'x']) {
+      expect(run(['amend', '--run', runId, '--item', item,
+                  '--action', action, '--reason', REASON], root).code).toBe(22);
+    }
+  });
+});

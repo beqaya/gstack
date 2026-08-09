@@ -52,6 +52,15 @@ PIPELINES = {
     "cyber:vendor":     ["vendor-risk", "questionnaire", "supply-chain", "advisory"],
     "cyber:threat":     ["intel", "cti-strategic", "threat-hunt", "detection-eng"],
     "cyber:privacy":    ["privacy-dpia", "data-security", "policy-review", "advisory"],
+
+    # Added after the coverage map named these three as the engagements with
+    # real demand among the skills that had no pipeline. The other 31 stay
+    # unpipelined on purpose — see the map. A skill reachable directly is not a
+    # gap; inventing a sequence so every skill appears in one would produce
+    # pipelines nobody asked for and stages workers would skip.
+    "cyber:appsec":     ["threat-model", "appsec", "security-review"],
+    "cyber:detection":  ["detection-eng", "siem", "soar", "edr"],
+    "cyber:awareness":  ["awareness-content", "phish", "metrics"],
 }
 
 # Where a pipeline's stages resolve to skills. Dev stages are gstack skills (plus

@@ -719,9 +719,15 @@ def cmd_park(args):
     read_manifest(args.run)
     # The founder reads these two fields and nothing else when deciding whether
     # to approve. A stand-in here is worse than in the journal: the journal is
-    # read after the fact, this is read before a decision. `--action` takes the
-    # lower floor because a real one can be genuinely terse ("merge PR #72").
-    reject_thin("action", args.action, 10)
+    # read after the fact, this is read before a decision.
+    #
+    # `--action` sits at 8 — LOWER than the journal's `--claim` at 15, which
+    # looks inconsistent and is deliberate. The real actions that get parked are
+    # short by nature: "git push" is 8, "merge PR #72" is 12. A floor of 10
+    # rejected `git push` outright and taught the caller to pad, which is the
+    # vacuity this file spends forty lines preventing. `--reason` carries the
+    # explanation, and it keeps the higher floor.
+    reject_thin("action", args.action, 8)
     reject_thin("reason", args.reason, 25)
     reject_vacuous("action", args.action)
     reject_vacuous("reason", args.reason)
@@ -760,12 +766,65 @@ def parked_state(run_id):
     item it settles. Without this split the approval list is write-only: it can
     say what needs deciding but never learns what was decided, so handled items
     accumulate in it until nobody trusts the list.
+
+    ORDER decides, not presence. The latest record for an item wins: a park
+    filed after a decision puts the item back in front of the founder. That is
+    what makes `amend` work without rewriting history — an approval request that
+    changed after it was answered has not really been answered.
     """
     records, bad = read_jsonl_counted(run_id, "parked.jsonl")
-    parks = [r for r in records if "action" in r]
-    decisions = {r.get("item_id"): r for r in records if "decision" in r}
-    awaiting = [p for p in parks if p.get("item_id") not in decisions]
+    last_park, last_decision = {}, {}
+    for i, r in enumerate(records):
+        iid = r.get("item_id")
+        if "action" in r:
+            last_park[iid] = (i, r)
+        elif "decision" in r:
+            last_decision[iid] = (i, r)
+    awaiting = [rec for iid, (i, rec) in last_park.items()
+                if iid not in last_decision or last_decision[iid][0] < i]
+    decisions = {iid: rec for iid, (i, rec) in last_decision.items()
+                 if iid in last_park and last_park[iid][0] < i}
     return awaiting, decisions, bad
+
+
+def cmd_amend(args):
+    """Correct a parked approval request that has gone stale.
+
+    Written because one did. An item was parked asking approval to push three
+    commits; two more landed while it waited, and nothing could correct the
+    text — `park` refused as already-terminal, `resolve` closed it rather than
+    changing it, and `claim` would not hand it back. The founder's list could go
+    wrong with no way to put it right.
+
+    Amending an already-decided request returns it to `awaiting`. That is the
+    founder's call, recorded here: a request whose substance changed after it
+    was answered has not been answered.
+    """
+    read_manifest(args.run)
+    reject_thin("action", args.action, 8)
+    reject_thin("reason", args.reason, 25)
+    reject_vacuous("action", args.action)
+    reject_vacuous("reason", args.reason)
+    awaiting, decisions, bad = parked_state(args.run)
+    if bad:
+        sys.stderr.write(
+            "%d unreadable line(s) in parked.jsonl — refusing to amend, since "
+            "the request being corrected may not be the one you are reading.\n"
+            % bad
+        )
+        sys.exit(10)
+    if args.item not in {p.get("item_id") for p in awaiting} | set(decisions):
+        sys.stderr.write(
+            "item %s was never parked — there is no approval request to amend. "
+            "Use `park` to create one.\n" % args.item
+        )
+        sys.exit(18)
+    append_jsonl(args.run, "parked.jsonl", {
+        "item_id": args.item,
+        "action": args.action,
+        "reason": args.reason,
+        "amended": True,
+    })
 
 
 def cmd_resolve(args):
@@ -989,6 +1048,13 @@ def main():
     pp.add_argument("--action", required=True)
     pp.add_argument("--reason", required=True)
     pp.set_defaults(func=cmd_park)
+
+    am = sub.add_parser("amend")
+    am.add_argument("--run", required=True)
+    am.add_argument("--item", required=True)
+    am.add_argument("--action", required=True)
+    am.add_argument("--reason", required=True)
+    am.set_defaults(func=cmd_amend)
 
     prs = sub.add_parser("resolve")
     prs.add_argument("--run", required=True)

@@ -42,7 +42,7 @@ suite grows.
 
 ## Where the engagement pipelines draw from
 
-Eight `cyber:*` kinds are wired in `gstack-pipeline`. They use 27 of the 61 skills:
+Eleven `cyber:*` kinds are wired in `gstack-pipeline`. They use 34 of the 61 skills:
 
 | Kind | Stages |
 |---|---|
@@ -54,13 +54,30 @@ Eight `cyber:*` kinds are wired in `gstack-pipeline`. They use 27 of the 61 skil
 | `cyber:vendor` | vendor-risk → questionnaire → supply-chain → advisory |
 | `cyber:threat` | intel → cti-strategic → threat-hunt → detection-eng |
 | `cyber:privacy` | privacy-dpia → data-security → policy-review → advisory |
+| `cyber:appsec` | threat-model → appsec → security-review |
+| `cyber:detection` | detection-eng → siem → soar → edr |
+| `cyber:awareness` | awareness-content → phish → metrics |
 
-The other 34 skills are reachable directly but are not yet part of any pipeline.
-That is not automatically a gap — some are reference or one-off skills that do not
-belong in a fixed sequence. Candidates that probably *should* gain pipelines, in
-rough order of likely demand: `cyber:appsec` (threat-model → appsec →
-security-review), `cyber:detection` (detection-eng → siem → soar → edr), and
-`cyber:awareness` (awareness-content → phish → metrics).
+The last three were added 2026-08-09, the three this map had named as the ones
+with real demand.
+
+## The 27 skills with no pipeline, and why that is the right answer
+
+Adding a pipeline per skill would reach 61/61 and mean nothing. A pipeline is a
+claim that a fixed sequence of stages is how this work runs; where that claim is
+false, the row is a lie a worker then follows. The remaining 27 fall into four
+groups:
+
+| Group | Skills | Why no pipeline |
+|---|---|---|
+| Standing roles, not engagements | `vciso`, `biso`, `tech-advisor`, `solution-sme`, `requirements` | Continuous advisory. `cyber:vciso` already exists for the periodic cycle; the role itself has no start and end |
+| Domain assessments invoked inside another engagement | `cloud-security`, `m365-security`, `network-security`, `iam`, `iam-pam`, `crypto-pki`, `config-baseline`, `ot-ics`, `email-security`, `asm`, `security-architecture` | These are stages other pipelines call for, chosen by what the client actually runs. Fixing the order up front would run an OT/ICS assessment for a client with no OT |
+| One-off exercises with their own cadence | `red-team`, `purple-team`, `tabletop`, `bcp-dr`, `insider-threat`, `ma-security`, `malware-analysis`, `vdp`, `monthly-check` | Scheduled or triggered individually. A red team is scoped per engagement, not run as a fixed chain |
+| Commercial and entry points | `rfp`, `cyber` | Not security work. `cyber` is the suite's router |
+
+If one of these later turns out to run the same way every time, that is the
+moment to add the row — with the sequence someone actually followed, not a
+guess.
 
 ## Genuine gaps — nothing in the suite covers these
 
