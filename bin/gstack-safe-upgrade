@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""gstack-safe-upgrade — take an upstream update without destroying local work.
+
+The upgrade path this replaces was `git stash && git fetch origin && git reset
+--hard origin/main`. On a customised checkout that is a work-destroying command:
+`reset --hard` moves the CURRENT branch to upstream's tip, so every local commit
+leaves the working tree, and the stash it left behind was mentioned only in a
+prose warning the user had to notice and act on.
+
+This merges instead of resetting, and refuses rather than guessing whenever the
+safe answer is not obvious.
+
+It does the git half only. Regenerating skills (`./setup`) is left to the caller
+so that it can be gated on this exit code — running setup over a half-merged
+tree would install skills built from conflict markers.
+
+Usage:
+    gstack-safe-upgrade [--dir PATH] [--dry-run]
+
+Exit codes:
+    0  merged, fast-forwarded, or already current — safe to run ./setup
+    2  not a git repository
+    3  merge stopped on conflicts — resolve them, do NOT run ./setup yet
+    4  refused: tracked files have uncommitted changes
+    5  refused: detached HEAD, so there is no branch to merge into
+    6  the upstream remote has no main branch
+"""
+import argparse
+import os
+import subprocess
+import sys
+
+
+def git(args, cwd, check=False):
+    p = subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True)
+    if check and p.returncode != 0:
+        sys.stderr.write(p.stderr)
+        sys.exit(2)
+    return p
+
+
+def out(p):
+    return p.stdout.strip()
+
+
+def upstream_remote(cwd):
+    """Which remote is the real gstack project?
+
+    A fork has `upstream` (the project) and `origin` (the user's copy). A plain
+    clone has only `origin`, which IS the project. Preferring `upstream` when it
+    exists gets both right — and matters because upgrading from a fork's own
+    `main` installs whatever that fork last synced, silently, while reporting
+    success.
+    """
+    remotes = out(git(["remote"], cwd)).split()
+    return "upstream" if "upstream" in remotes else "origin"
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="gstack-safe-upgrade")
+    ap.add_argument("--dir", default=None,
+                    help="the gstack checkout (default: this script's repo)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="fetch and report what would happen, change nothing")
+    args = ap.parse_args()
+
+    cwd = args.dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if git(["rev-parse", "--git-dir"], cwd).returncode != 0:
+        sys.stderr.write("%s is not a git repository — nothing to upgrade.\n" % cwd)
+        sys.exit(2)
+
+    branch = out(git(["branch", "--show-current"], cwd))
+    if not branch:
+        sys.stderr.write(
+            "HEAD is detached, so there is no branch to merge the upgrade into. "
+            "Check out the branch you work on first.\n")
+        sys.exit(5)
+
+    # Untracked files are left alone: they are not at risk from a merge, and
+    # scratch directories should not block an upgrade. Tracked modifications
+    # ARE at risk, and stashing them here is how the previous version stranded
+    # work — so refuse and let the user decide.
+    dirty = out(git(["status", "--porcelain", "--untracked-files=no"], cwd))
+    if dirty:
+        sys.stderr.write(
+            "refusing to upgrade: these tracked files have uncommitted "
+            "changes.\n\n%s\n\nCommit or stash them yourself, so you know where "
+            "they went. The previous upgrade stashed silently and mentioned it "
+            "only in passing.\n" % dirty)
+        sys.exit(4)
+
+    remote = upstream_remote(cwd)
+    git(["fetch", remote], cwd)
+    ref = "%s/main" % remote
+    if git(["rev-parse", "--verify", ref], cwd).returncode != 0:
+        sys.stderr.write("%s has no main branch — cannot upgrade from it.\n" % remote)
+        sys.exit(6)
+
+    behind = int(out(git(["rev-list", "--count", "HEAD..%s" % ref], cwd)) or 0)
+    ahead = int(out(git(["rev-list", "--count", "%s..HEAD" % ref], cwd)) or 0)
+
+    print("upgrading %s from %s" % (branch, ref))
+    print("  %d new commit(s) upstream, %d local commit(s) not upstream"
+          % (behind, ahead))
+
+    if behind == 0:
+        print("already current — nothing to merge.")
+        return
+
+    if args.dry_run:
+        print("dry run: would %s" % ("fast-forward" if ahead == 0 else "merge"))
+        return
+
+    if ahead == 0:
+        # Nothing local to preserve, so the cheapest correct move. Still a merge
+        # command, never a reset: --ff-only fails loudly if the history diverged
+        # rather than discarding whatever it found.
+        p = git(["merge", "--ff-only", ref], cwd)
+    else:
+        p = git(["merge", "--no-edit", ref], cwd)
+
+    if p.returncode != 0:
+        sys.stdout.write(p.stdout)
+        sys.stderr.write(p.stderr)
+        sys.stderr.write(
+            "\nthe merge stopped on conflicts. Your work is intact and the "
+            "merge is still in progress.\n"
+            "  resolve them, or `git merge --abort` to back out entirely.\n"
+            "  SKILL.md files conflict on almost every upgrade because both "
+            "sides regenerate them — that is expected.\n"
+            "  do NOT run ./setup until the merge completes: it would build "
+            "skills out of conflict markers.\n")
+        sys.exit(3)
+
+    print("merged cleanly. Run ./setup to regenerate and install the skills.")
+
+
+if __name__ == "__main__":
+    main()

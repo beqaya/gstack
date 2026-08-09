@@ -125,12 +125,31 @@ Use the install type and directory detected in Step 2:
 **For git installs** (global-git, local-git):
 ```bash
 cd "$INSTALL_DIR"
-STASH_OUTPUT=$(git stash 2>&1)
-git fetch origin
-git reset --hard origin/main
-./setup
+bin/gstack-safe-upgrade && ./setup
 ```
-If `$STASH_OUTPUT` contains "Saved working directory", warn the user: "Note: local changes were stashed. Run `git stash pop` in the skill directory to restore them."
+
+`gstack-safe-upgrade` merges the upstream update instead of resetting to it, so
+a customised checkout keeps its own commits. It replaced
+`git stash && git fetch origin && git reset --hard origin/main`, which moved the
+CURRENT branch to upstream's tip — every local commit left the working tree, and
+the stash holding any uncommitted work was mentioned only in a prose warning.
+
+It also prefers an `upstream` remote over `origin` when one exists. On a fork,
+`origin/main` is only as fresh as that fork's last sync, so upgrading from it
+installs a stale version and reports success.
+
+`&&` is load-bearing: `./setup` must not run unless the merge completed.
+
+Report to the user based on the exit code:
+
+| Exit | Meaning | What to tell them |
+|---|---|---|
+| 0 | Merged, fast-forwarded, or already current | Upgraded; continue to the migration step |
+| 2 | Not a git repository | The install type was detected wrongly — do not fall through to another upgrade path, stop and say so |
+| 3 | Merge stopped on conflicts | Their work is intact and the merge is in progress. `SKILL.md` files conflict on nearly every upgrade because both sides regenerate them. Resolve, or `git merge --abort`. Do not run `./setup` yet |
+| 4 | Tracked files have uncommitted changes | Nothing was touched. They commit or stash themselves, so they know where it went |
+| 5 | Detached HEAD | Check out a branch first |
+| 6 | The upstream remote has no `main` | Their remotes need fixing before an upgrade can work |
 
 **For vendored installs** (vendored, vendored-global):
 ```bash
