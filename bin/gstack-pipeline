@@ -61,6 +61,12 @@ PIPELINES = {
     "cyber:appsec":     ["threat-model", "appsec", "security-review"],
     "cyber:detection":  ["detection-eng", "siem", "soar", "edr"],
     "cyber:awareness":  ["awareness-content", "phish", "metrics"],
+
+    # Added when a review applied this file's own rule to bcp-dr and it came
+    # back "add the row": its deliverables are a business impact analysis,
+    # RTO/RPO targets, continuity strategies and a DR runbook — a fixed order,
+    # not a per-scope exercise. Grouping it beside red-team was a mistake.
+    "cyber:continuity": ["risk-assessment", "bcp-dr", "tabletop"],
 }
 
 # Where a pipeline's stages resolve to skills. Dev stages are gstack skills (plus

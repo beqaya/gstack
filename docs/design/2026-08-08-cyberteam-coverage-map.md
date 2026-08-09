@@ -57,11 +57,16 @@ Eleven `cyber:*` kinds are wired in `gstack-pipeline`. They use 34 of the 61 ski
 | `cyber:appsec` | threat-model → appsec → security-review |
 | `cyber:detection` | detection-eng → siem → soar → edr |
 | `cyber:awareness` | awareness-content → phish → metrics |
+| `cyber:continuity` | risk-assessment → bcp-dr → tabletop |
 
-The last three were added 2026-08-09, the three this map had named as the ones
-with real demand.
+The first three of those were added 2026-08-09, the three this map had named as
+having real demand. `cyber:continuity` came from a review that applied the rule
+below to `bcp-dr` and got back "add the row" — its deliverables are a business
+impact analysis, RTO/RPO targets, continuity strategies and a DR runbook, which
+is a fixed order, not a per-scope exercise. It had been grouped beside
+`red-team`, which was wrong.
 
-## The 27 skills with no pipeline, and why that is the right answer
+## The 25 skills with no pipeline, and why that is the right answer
 
 Adding a pipeline per skill would reach 61/61 and mean nothing. A pipeline is a
 claim that a fixed sequence of stages is how this work runs; where that claim is
@@ -70,9 +75,10 @@ groups:
 
 | Group | Skills | Why no pipeline |
 |---|---|---|
-| Standing roles, not engagements | `vciso`, `biso`, `tech-advisor`, `solution-sme`, `requirements` | Continuous advisory. `cyber:vciso` already exists for the periodic cycle; the role itself has no start and end |
-| Domain assessments invoked inside another engagement | `cloud-security`, `m365-security`, `network-security`, `iam`, `iam-pam`, `crypto-pki`, `config-baseline`, `ot-ics`, `email-security`, `asm`, `security-architecture` | These are stages other pipelines call for, chosen by what the client actually runs. Fixing the order up front would run an OT/ICS assessment for a client with no OT |
-| One-off exercises with their own cadence | `red-team`, `purple-team`, `tabletop`, `bcp-dr`, `insider-threat`, `ma-security`, `malware-analysis`, `vdp`, `monthly-check` | Scheduled or triggered individually. A red team is scoped per engagement, not run as a fixed chain |
+| Standing roles, not engagements | `vciso`, `biso`, `tech-advisor`, `solution-sme` | Continuous advisory. `cyber:vciso` already exists for the periodic cycle; the role itself has no start and end |
+| Domain assessments chosen per client | `cloud-security`, `m365-security`, `network-security`, `iam`, `iam-pam`, `crypto-pki`, `config-baseline`, `ot-ics`, `email-security` | Stages other pipelines call for, selected by what the client actually runs. Fixing the order up front would run an OT/ICS assessment for a client with no OT |
+| Self-contained deliverables | `asm`, `requirements`, `security-architecture`, `vdp` | Sequential inside the skill, but the skill *is* the whole deliverable. A pipeline here would wrap a single stage and add nothing |
+| One-off exercises with their own cadence | `red-team`, `purple-team`, `insider-threat`, `ma-security`, `malware-analysis`, `monthly-check` | Scoped or triggered individually. A red team is defined per engagement — objectives, rules of engagement, technique set — not run as a fixed chain |
 | Commercial and entry points | `rfp`, `cyber` | Not security work. `cyber` is the suite's router |
 
 If one of these later turns out to run the same way every time, that is the

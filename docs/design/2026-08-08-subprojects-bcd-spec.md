@@ -153,14 +153,18 @@ levels:
 A finding that is a belief cannot be recorded as PROVEN, and a finding that is
 not PROVEN cannot be closed. That is criterion 4.
 
-Pipelines: three added — `cyber:appsec`, `cyber:detection`, `cyber:awareness` —
-the three the coverage map had identified as having real demand. That brings 34
-of 61 skills into a pipeline. The remaining 27 stay out deliberately, grouped
-and justified in the coverage map: standing advisory roles, domain assessments
-chosen per client from inside another engagement, one-off exercises with their
-own cadence, and the commercial/router skills. A row per skill would reach
-61/61 and mean nothing, since a pipeline asserts that a fixed sequence is how
-the work runs — and where that is false, a worker follows the lie.
+Pipelines: four added — `cyber:appsec`, `cyber:detection`, `cyber:awareness`
+(the three the coverage map had identified as having real demand) and
+`cyber:continuity`, which came out of review applying the map's own rule to
+`bcp-dr`. That brings 36 of 61 skills into a pipeline across 12 kinds.
+
+The remaining 25 stay out deliberately, grouped and justified in the coverage
+map: standing advisory roles, domain assessments chosen per client, self-
+contained deliverables, one-off exercises, and the commercial/router skills. A
+row per skill would reach 61/61 and mean nothing, since a pipeline asserts that
+a fixed sequence is how the work runs — and where that is false, a worker
+follows the lie. The map's grouping is checked against `gstack-pipeline`: it
+names exactly the unpipelined set, no more and no less.
 
 ## Acceptance criteria
 
