@@ -10,8 +10,7 @@ description: |
   browser". For fast headless automation with no visible window, use /browse
   instead — this skill is for when you want to watch it happen. (gstack)
   Formerly /open-gstack-browser, which was retired in favour of this name.
-voice-triggers:
-  - "show me the browser"
+  Voice triggers (speech-to-text aliases): "show me the browser".
 triggers:
   - connect chrome
   - launch chromium
