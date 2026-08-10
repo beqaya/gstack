@@ -1,7 +1,22 @@
 ---
 name: capture-lesson
 version: 1.0.0
-description: Captures a lesson at the MOMENT it is learned, instead of waiting for the weekly batch sweep. (gstack)
+description: |
+  Captures a lesson at the MOMENT it is learned, instead of waiting for the
+  weekly batch sweep. Fires on exactly three triggers: a defect is found in
+  something already reported done, an error is recovered from after
+  non-trivial diagnosis, or the user corrects a behavior. Classifies what was
+  learned as a DURABLE FACT (written to a memory file with Why /
+  How-to-apply sections) or a REPEATABLE PROCEDURE (staged as a
+  SKILL.md.draft, never auto-activated). A durable fact is then scoped and
+  routed: PROJECT facts go to the open project's own memory dir and index,
+  TOOLING facts (about gstack/a skill/the harness/the dev environment) go to
+  the shared gstack lessons doc instead of one project's private memory, and
+  USER/GLOBAL facts are proposed as a CLAUDE.md addition and require the
+  user's go-ahead before writing. Routine successful work produces no lesson.
+  Use when a bug is found after something was called done, right after
+  recovering from a non-trivial error, or when the user corrects your
+  behavior. (gstack)
 triggers:
   - that's wrong, I told you
   - this was already broken when you said it was done
@@ -18,24 +33,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-Fires on exactly three triggers: a defect is found in
-something already reported done, an error is recovered from after
-non-trivial diagnosis, or the user corrects a behavior. Classifies what was
-learned as a DURABLE FACT (written to a memory file with Why /
-How-to-apply sections) or a REPEATABLE PROCEDURE (staged as a
-SKILL.md.draft, never auto-activated). A durable fact is then scoped and
-routed: PROJECT facts go to the open project's own memory dir and index,
-TOOLING facts (about gstack/a skill/the harness/the dev environment) go to
-the shared gstack lessons doc instead of one project's private memory, and
-USER/GLOBAL facts are proposed as a CLAUDE.md addition and require the
-user's go-ahead before writing. Routine successful work produces no lesson.
-Use when a bug is found after something was called done, right after
-recovering from a non-trivial error, or when the user corrects your
-behavior.
 
 ## Preamble (run first)
 
