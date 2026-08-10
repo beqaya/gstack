@@ -2,15 +2,7 @@
 name: ios-clean
 preamble-tier: 3
 version: 1.0.0
-description: |
-  Remove the DebugBridge SPM package and all #if DEBUG wiring from an iOS
-  app. Cleans up StateServer, DebugOverlay, accessor codegen output, and
-  app-side hooks installed by /ios-qa. This is a convenience wrapper —
-  the structural Release-build guard (Package.swift conditional + CI
-  swift build -c release check) is the safety-critical path.
-  Use when asked to "clean the iOS debug bridge", "remove DebugBridge",
-  or "strip the gstack iOS instrumentation". (gstack)
-  Voice triggers (speech-to-text aliases): "clean the iOS debug bridge", "remove DebugBridge", "strip the gstack iOS instrumentation".
+description: "Remove the DebugBridge SPM package and all #if DEBUG wiring from an iOS app. (gstack)"
 allowed-tools:
   - Bash
   - Read
@@ -25,6 +17,18 @@ triggers:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Cleans up StateServer, DebugOverlay, accessor codegen output, and
+app-side hooks installed by /ios-qa. This is a convenience wrapper —
+the structural Release-build guard (Package.swift conditional + CI
+swift build -c release check) is the safety-critical path.
+Use when asked to "clean the iOS debug bridge", "remove DebugBridge",
+or "strip the gstack iOS instrumentation".
+
+Voice triggers (speech-to-text aliases): "clean the iOS debug bridge", "remove DebugBridge", "strip the gstack iOS instrumentation".
 
 ## Preamble (run first)
 

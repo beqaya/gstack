@@ -2,15 +2,7 @@
 name: codex
 preamble-tier: 3
 version: 1.0.0
-description: |
-  OpenAI Codex CLI wrapper — three modes. Code review: independent diff review via
-  codex review with pass/fail gate. Challenge: adversarial mode that tries to break
-  your code. Consult: ask codex anything with session continuity for follow-ups.
-  The "200 IQ autistic developer" second opinion. Use when asked to "codex review",
-  "codex challenge", "ask codex", "second opinion", or "consult codex". For the
-  default structural pre-landing review, use /review — codex is the independent
-  second opinion, not the first pass. (gstack)
-  Voice triggers (speech-to-text aliases): "code x", "code ex", "get another opinion".
+description: OpenAI Codex CLI wrapper — three modes. (gstack)
 triggers:
   - codex review
   - second opinion
@@ -25,6 +17,19 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Code review: independent diff review via
+codex review with pass/fail gate. Challenge: adversarial mode that tries to break
+your code. Consult: ask codex anything with session continuity for follow-ups.
+The "200 IQ autistic developer" second opinion. Use when asked to "codex review",
+"codex challenge", "ask codex", "second opinion", or "consult codex". For the
+default structural pre-landing review, use /review — codex is the independent
+second opinion, not the first pass.
+
+Voice triggers (speech-to-text aliases): "code x", "code ex", "get another opinion".
 
 ## Preamble (run first)
 

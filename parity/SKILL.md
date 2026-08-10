@@ -1,25 +1,7 @@
 ---
 name: parity
 version: 1.0.0
-description: |
-  Detects gstack repo edits that never reached the live copies a user actually
-  runs. The live skills at `~/.claude/skills/<name>/SKILL.md` are COPIES of
-  `~/.claude/skills/gstack/<name>/SKILL.md`, not junctions or symlinks -- a
-  correct repo edit changes nothing the user experiences until someone copies
-  it. Compares every repo skill's SKILL.md to its live counterpart by SHA-256
-  hash and reports four buckets: IDENTICAL (count only), DRIFTED (name + which
-  side is newer by mtime), REPO-ONLY (exists in the repo, invisible to the
-  user), and LIVE-ONLY (live but no repo counterpart -- informational, not an
-  error; plenty of live skills are hand-authored or belong to other projects).
-  `--sync` copies repo to live for DRIFTED and REPO-ONLY skills, re-verifies
-  by hash, and reports the new counts. Sync is one-directional: it NEVER
-  copies live back to the repo, because a live-side hand-edit copied into
-  version control would get silently committed as if it were reviewed source.
-  `--sync` refuses when the repo working tree has uncommitted changes to a
-  file it would copy -- commit or stash first. Use when asked to "check
-  parity", "did my skill edit actually land", "sync skills to live", "why
-  isn't my SKILL.md change showing up", or before trusting that any gstack
-  skill edit is live. (gstack)
+description: Detects gstack repo edits that never reached the live copies a user runs. (gstack)
 triggers:
   - check parity
   - is my skill edit live
@@ -34,6 +16,23 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+The
+live skills at `~/.claude/skills/<name>/SKILL.md` are COPIES of the repo's, so
+a correct repo edit changes nothing until someone copies it. Compares every
+skill to its live counterpart by SHA-256 and reports four buckets: IDENTICAL,
+DRIFTED (which side is newer), REPO-ONLY (invisible to the user), and
+LIVE-ONLY (informational -- many are hand-authored or belong to other
+projects). `--sync` copies repo to live for DRIFTED and REPO-ONLY, re-verifies
+by hash, and refuses when the working tree has uncommitted changes to a file
+it would copy. Sync is one-directional and NEVER copies live back to the repo:
+a live-side hand-edit landing in version control would be committed as if it
+were reviewed source. Use when asked to "check parity", "did my skill edit
+actually land", "sync skills to live", or "why isn't my SKILL.md change
+showing up".
 
 # /parity -- Repo-to-Live Skill Drift Detector
 

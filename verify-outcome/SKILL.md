@@ -1,17 +1,7 @@
 ---
 name: verify-outcome
 version: 1.0.0
-description: |
-  Proves a claim of the form "X now works" with evidence a USER would recognise,
-  and rejects proxy signals that only look like proof. Names the user-visible
-  outcome in one sentence, picks the right evidence class (browser DOM for web
-  UI, response body for an HTTP API, command output for a CLI, or the produced
-  row/file/artifact for a background job), then records a verdict: PROVEN,
-  UNPROVEN, or CONTRADICTED. Default is UNPROVEN until evidence is shown inline.
-  Use when asked to "verify it works", "prove it", "confirm the fix", or before
-  reporting anything shipped. For post-deploy production monitoring specifically,
-  use /canary; for the merge-then-verify pipeline, use /land-and-deploy — this
-  skill is the general-purpose evidence check for any claim. (gstack)
+description: Proves a claim of the form "X now works" with evidence a USER would recognise, and rejects proxy signals that only look like proof. (gstack)
 triggers:
   - verify it works
   - prove it
@@ -25,6 +15,19 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Names the user-visible
+outcome in one sentence, picks the right evidence class (browser DOM for web
+UI, response body for an HTTP API, command output for a CLI, or the produced
+row/file/artifact for a background job), then records a verdict: PROVEN,
+UNPROVEN, or CONTRADICTED. Default is UNPROVEN until evidence is shown inline.
+Use when asked to "verify it works", "prove it", "confirm the fix", or before
+reporting anything shipped. For post-deploy production monitoring specifically,
+use /canary; for the merge-then-verify pipeline, use /land-and-deploy — this
+skill is the general-purpose evidence check for any claim.
 
 ## Preamble (run first)
 

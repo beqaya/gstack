@@ -1,12 +1,7 @@
 ---
 name: spec
 version: 0.1.0
-description: |
-  Turn vague intent into a precise, executable spec in five phases. Files the issue,
-  optionally spawns a Claude Code agent in a fresh worktree, and lets /ship close
-  the source issue on merge. Use when asked to "spec this out", "file an issue",
-  "write up a ticket", "make this a GitHub issue", or "turn this into a backlog item".
-  (gstack)
+description: Turn vague intent into a precise, executable spec in five phases. (gstack)
 allowed-tools:
   - Bash
   - Read
@@ -23,6 +18,14 @@ triggers:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Files the issue,
+optionally spawns a Claude Code agent in a fresh worktree, and lets /ship close
+the source issue on merge. Use when asked to "spec this out", "file an issue",
+"write up a ticket", "make this a GitHub issue", or "turn this into a backlog item".
 
 ## Preamble (run first)
 

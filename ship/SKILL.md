@@ -2,13 +2,7 @@
 name: ship
 preamble-tier: 4
 version: 1.0.0
-description: |
-  Ship workflow: detect + merge base branch, run tests, review diff, bump VERSION,
-  update CHANGELOG, commit, push, create PR. Use when asked to "ship", "push to main",
-  "create a PR", or "merge and push". Does not merge or deploy — for that, use
-  /land-and-deploy after this creates the PR.
-  Proactively invoke this skill (do NOT push/PR directly) when the user says code
-  is ready, wants to push code up, or asks to create a PR. (gstack)
+description: "Ship workflow: detect + merge base branch, run tests, review diff, bump VERSION, update CHANGELOG, commit, push, create PR. (gstack)"
 allowed-tools:
   - Bash
   - Read
@@ -26,6 +20,15 @@ triggers:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Use when asked to "ship", "push to main",
+"create a PR", or "merge and push". Does not merge or deploy — for that, use
+/land-and-deploy after this creates the PR.
+Proactively invoke this skill (do NOT push/PR directly) when the user says code
+is ready, wants to push code up, or asks to create a PR.
 
 ## Preamble (run first)
 

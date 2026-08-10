@@ -2,14 +2,7 @@
 name: document-release
 preamble-tier: 2
 version: 1.0.0
-description: |
-  Post-ship documentation update. Reads all project docs, cross-references the
-  diff, builds a Diataxis coverage map (reference/how-to/tutorial/explanation),
-  updates README/ARCHITECTURE/CONTRIBUTING/CLAUDE.md to match what shipped,
-  detects architecture diagram drift, polishes CHANGELOG voice with a sell-test
-  rubric, cleans up TODOS, and optionally bumps VERSION. Surfaces documentation
-  debt in the PR body. Use when asked to "update the docs", "sync documentation",
-  or "post-ship docs". Proactively suggest after a PR is merged or code is shipped. (gstack)
+description: Post-ship documentation update. (gstack)
 allowed-tools:
   - Bash
   - Read
@@ -25,6 +18,17 @@ triggers:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Reads all project docs, cross-references the
+diff, builds a Diataxis coverage map (reference/how-to/tutorial/explanation),
+updates README/ARCHITECTURE/CONTRIBUTING/CLAUDE.md to match what shipped,
+detects architecture diagram drift, polishes CHANGELOG voice with a sell-test
+rubric, cleans up TODOS, and optionally bumps VERSION. Surfaces documentation
+debt in the PR body. Use when asked to "update the docs", "sync documentation",
+or "post-ship docs". Proactively suggest after a PR is merged or code is shipped.
 
 ## Preamble (run first)
 

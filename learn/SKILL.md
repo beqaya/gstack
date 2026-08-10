@@ -2,12 +2,7 @@
 name: learn
 preamble-tier: 2
 version: 1.0.0
-description: |
-  Manage project learnings. Review, search, prune, and export what gstack
-  has learned across sessions. Use when asked to "what have we learned",
-  "show learnings", "prune stale learnings", or "export learnings".
-  Proactively suggest when the user asks about past patterns or wonders
-  "didn't we fix this before?"
+description: Manage project learnings.
 triggers:
   - show learnings
   - what have we learned
@@ -23,6 +18,15 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Review, search, prune, and export what gstack
+has learned across sessions. Use when asked to "what have we learned",
+"show learnings", "prune stale learnings", or "export learnings".
+Proactively suggest when the user asks about past patterns or wonders
+"didn't we fix this before?"
 
 ## Preamble (run first)
 

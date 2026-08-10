@@ -1,13 +1,7 @@
 ---
 name: diagram
 version: 1.0.0
-description: |
-  Turn an English description (or mermaid source) into a diagram triplet:
-  the source, an editable .excalidraw file you can open on excalidraw.com,
-  and rendered SVG + PNG (clean mermaid style; the .excalidraw carries the
-  hand-drawn aesthetic). Fully offline.
-  Use when asked to "make a diagram", "draw the architecture", "create a
-  flowchart", "diagram this", or "visualize this flow". (gstack)
+description: "Turn an English description (or mermaid source) into a diagram triplet: the source, an editable .excalidraw file you can open (gstack)"
 allowed-tools:
   - Bash
   - Read
@@ -23,6 +17,15 @@ triggers:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+on excalidraw.com,
+and rendered SVG + PNG (clean mermaid style; the .excalidraw carries the
+hand-drawn aesthetic). Fully offline.
+Use when asked to "make a diagram", "draw the architecture", "create a
+flowchart", "diagram this", or "visualize this flow".
 
 ## Preamble (run first)
 
