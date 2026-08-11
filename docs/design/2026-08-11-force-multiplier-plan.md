@@ -17,7 +17,7 @@
 - Tests that spawn processes MUST pass an explicit timeout (`}, T);` with `const T = 120000`). Windows process creation trips Bun's 5s default, which surfaces as a `null` exit code rather than a failure.
 - No tracked text file may contain a carriage return. `test/generated-hygiene.test.ts` enforces this.
 - Skill descriptions stay under 1024 characters (Codex host cap).
-- Do NOT edit `*/SKILL.md.tmpl` files in these tasks. They are upstream-owned; editing them multiplies future merge conflicts. These three tasks add new files only.
+- Do NOT edit UPSTREAM-owned `*/SKILL.md.tmpl` files. Editing them multiplies future merge conflicts. The single exception is `run-supervisor/SKILL.md.tmpl`, which this repo authored and which Task 2 edits deliberately; every other change in this plan creates a new file.
 - Run the full suite before each commit: `GSTACK_PY="C:/Program Files/Python313/python.exe" bun test test/` — 206 tests pass today.
 
 ## Measured starting state
