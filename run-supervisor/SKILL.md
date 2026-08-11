@@ -1,7 +1,13 @@
 ---
 name: run-supervisor
 version: 0.1.0
-description: Worker loop for unattended gstack runs. (gstack)
+description: |
+  Worker loop for unattended gstack runs. Claims one item at a time from a run
+  directory, does the work, gets it verified, records the verdict, then parks or
+  completes it. Holds no state of its own — killing this mid-item is safe,
+  because the next session resumes from the run's files.
+  Use when asked to "start an unattended run", "work the queue", or "resume run
+  <id>". (gstack)
 triggers:
   - start an unattended run
   - work the queue
@@ -18,16 +24,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-Claims one item at a time from a run
-directory, does the work, gets it verified, records the verdict, then parks or
-completes it. Holds no state of its own — killing this mid-item is safe,
-because the next session resumes from the run's files.
-Use when asked to "start an unattended run", "work the queue", or "resume run
-<id>".
 
 ## Preamble (run first)
 

@@ -59,7 +59,12 @@ def normalise(phrase):
     table that treats "QA test this" and "qa  test this." as different
     phrases is a table with silent holes in it.
     """
-    cleaned = re.sub(r"[^a-z0-9 ]+", "", (phrase or "").lower())
+    # Collapse whitespace BEFORE stripping punctuation. The other order deletes
+    # a tab outright — it is not in the allowed class — so "check\tfor" became
+    # "checkfor", words glued together, which no later split can undo. Doing it
+    # this way also keeps "don't" as "dont" rather than "don t".
+    collapsed = re.sub(r"\s+", " ", (phrase or "").lower())
+    cleaned = re.sub(r"[^a-z0-9 ]+", "", collapsed)
     return " ".join(cleaned.split())
 
 
