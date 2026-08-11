@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""gstack-context-census — where a session's context actually went.
+
+Written after a spec proposed optimising a number that never enters a context
+window. The suite is ~880,000 tokens on disk and none of it loads at once;
+measuring a real session showed tool calls at 42% and tool results at 25%, with
+skill loading inside the remaining 19%.
+
+Attribution before optimisation. This reports what a session was made of so the
+next diet targets the largest consumer instead of the most alarming number.
+
+Tokens are estimated at 4 characters each. That is a rough constant, and it is
+labelled as an estimate in the output rather than presented as a measurement.
+
+Usage:
+    gstack-context-census --transcript ~/.claude/projects/<proj>/<id>.jsonl
+    gstack-context-census --transcript <path> --top 5
+
+Exit codes:
+    0  ok
+    2  no such transcript
+    3  nothing attributable in the file
+"""
+import argparse
+import json
+import os
+import sys
+
+CHARS_PER_TOKEN = 4
+
+
+def add(bucket, key, chars):
+    bucket[key] = bucket.get(key, 0) + chars
+
+
+def census(path):
+    by_consumer, by_tool, unreadable = {}, {}, 0
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                unreadable += 1
+                continue
+            if not isinstance(row, dict):
+                unreadable += 1
+                continue
+            role = row.get("type", "?")
+            content = (row.get("message") or {}).get("content")
+            if isinstance(content, str):
+                add(by_consumer, "%s text" % role, len(content))
+                continue
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                kind = block.get("type")
+                if kind == "text":
+                    add(by_consumer, "%s text" % role, len(block.get("text") or ""))
+                elif kind == "thinking":
+                    add(by_consumer, "thinking", len(block.get("thinking") or ""))
+                elif kind == "tool_use":
+                    n = len(json.dumps(block.get("input") or {}))
+                    add(by_consumer, "tool calls", n)
+                    add(by_tool, block.get("name") or "(unnamed)", n)
+                elif kind == "tool_result":
+                    body = block.get("content")
+                    n = len(body if isinstance(body, str) else json.dumps(body))
+                    add(by_consumer, "tool results", n)
+    return by_consumer, by_tool, unreadable
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="gstack-context-census")
+    ap.add_argument("--transcript", required=True)
+    ap.add_argument("--top", type=int, default=0,
+                    help="limit the by_tool breakdown to the N largest")
+    args = ap.parse_args()
+
+    if not os.path.isfile(args.transcript):
+        sys.stderr.write("no such transcript: %s\n" % args.transcript)
+        sys.exit(2)
+
+    by_consumer, by_tool, unreadable = census(args.transcript)
+    if not by_consumer:
+        sys.stderr.write(
+            "nothing attributable in %s — %d unreadable line(s). A census over a "
+            "file it cannot parse would report zeros that look like a finding.\n"
+            % (args.transcript, unreadable))
+        sys.exit(3)
+
+    to_tokens = lambda d: {k: v // CHARS_PER_TOKEN for k, v in d.items()}
+    tools = sorted(by_tool.items(), key=lambda kv: -kv[1])
+    if args.top:
+        tools = tools[:args.top]
+    print(json.dumps({
+        "transcript": args.transcript,
+        "total_tokens": sum(by_consumer.values()) // CHARS_PER_TOKEN,
+        "by_consumer": to_tokens(by_consumer),
+        "by_tool": to_tokens(dict(tools)),
+        "unreadable_lines": unreadable,
+        "estimated": "Tokens are estimated at %d characters each, not counted by "
+                     "a tokeniser." % CHARS_PER_TOKEN,
+    }, indent=2))
+
+
+if __name__ == "__main__":
+    main()
