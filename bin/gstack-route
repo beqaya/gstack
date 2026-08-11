@@ -22,6 +22,9 @@ Exit codes:
     2  no skill claims that phrase
     3  more than one skill claims it
     4  no skills found on disk
+    5  usage error (bad or missing CLI arguments) — kept separate from 2 so a
+       downstream consumer harvesting unclaimed intents can tell a real miss
+       from a malformed invocation
 """
 import argparse
 import json
@@ -41,15 +44,105 @@ SUITES = (
 )
 TRIGGER_KEYS = ("triggers", "voice-triggers")
 
+STOPWORDS = frozenset(
+    "a an the do does did done doing to for of in on at with and or this "
+    "that these those is are was were be been being it its my your our "
+    "their i you we they me him her us them please can could would should "
+    "will shall may might let lets".split()
+)
+
 
 def normalise(phrase):
     """Compare what a reader would hear, not what they typed.
 
-    Punctuation, case and repeated spaces carry no routing meaning, and a table
-    that treats "QA test this" and "qa test this." as different phrases is a
-    table with silent holes in it.
+    Punctuation, case and repeated whitespace carry no routing meaning, and a
+    table that treats "QA test this" and "qa  test this." as different
+    phrases is a table with silent holes in it.
     """
-    return re.sub(r"[^a-z0-9 ]+", "", (phrase or "").lower()).strip()
+    cleaned = re.sub(r"[^a-z0-9 ]+", "", (phrase or "").lower())
+    return " ".join(cleaned.split())
+
+
+def content_words(phrase):
+    """Words worth matching on for a near-miss suggestion.
+
+    Filters function words ("do", "the", "and", ...) so two phrases that
+    merely share a stopword don't look related — "do security testing" would
+    otherwise tie with any phrase containing "do". Falls back to the
+    unfiltered set if filtering would leave nothing, so an all-stopword
+    phrase can still be found rather than vanishing from every comparison.
+    """
+    words = set(phrase.split())
+    return words - STOPWORDS or words
+
+
+def strip_comment(text):
+    """Drop a trailing `# comment` — but not a `#` sitting inside quotes."""
+    in_single = in_double = False
+    for idx, ch in enumerate(text):
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == "#" and not in_single and not in_double:
+            return text[:idx]
+    return text
+
+
+def frontmatter(text):
+    """The YAML frontmatter block only — between the first `---` fence and
+    the next, never the document body.
+
+    Triggers are frontmatter by definition; a `triggers:` block appearing
+    later in the body is documentation (skillify's generated output shows a
+    placeholder one) and must never be indexed. Restricting the scan to this
+    region removes that ordering risk structurally instead of relying on the
+    real block happening to come first.
+    """
+    stripped = text.lstrip("\ufeff \t\r\n")
+    if not stripped.startswith("---"):
+        return ""
+    lines = stripped.splitlines(True)
+    if lines[0].strip() != "---":
+        return ""
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return "".join(lines[1:i])
+    return ""
+
+
+def extract_triggers(frontmatter_text, key):
+    """Values under `key:` in the frontmatter, however the block is styled.
+
+    Handles a block sequence (indented, or at column 0 — both are valid
+    YAML), an inline flow list (`key: ["a", "b"]`), and strips a trailing
+    `# comment` from each item — forms a whitespace-anchored regex silently
+    dropped, which sent the skill to --unrouted instead of indexing it.
+    """
+    lines = frontmatter_text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"^%s:\s*(.*)$" % re.escape(key), line)
+        if m is None:
+            continue
+        rest = strip_comment(m.group(1)).strip()
+        if rest.startswith("["):
+            inner = rest.strip("[]")
+            return [v for v in (part.strip().strip("\"'") for part in inner.split(",")) if v]
+        values = []
+        j = i + 1
+        while j < len(lines):
+            item_line = lines[j].strip()
+            if not item_line:
+                j += 1
+                continue
+            if not item_line.startswith("-"):
+                break
+            item = strip_comment(item_line[1:]).strip().strip("\"'")
+            if item:
+                values.append(item)
+            j += 1
+        return values
+    return []
 
 
 def skill_files():
@@ -78,13 +171,12 @@ def build_index():
                     text = fh.read()
             except OSError:
                 continue
+            fm = frontmatter(text)
+            if not fm:
+                continue
             for key in TRIGGER_KEYS:
-                pattern = r"^" + key + r":\s*\n((?:\s+-\s+.*\n)+)"
-                m = re.search(pattern, text, re.M)
-                if not m:
-                    continue
-                for line in m.group(1).splitlines():
-                    phrase = normalise(line.strip().lstrip("-").strip().strip("\"'"))
+                for raw in extract_triggers(fm, key):
+                    phrase = normalise(raw)
                     if not phrase:
                         continue
                     claimed = True
@@ -99,14 +191,26 @@ def build_index():
 
 
 def near_misses(index, phrase, limit=5):
-    """Phrases sharing a word with the request — what to suggest on a miss."""
-    words = set(phrase.split())
-    scored = [(len(words & set(p.split())), p) for p in index]
+    """Phrases sharing a content word with the request — what to suggest on a miss."""
+    query_words = content_words(phrase)
+    scored = [(len(query_words & content_words(p)), p) for p in index]
     return [p for score, p in sorted(scored, reverse=True) if score][:limit]
 
 
+class RouteArgumentParser(argparse.ArgumentParser):
+    """argparse's default error() exits 2 — the same code this tool uses for
+    "no skill claims that phrase". A consumer harvesting unclaimed intents
+    from exit 2 couldn't tell a real miss from a typo'd flag, so usage
+    errors get their own code (5) instead.
+    """
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        self.exit(5, "%s: error: %s\n" % (self.prog, message))
+
+
 def main():
-    ap = argparse.ArgumentParser(prog="gstack-route")
+    ap = RouteArgumentParser(prog="gstack-route")
     ap.add_argument("--intent")
     ap.add_argument("--unrouted", action="store_true")
     ap.add_argument("--index", action="store_true")
