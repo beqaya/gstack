@@ -8,9 +8,24 @@
       "routing": "Surfaces\ntaste decisions (close approaches, borderline scope, codex disagreements) at a final\napproval gate. One command, fully reviewed plan out.\nUse when asked to \"auto review\", \"autoplan\", \"run all reviews\", \"review this plan\nautomatically\", or \"make the decisions for me\".\nProactively suggest when the user has a plan file and wants to run the full review\ngauntlet without answering 15-30 intermediate questions.",
       "voice_line": "Voice triggers (speech-to-text aliases): \"auto plan\", \"automatic review\"."
     },
+    "benchmark": {
+      "lead": "Performance regression detection using the browse daemon.",
+      "routing": "Establishes\nbaselines for page load times, Core Web Vitals, and resource sizes.\nCompares before/after on every PR. Tracks performance trends over time.\nUse when: \"performance\", \"benchmark\", \"page speed\", \"lighthouse\", \"web vitals\",\n\"bundle size\", \"load time\".",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"speed test\", \"check performance\"."
+    },
+    "benchmark-models": {
+      "lead": "Cross-model benchmark for gstack skills.",
+      "routing": "Runs the same prompt through Claude,\nGPT (via Codex CLI), and Gemini side-by-side — compares latency, tokens, cost,\nand optionally quality via LLM judge. Answers \"which model is actually best\nfor this skill?\" with data instead of vibes. Separate from /benchmark, which\nmeasures web page performance. Use when: \"benchmark models\", \"compare models\",\n\"which model is best for X\", \"cross-model comparison\", \"model shootout\".",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"compare models\", \"model shootout\", \"which model is best\"."
+    },
     "browse": {
       "lead": "Fast headless browser for QA testing and site dogfooding.",
       "routing": "Navigate any URL, interact with\nelements, verify page state, diff before/after actions, take annotated screenshots, check\nresponsive layouts, test forms and uploads, handle dialogs, and assert element states.\n~100ms per command. Use when you need to test a feature, verify a deployment, dogfood a\nuser flow, or file a bug with evidence. Use when asked to \"open in browser\", \"check one\npage\", \"take a screenshot\", or \"dogfood this\". For a full bug-find-and-fix pass, use /qa\ninstead — browse is for one specific check, not a systematic sweep.",
+      "voice_line": null
+    },
+    "canary": {
+      "lead": "Post-deploy canary monitoring.",
+      "routing": "Watches the live app for console errors,\nperformance regressions, and page failures using the browse daemon. Takes\nperiodic screenshots, compares against pre-deploy baselines, and alerts\non anomalies. Use when: \"monitor deploy\", \"canary\", \"post-deploy check\",\n\"watch production\", \"verify deploy\".",
       "voice_line": null
     },
     "capture-lesson": {
@@ -68,6 +83,11 @@
       "routing": "Standalone design exploration you can\nrun anytime. Use when: \"explore designs\", \"show me options\", \"design variants\",\n\"visual brainstorm\", or \"I don't like how this looks\".\nProactively suggest when the user describes a UI feature but hasn't seen\nwhat it could look like.",
       "voice_line": null
     },
+    "devex-review": {
+      "lead": "Live developer experience audit.",
+      "routing": "Uses the browse tool to actually TEST the\ndeveloper experience: navigates docs, tries the getting started flow, times\nTTHW, screenshots error messages, evaluates CLI help text. Produces a DX\nscorecard with evidence. Compares against /plan-devex-review scores if they\nexist (the boomerang: plan said 3 minutes, reality says 8). Use when asked to\n\"test the DX\", \"DX audit\", \"developer experience test\", or \"try the\nonboarding\". Proactively suggest after shipping a developer-facing feature.",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"dx audit\", \"test the developer experience\", \"try the onboarding\", \"developer experience test\"."
+    },
     "diagram": {
       "lead": "Turn an English description (or mermaid source) into a diagram triplet: the source, an editable .excalidraw file you can open",
       "routing": "on excalidraw.com,\nand rendered SVG + PNG (clean mermaid style; the .excalidraw carries the\nhand-drawn aesthetic). Fully offline.\nUse when asked to \"make a diagram\", \"draw the architecture\", \"create a\nflowchart\", \"diagram this\", or \"visualize this flow\".",
@@ -92,6 +112,11 @@
       "lead": "Router for the gstack skill suite.",
       "routing": "Sends any gstack request to the right skill\n(planning, review, QA, shipping, debugging, docs, security, design). For browser/QA\nand dogfooding it points you at /browse. Use when you invoke gstack without a specific\nskill, or ask \"which gstack skill fits this?\".",
       "voice_line": null
+    },
+    "gstack-upgrade": {
+      "lead": "Upgrade gstack to the latest version.",
+      "routing": "Detects global vs vendored install,\nruns the upgrade, and shows what's new. Use when asked to \"upgrade gstack\",\n\"update gstack\", or \"get latest version\".",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"upgrade the tools\", \"update the tools\", \"gee stack upgrade\", \"g stack upgrade\"."
     },
     "guard": {
       "lead": "Full safety mode: destructive command warnings + directory-scoped edits.",
@@ -138,6 +163,11 @@
       "routing": "Merges the PR, waits for CI and deploy,\nverifies production health via canary checks. Takes over after /ship\ncreates the PR. Use when: \"merge\", \"land\", \"deploy\", \"merge and verify\",\n\"land it\", \"ship it to production\".",
       "voice_line": null
     },
+    "landing-report": {
+      "lead": "Read-only queue dashboard for workspace-aware ship.",
+      "routing": "Shows which VERSION slots\nare currently claimed by open PRs, which sibling Conductor workspaces have\nWIP work likely to ship soon, and what slot /ship would pick next. No\nmutations — just a snapshot. Use when asked to \"landing report\", \"what's in\nthe queue\", \"show me open PRs\", or \"which version do I claim next\".",
+      "voice_line": null
+    },
     "learn": {
       "lead": "Manage project learnings.",
       "routing": "Review, search, prune, and export what gstack\nhas learned across sessions. Use when asked to \"what have we learned\",\n\"show learnings\", \"prune stale learnings\", or \"export learnings\".\nProactively suggest when the user asks about past patterns or wonders\n\"didn't we fix this before?\"",
@@ -152,6 +182,11 @@
       "lead": "YC Office Hours — two modes.",
       "routing": "Startup mode: six forcing questions that expose\ndemand reality, status quo, desperate specificity, narrowest wedge, observation,\nand future-fit. Builder mode: design thinking brainstorming for side projects,\nhackathons, learning, and open source. Saves a design doc.\nUse when asked to \"brainstorm this\", \"I have an idea\", \"help me think through\nthis\", \"office hours\", or \"is this worth building\".\nProactively invoke this skill (do NOT answer directly) when the user describes\na new product idea, asks whether something is worth building, wants to think\nthrough design decisions for something that doesn't exist yet, or is exploring\na concept before any code is written.\nUse before /plan-ceo-review or /plan-eng-review.",
       "voice_line": null
+    },
+    "pair-agent": {
+      "lead": "Pair a remote AI agent with your browser.",
+      "routing": "One command generates a setup key and\nprints instructions the other agent can follow to connect. Works with OpenClaw,\nHermes, Codex, Cursor, or any agent that can make HTTP requests. The remote agent\ngets its own tab with scoped access (read+write by default, admin on request).\nUse when asked to \"pair agent\", \"connect agent\", \"share browser\", \"remote browser\",\n\"let another agent use my browser\", or \"give browser access\".",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"pair agent\", \"connect agent\", \"share my browser\", \"remote browser access\"."
     },
     "parity": {
       "lead": "Detects gstack repo edits that never reached the live copies a user runs.",
@@ -188,6 +223,11 @@
       "routing": "Runs QA testing,\nthen iteratively fixes bugs in source code, committing each fix atomically and\nre-verifying. Use when asked to \"qa\", \"QA\", \"test this site\", \"find bugs\",\n\"test and fix\", or \"fix what's broken\".\nProactively suggest when the user says a feature is ready for testing\nor asks \"does this work?\". Three tiers: Quick (critical/high only),\nStandard (+ medium), Exhaustive (+ cosmetic). Produces before/after health scores,\nfix evidence, and a ship-readiness summary. For report-only mode, use /qa-only.",
       "voice_line": "Voice triggers (speech-to-text aliases): \"quality check\", \"test the app\", \"run QA\"."
     },
+    "qa-only": {
+      "lead": "Report-only QA testing.",
+      "routing": "Systematically tests a web application and produces a\nstructured report with health score, screenshots, and repro steps — but never\nfixes anything. Use when asked to \"just report bugs\", \"qa report only\", or\n\"test but don't fix\". For the full test-fix-verify loop, use /qa instead.\nProactively suggest when the user wants a bug report without any code changes.",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"bug report\", \"just check for bugs\"."
+    },
     "retro": {
       "lead": "Weekly engineering retrospective.",
       "routing": "Analyzes commit history, work patterns,\nand code quality metrics with persistent history and trend tracking.\nTeam-aware: breaks down per-person contributions with praise and growth areas.\nUse when asked to \"weekly retro\", \"what did we ship\", or \"engineering retrospective\".\nProactively suggest at the end of a work week or sprint.",
@@ -218,6 +258,11 @@
       "routing": "Opens an interactive picker UI where you select which cookie domains to import.\nUse before QA testing authenticated pages. Use when asked to \"import cookies\",\n\"login to the site\", or \"authenticate the browser\".",
       "voice_line": null
     },
+    "setup-deploy": {
+      "lead": "Configure deployment settings for /land-and-deploy.",
+      "routing": "Detects your deploy\nplatform (Fly.io, Render, Vercel, Netlify, Heroku, GitHub Actions, custom),\nproduction URL, health check endpoints, and deploy status commands. Writes\nthe configuration to CLAUDE.md so all future deploys are automatic.\nUse when: \"setup deploy\", \"configure deployment\", \"set up land-and-deploy\",\n\"how do I deploy with gstack\", \"add deploy config\".",
+      "voice_line": null
+    },
     "setup-gbrain": {
       "lead": "Set up gbrain for this coding agent: install the CLI, initialize a local PGLite or Supabase brain, register MCP, capture per-remote trust policy.",
       "routing": "One command from zero to \"gbrain is running, and this agent\ncan call it.\" Use when: \"setup gbrain\", \"connect gbrain\", \"start\ngbrain\", \"install gbrain\", \"configure gbrain for this machine\".",
@@ -226,6 +271,11 @@
     "ship": {
       "lead": "Ship workflow: detect + merge base branch, run tests, review diff, bump VERSION, update CHANGELOG, commit, push, create PR.",
       "routing": "Use when asked to \"ship\", \"push to main\",\n\"create a PR\", or \"merge and push\". Does not merge or deploy — for that, use\n/land-and-deploy after this creates the PR.\nProactively invoke this skill (do NOT push/PR directly) when the user says code\nis ready, wants to push code up, or asks to create a PR.",
+      "voice_line": null
+    },
+    "skillify": {
+      "lead": "Codify the most recent successful /scrape flow into a permanent browser-skill on disk.",
+      "routing": "Future /scrape calls with the same intent run\nthe codified script in ~200ms instead of re-driving the page. Walks\nback through the conversation, synthesizes script.ts + script.test.ts\n+ fixture, runs the test in a temp dir, and asks before committing.\nUse when asked to \"skillify\", \"codify\", \"save this scrape\", or\n\"make this permanent\".",
       "voice_line": null
     },
     "spec": {
