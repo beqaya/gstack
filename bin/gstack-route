@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""gstack-route — resolve a spoken intent to exactly one skill.
+
+Routing by prose drifts. Two suites are installed — gstack (60 skills) and
+cyberteam (61) — and picking the wrong one costs a full skill load, up to 26,851
+tokens, before the mistake is visible.
+
+This is a lookup, not a judgement, exactly like gstack-risk-classify. The index
+is DERIVED from `triggers:` frontmatter rather than hand-maintained, so a skill
+that declares a phrase owns it and nothing has to be kept in sync by hand.
+
+A miss is reported, never guessed. That is the point: an intent nobody claims is
+data for adding a row, and a silent guess produces no data at all.
+
+Usage:
+    gstack-route --intent "check for vulnerabilities"
+    gstack-route --unrouted
+    gstack-route --index
+
+Exit codes:
+    0  resolved (or listing completed)
+    2  no skill claims that phrase
+    3  more than one skill claims it
+    4  no skills found on disk
+"""
+import argparse
+import json
+import os
+import re
+import sys
+
+# Inventory comes from SKILL.md — the artifact actually installed — for BOTH
+# suites. Reading templates instead would have missed `delegate` and
+# `session-lock` (no template) and invented a skill called `claude` (template,
+# no SKILL.md). Generated SKILL.md retains `triggers:`; only `voice-triggers:`
+# is folded into the description, so the template is read as a second source
+# where it exists.
+SUITES = (
+    ("gstack", "~/.claude/skills/gstack/*/SKILL.md"),
+    ("cyber", "~/.claude/skills/cyberteam/skills/*/SKILL.md"),
+)
+TRIGGER_KEYS = ("triggers", "voice-triggers")
+
+
+def normalise(phrase):
+    """Compare what a reader would hear, not what they typed.
+
+    Punctuation, case and repeated spaces carry no routing meaning, and a table
+    that treats "QA test this" and "qa test this." as different phrases is a
+    table with silent holes in it.
+    """
+    return re.sub(r"[^a-z0-9 ]+", "", (phrase or "").lower()).strip()
+
+
+def skill_files():
+    """(suite, name, [files to read]) for every INSTALLED skill."""
+    import glob
+    found = []
+    for suite, pattern in SUITES:
+        for path in sorted(glob.glob(os.path.expanduser(pattern))):
+            sources = [path]
+            template = path + ".tmpl"
+            if os.path.exists(template):
+                sources.append(template)
+            found.append((suite, os.path.basename(os.path.dirname(path)), sources))
+    return found
+
+
+def build_index():
+    """phrase -> sorted list of "suite:skill" owners, plus the unrouted skills."""
+    index, unrouted = {}, []
+    for suite, name, sources in skill_files():
+        owner = "%s:%s" % (suite, name)
+        claimed = False
+        for path in sources:
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except OSError:
+                continue
+            for key in TRIGGER_KEYS:
+                pattern = r"^" + key + r":\s*\n((?:\s+-\s+.*\n)+)"
+                m = re.search(pattern, text, re.M)
+                if not m:
+                    continue
+                for line in m.group(1).splitlines():
+                    phrase = normalise(line.strip().lstrip("-").strip().strip("\"'"))
+                    if not phrase:
+                        continue
+                    claimed = True
+                    owners = index.setdefault(phrase, [])
+                    if owner not in owners:
+                        owners.append(owner)
+        if not claimed:
+            unrouted.append(owner)
+    for owners in index.values():
+        owners.sort()
+    return index, sorted(unrouted)
+
+
+def near_misses(index, phrase, limit=5):
+    """Phrases sharing a word with the request — what to suggest on a miss."""
+    words = set(phrase.split())
+    scored = [(len(words & set(p.split())), p) for p in index]
+    return [p for score, p in sorted(scored, reverse=True) if score][:limit]
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="gstack-route")
+    ap.add_argument("--intent")
+    ap.add_argument("--unrouted", action="store_true")
+    ap.add_argument("--index", action="store_true")
+    args = ap.parse_args()
+
+    index, unrouted = build_index()
+    if not index and not unrouted:
+        sys.stderr.write("no skills found on disk — nothing to route against.\n")
+        sys.exit(4)
+
+    if args.index:
+        print(json.dumps(index, indent=2, sort_keys=True))
+        return
+    if args.unrouted:
+        for owner in unrouted:
+            print(owner)
+        return
+    if not args.intent:
+        ap.error("--intent is required unless --unrouted or --index is given")
+
+    phrase = normalise(args.intent)
+    owners = index.get(phrase, [])
+    if len(owners) == 1:
+        print(owners[0])
+        return
+    if not owners:
+        sys.stderr.write(
+            "no skill claims %r. Closest phrases: %s\n"
+            "Nothing was guessed. If a skill should own this, add it to that "
+            "skill's `triggers:` frontmatter.\n"
+            % (args.intent, ", ".join(near_misses(index, phrase)) or "(none)")
+        )
+        sys.exit(2)
+    sys.stderr.write(
+        "%r is claimed by %d skills: %s. One phrase must have one owner — "
+        "remove it from all but one.\n" % (args.intent, len(owners), ", ".join(owners))
+    )
+    sys.exit(3)
+
+
+if __name__ == "__main__":
+    main()
