@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""gstack-thread — a subject outlives the session that started it.
+
+A session dies, or compacts until its early decisions are summaries of
+summaries. The work does not. A THREAD is the durable side of that: one file per
+subject that every session working on it reads at the start and appends to when
+it hands off.
+
+This exists because 10 of this machine's 24 sessions were spent recovering
+sessions — the single largest use of them. Naming and tagging made sessions
+findable; a thread makes the next one *continuous*.
+
+Compaction is counted, not estimated: every compaction writes a fixed preamble
+into the transcript, and the PreCompact hook increments a counter here. Two
+rounds is the hand-off point. The first is a clean summary of one stretch; by
+the second you are summarising a summary, and by the third the early decisions
+are gone in all but name.
+
+Usage:
+    gstack-thread --set gstack             # bind this directory to a thread
+    gstack-thread --show                   # print the thread's context
+    gstack-thread --note "what just landed" # append to the thread
+    gstack-thread --status                 # should this session hand off yet?
+    gstack-thread --list
+
+Hook modes (payload on stdin, always exit 0):
+    gstack-thread --compacted              # PreCompact
+    gstack-thread --notify                 # UserPromptSubmit
+
+Exit codes:
+    0  ok (and always, in hook modes)
+    2  no thread bound to this directory
+"""
+import argparse
+import datetime
+import json
+import os
+import sys
+
+
+def root():
+    return os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack")
+
+
+def threads_dir():
+    return os.path.join(root(), "threads")
+
+
+def state_path():
+    return os.path.join(root(), "thread-state.json")
+
+
+def load_state():
+    try:
+        with open(state_path(), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(state):
+    os.makedirs(root(), exist_ok=True)
+    tmp = state_path() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, indent=2, sort_keys=True)
+    os.replace(tmp, state_path())
+
+
+def key_for(path):
+    """One canonical form for a directory.
+
+    A hook payload arrives with the shell's idea of the path — Git Bash hands
+    over /c/Users/... where the binding was stored as C:\\Users\\... . Comparing
+    them raw silently finds nothing, which looks exactly like "no thread bound"
+    and is the reason the first version of this recorded nothing.
+    """
+    p = os.path.expanduser(path or os.getcwd())
+    # MSYS hands over /c/Users/... . os.path.abspath would read that as a
+    # relative path and produce C:\c\Users\... — a different directory that
+    # happens to look plausible, which is worse than failing outright.
+    if len(p) > 2 and p[0] == "/" and p[2] == "/" and p[1].isalpha():
+        p = "%s:\\%s" % (p[1].upper(), p[3:])
+    p = os.path.normcase(os.path.abspath(p))
+    return p.replace("/", "\\").rstrip("\\")
+
+
+def bound_thread(state, cwd=None):
+    bindings = state.get("bindings") or {}
+    wanted = key_for(cwd)
+    for stored, name in bindings.items():
+        if key_for(stored) == wanted:
+            return name
+    return None
+
+
+def thread_file(name):
+    return os.path.join(threads_dir(), "%s.md" % name)
+
+
+def append(name, text):
+    os.makedirs(threads_dir(), exist_ok=True)
+    path = thread_file(name)
+    new = not os.path.exists(path)
+    with open(path, "a", encoding="utf-8") as fh:
+        if new:
+            fh.write("# Thread: %s\n\n"
+                     "Every session working on this subject reads this file first\n"
+                     "and appends to it before handing off.\n\n" % name)
+        fh.write(text.rstrip() + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def stamp():
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def cmd_compacted(payload):
+    """PreCompact: count it, and record the hand-off point when it arrives."""
+    state = load_state()
+    session = payload.get("session_id") or "unknown"
+    counts = state.setdefault("compactions", {})
+    counts[session] = counts.get(session, 0) + 1
+    n = counts[session]
+    save_state(state)
+
+    name = bound_thread(state, payload.get("cwd"))
+    if name:
+        append(name, "\n- %s  session %s compacted (round %d)"
+                     % (stamp(), session[:8], n))
+        if n >= 2:
+            append(name, "  ^ HAND OFF: start a fresh session on this thread. "
+                         "Its early context is now a summary of a summary.")
+
+
+def cmd_notify(payload):
+    """UserPromptSubmit: surface the hand-off once it is due, not every turn."""
+    state = load_state()
+    session = payload.get("session_id") or ""
+    n = (state.get("compactions") or {}).get(session, 0)
+    if n < 2:
+        return
+    name = bound_thread(state, payload.get("cwd")) or "(none bound)"
+    # Printed to stdout so it reaches the assistant's context, once conditions
+    # are met. Silent otherwise — a warning on every turn is a warning nobody
+    # reads.
+    print("[gstack-thread] This session has compacted %d times. Tell the user "
+          "to start a fresh session and resume thread '%s' "
+          "(gstack-thread --show). Say it plainly, once." % (n, name))
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="gstack-thread")
+    ap.add_argument("--set")
+    ap.add_argument("--show", action="store_true")
+    ap.add_argument("--note")
+    ap.add_argument("--status", action="store_true")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--compacted", action="store_true")
+    ap.add_argument("--notify", action="store_true")
+    args, _ = ap.parse_known_args()
+
+    if args.compacted or args.notify:
+        try:
+            payload = json.loads(sys.stdin.read() or "{}")
+            (cmd_compacted if args.compacted else cmd_notify)(payload)
+        except Exception:
+            pass  # Hooks fail OPEN. See gstack-prompt-log for the reasoning.
+        return
+
+    state = load_state()
+
+    if args.set:
+        state.setdefault("bindings", {})[os.getcwd()] = args.set
+        save_state(state)
+        append(args.set, "\n## %s  bound %s" % (stamp(), os.getcwd()))
+        print("this directory now belongs to thread '%s'" % args.set)
+        print("file: %s" % thread_file(args.set))
+        return
+
+    if args.list:
+        os.makedirs(threads_dir(), exist_ok=True)
+        for f in sorted(os.listdir(threads_dir())):
+            if f.endswith(".md"):
+                print(f[:-3])
+        return
+
+    name = bound_thread(state)
+    if not name:
+        sys.stderr.write(
+            "no thread bound to %s. Bind one with --set <name>.\n" % os.getcwd())
+        sys.exit(2)
+
+    if args.note:
+        append(name, "- %s  %s" % (stamp(), args.note))
+        print("appended to thread '%s'" % name)
+        return
+
+    if args.status:
+        counts = state.get("compactions") or {}
+        worst = max(counts.values()) if counts else 0
+        print("thread: %s" % name)
+        print("compactions seen this machine: %d" % worst)
+        print("hand off: %s" % ("YES" if worst >= 2 else "not yet"))
+        return
+
+    path = thread_file(name)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            sys.stdout.write(fh.read())
+    else:
+        print("thread '%s' has no entries yet" % name)
+
+
+if __name__ == "__main__":
+    main()
+    sys.exit(0)
