@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""gstack-sessions — say what each session was about, so a UUID stops being a riddle.
+
+Claude Code names every transcript after a UUID. When a session dies
+unexpectedly and several recovered ones sit side by side, the filenames carry no
+information about which is which, and picking the wrong one to resume means
+continuing the wrong work.
+
+The first thing a person typed is almost always the best label a session will
+ever have, and it is already in the file. This reads it out, plus the last thing
+they typed, so a session can be identified by what it was FOR rather than by an
+identifier nobody can remember.
+
+Reads only the head and tail of each transcript. One of these files is 137 MB;
+parsing them whole to print two lines would make the tool too slow to reach for.
+
+Usage:
+    gstack-sessions                       # this project, newest first
+    gstack-sessions --project <path>      # a specific project directory
+    gstack-sessions --all                 # every project on this machine
+    gstack-sessions --json                # machine-readable
+    gstack-sessions --limit 10
+
+Exit codes:
+    0  ok
+    2  no project directory found
+"""
+import argparse
+import json
+import os
+import sys
+import datetime
+
+HEAD_LINES = 400
+TAIL_BYTES = 256 * 1024
+
+# A transcript is full of things that look like user turns but are not: hook
+# output, injected reminders, the expansion of a slash command. Labelling a
+# session with one of those is worse than showing the UUID, because it looks
+# like an answer.
+NOISE_PREFIXES = (
+    "<system-reminder", "<command-name", "<command-message", "<command-args",
+    "<local-command", "Caveat:", "[SYSTEM NOTIFICATION", "<task-notification",
+    "<user-prompt-submit-hook", "<extra-context",
+)
+
+# A compacted session opens with the handoff summary rather than anything a
+# person typed. Labelling a session "This session is being continued from a
+# previous conversation" describes every compacted session equally and so
+# identifies none of them — keep reading until a real prompt appears.
+CONTINUATION_PREFIXES = (
+    "This session is being continued from a previous conversation",
+    "Your task is to create a detailed summary",
+)
+
+
+def names_file():
+    return os.path.join(os.path.expanduser("~"), ".gstack", "session-names.json")
+
+
+def load_names():
+    try:
+        with open(names_file(), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_name(session_id, label):
+    names = load_names()
+    if label:
+        names[session_id] = label
+    else:
+        names.pop(session_id, None)
+    os.makedirs(os.path.dirname(names_file()), exist_ok=True)
+    tmp = names_file() + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(names, fh, indent=2, sort_keys=True)
+    os.replace(tmp, names_file())
+
+
+def project_dir_for_cwd():
+    slug = os.getcwd().replace(":", "").replace("\\", "-").replace("/", "-")
+    root = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+    candidate = os.path.join(root, "C--" + slug.lstrip("C-"))
+    if os.path.isdir(candidate):
+        return candidate
+    # Fall back to the most recently touched project directory.
+    if not os.path.isdir(root):
+        return None
+    dirs = [os.path.join(root, d) for d in os.listdir(root)]
+    dirs = [d for d in dirs if os.path.isdir(d)]
+    return max(dirs, key=os.path.getmtime) if dirs else None
+
+
+def user_text(row):
+    """The words a person typed, or None if this row is not that."""
+    if row.get("type") != "user":
+        return None
+    content = (row.get("message") or {}).get("content")
+    if isinstance(content, list):
+        # A list means tool results — never a typed message.
+        return None
+    if not isinstance(content, str):
+        return None
+    text = content.strip()
+    if not text or text.startswith(NOISE_PREFIXES):
+        return None
+    return " ".join(text.split())
+
+
+def first_and_last(path):
+    first = last = None
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for _ in range(HEAD_LINES):
+                line = fh.readline()
+                if not line:
+                    break
+                try:
+                    text = user_text(json.loads(line))
+                except ValueError:
+                    continue
+                if not text:
+                    continue
+                if text.startswith(CONTINUATION_PREFIXES):
+                    # Keep the boilerplate only if nothing better turns up.
+                    if first is None:
+                        first = "(resumed) " + text
+                    continue
+                first = text
+                break
+        size = os.path.getsize(path)
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            if size > TAIL_BYTES:
+                fh.seek(size - TAIL_BYTES)
+                fh.readline()  # discard the partial line
+            for line in fh:
+                try:
+                    text = user_text(json.loads(line))
+                except ValueError:
+                    continue
+                if text:
+                    last = text
+    except OSError:
+        pass
+    return first, last
+
+
+def sessions_in(directory, limit):
+    out = []
+    names = [n for n in os.listdir(directory) if n.endswith(".jsonl")]
+    names.sort(key=lambda n: os.path.getmtime(os.path.join(directory, n)), reverse=True)
+    for name in names[:limit] if limit else names:
+        path = os.path.join(directory, name)
+        first, last = first_and_last(path)
+        out.append({
+            "id": name[:-6],
+            "project": os.path.basename(directory),
+            "modified": datetime.datetime.fromtimestamp(
+                os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M"),
+            "megabytes": round(os.path.getsize(path) / 1024 / 1024, 1),
+            "started_with": first,
+            "last_asked": last,
+            "resume": 'claude --resume %s' % name[:-6],
+        })
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="gstack-sessions")
+    ap.add_argument("--project", default=None)
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--limit", type=int, default=15)
+    ap.add_argument("--name", nargs=2, metavar=("SESSION_ID", "LABEL"),
+                    help="give a session a name; an empty LABEL removes it")
+    args = ap.parse_args()
+
+    if args.name:
+        session_id, label = args.name
+        save_name(session_id, label.strip())
+        print("%s -> %s" % (session_id, label.strip() or "(name removed)"))
+        return
+
+    if args.all:
+        root = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+        dirs = [os.path.join(root, d) for d in sorted(os.listdir(root))] \
+            if os.path.isdir(root) else []
+        dirs = [d for d in dirs if os.path.isdir(d)]
+    else:
+        one = args.project or project_dir_for_cwd()
+        if not one or not os.path.isdir(one):
+            sys.stderr.write(
+                "no project directory found. Pass --project <path> or run this "
+                "from inside the project you want.\n")
+            sys.exit(2)
+        dirs = [one]
+
+    rows = []
+    for d in dirs:
+        rows.extend(sessions_in(d, args.limit))
+    rows.sort(key=lambda r: r["modified"], reverse=True)
+    if args.limit:
+        rows = rows[:args.limit]
+
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+
+    names = load_names()
+    for r in rows:
+        label = names.get(r["id"])
+        print("%s  %5.1f MB  %s%s" % (r["modified"], r["megabytes"], r["id"],
+                                      ("   [%s]" % label) if label else ""))
+        print("   started : %s" % (clip(r["started_with"]) or "(nothing a person typed)"))
+        if r["last_asked"] and r["last_asked"] != r["started_with"]:
+            print("   last    : %s" % clip(r["last_asked"]))
+        print("   resume  : %s" % r["resume"])
+        print()
+
+
+def clip(text, width=110):
+    if not text:
+        return text
+    return text if len(text) <= width else text[:width - 1] + "…"
+
+
+if __name__ == "__main__":
+    main()
