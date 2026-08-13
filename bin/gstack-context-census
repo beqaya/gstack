@@ -33,8 +33,18 @@ def add(bucket, key, chars):
     bucket[key] = bucket.get(key, 0) + chars
 
 
-def census(path):
+def census(path, keep_offenders=0):
+    """Totals by consumer and tool, plus the largest individual items.
+
+    Totals say WHERE context goes; offenders say WHICH call did it. "Bash is
+    14% of the session" is not actionable — "this one command returned 40,000
+    tokens" is, because it names something to change.
+    """
     by_consumer, by_tool, unreadable = {}, {}, 0
+    calls_by_tool = {}
+    result_count = 0
+    offenders = []
+    pending = {}
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             line = line.strip()
@@ -65,18 +75,37 @@ def census(path):
                     add(by_consumer, "thinking", len(block.get("thinking") or ""))
                 elif kind == "tool_use":
                     n = len(json.dumps(block.get("input") or {}))
+                    name = block.get("name") or "(unnamed)"
                     add(by_consumer, "tool calls", n)
-                    add(by_tool, block.get("name") or "(unnamed)", n)
+                    add(by_tool, name, n)
+                    add(calls_by_tool, name, 1)
+                    if keep_offenders and block.get("id"):
+                        # Remember the call so its RESULT can be attributed to
+                        # a tool and a command, not just to "tool results".
+                        inp = block.get("input") or {}
+                        gist = (inp.get("command") or inp.get("file_path")
+                                or inp.get("pattern") or inp.get("description")
+                                or "")
+                        pending[block["id"]] = (name, " ".join(str(gist).split())[:120])
                 elif kind == "tool_result":
                     body = block.get("content")
                     n = len(body if isinstance(body, str) else json.dumps(body))
                     add(by_consumer, "tool results", n)
-    return by_consumer, by_tool, unreadable
+                    result_count += 1
+                    if keep_offenders:
+                        name, gist = pending.pop(
+                            block.get("tool_use_id"), ("(unmatched)", ""))
+                        offenders.append((n, name, gist))
+    offenders.sort(reverse=True)
+    return (by_consumer, by_tool, unreadable, offenders[:keep_offenders],
+            calls_by_tool, result_count)
 
 
 def main():
     ap = argparse.ArgumentParser(prog="gstack-context-census")
     ap.add_argument("--transcript", required=True)
+    ap.add_argument("--offenders", type=int, default=0,
+                    help="also report the N largest individual tool results")
     ap.add_argument("--top", type=int, default=0,
                     help="limit the by_tool breakdown to the N largest")
     args = ap.parse_args()
@@ -85,7 +114,9 @@ def main():
         sys.stderr.write("no such transcript: %s\n" % args.transcript)
         sys.exit(2)
 
-    by_consumer, by_tool, unreadable = census(args.transcript)
+    (by_consumer, by_tool, unreadable, offenders,
+     calls_by_tool, result_count) = census(
+        args.transcript, keep_offenders=args.offenders)
     if not by_consumer:
         sys.stderr.write(
             "nothing attributable in %s — %d unreadable line(s). A census over a "
@@ -103,6 +134,21 @@ def main():
         "by_consumer": to_tokens(by_consumer),
         "by_tool": to_tokens(dict(tools)),
         "unreadable_lines": unreadable,
+        # Round trips, not output size, turned out to be the cost. A session
+        # measured here spent 39% of its context on 1,011 Bash calls and 1,798
+        # results whose MEDIAN was 58 tokens — there is no large output to trim,
+        # only a large number of exchanges.
+        "round_trips": {
+            "tool_calls": sum(calls_by_tool.values()),
+            "tool_results": result_count,
+            "calls_by_tool": dict(sorted(calls_by_tool.items(),
+                                         key=lambda kv: -kv[1])),
+        },
+        "unreadable_lines_note": "counted, never skipped silently",
+        "largest_results": [
+            {"tokens": n // CHARS_PER_TOKEN, "tool": name, "what": gist}
+            for n, name, gist in offenders
+        ],
         "estimated": "Tokens are estimated at %d characters each, not counted by "
                      "a tokeniser." % CHARS_PER_TOKEN,
     }, indent=2))

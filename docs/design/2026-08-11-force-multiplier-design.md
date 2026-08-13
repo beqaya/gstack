@@ -122,7 +122,33 @@ and can be made repeatable in an afternoon.
 **A4 and A5 are sized by what it finds.** If tool traffic dominates as it did in
 the measured session, A4 is worth more than A5 and should be built first.
 
-## A4. Tool-output discipline (scope set by A3)
+## A4. Tool-output discipline — PREMISE DISPROVEN 2026-08-12
+
+The census was built to gate this item, and it killed it. Measured on the real
+session:
+
+| Fact | Value |
+|---|---|
+| Bash calls | 1,011, averaging 150 tokens |
+| Tool results | 1,798, **median 58 tokens** |
+| The 12 largest results, combined | 2.7% of the session |
+| Results over 1,000 tokens | 17.9% of all result cost |
+
+**There is no large output to trim.** Deleting the twelve biggest results
+outright would save 2.7%. The cost is 1,795 tool calls and 1,798 results, each
+individually reasonable — roughly 39% of the session spent on the sheer number
+of exchanges.
+
+So the lever is FEWER ROUND TRIPS, not smaller ones: batch related commands into
+one call, do not re-check what was just checked, and prefer one command that
+answers the question over three that circle it. That is behaviour, not tooling,
+and `round_trips` in the census output makes it trackable per session rather
+than a resolution nobody measures.
+
+The original text of this item follows, kept because the reasoning that led to
+it is worth seeing beside the measurement that overturned it.
+
+## A4 (original, superseded)
 
 The candidates already visible, each observed in the measured session:
 
