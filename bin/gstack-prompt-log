@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""gstack-prompt-log — save what you typed the moment you type it.
+
+A Claude Code transcript is flushed periodically, not per turn. Measured on this
+machine: 18 minutes between the last write and the live conversation. A session
+that dies in that window loses every instruction given since the last flush, and
+the recovered session genuinely does not contain them — which reads as "I opened
+the wrong session" when it is really "the right session, missing its tail".
+
+This runs as a UserPromptSubmit hook, so it sees the prompt before any of that
+matters, and it fsyncs before returning. It does not save replies; it saves the
+expensive half — what you asked for.
+
+Two properties it must hold.
+
+It FAILS OPEN. Every error path exits 0 in silence. A lost log line costs one
+record; a logging bug that blocks a prompt costs the session itself.
+
+It FSYNCS. Buffering here would reproduce the exact defect it exists to fix.
+
+Usage (as a hook, payload on stdin):
+    gstack-prompt-log
+
+Read them back:
+    gstack-prompt-log --show                  # this project, newest last
+    gstack-prompt-log --show --session <id>
+    gstack-prompt-log --show --since 2026-08-11
+
+Always exits 0 when logging. --show exits 0, or 2 if there is no log yet.
+"""
+import argparse
+import datetime
+import json
+import os
+import sys
+
+
+def log_path():
+    root = os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack")
+    return os.path.join(root, "prompts.jsonl")
+
+
+def record(payload):
+    prompt = payload.get("prompt")
+    if not prompt or not isinstance(prompt, str) or not prompt.strip():
+        return
+    path = log_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    entry = {
+        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "session": payload.get("session_id"),
+        "cwd": payload.get("cwd") or os.getcwd(),
+        "prompt": prompt.strip(),
+    }
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        fh.flush()
+        # The whole point. Without this the log inherits the same buffering
+        # gap as the transcript it is meant to survive.
+        os.fsync(fh.fileno())
+
+
+def show(args):
+    path = log_path()
+    if not os.path.exists(path):
+        sys.stderr.write("no prompt log yet at %s\n" % path)
+        sys.exit(2)
+    here = os.getcwd()
+    shown = 0
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if args.session and e.get("session") != args.session:
+                continue
+            if not args.all_projects and e.get("cwd") and e["cwd"] != here:
+                continue
+            if args.since and (e.get("ts") or "") < args.since:
+                continue
+            ts = (e.get("ts") or "")[:19].replace("T", " ")
+            sid = (e.get("session") or "?")[:8]
+            text = " ".join((e.get("prompt") or "").split())
+            if len(text) > 160:
+                text = text[:159] + "…"
+            print("%s  %s  %s" % (ts, sid, text))
+            shown += 1
+    if not shown:
+        sys.stderr.write(
+            "no prompts matched. Use --all-projects to ignore the working "
+            "directory filter.\n")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="gstack-prompt-log")
+    ap.add_argument("--show", action="store_true")
+    ap.add_argument("--session", default=None)
+    ap.add_argument("--since", default=None, help="ISO date, e.g. 2026-08-11")
+    ap.add_argument("--all-projects", action="store_true")
+    args, _unknown = ap.parse_known_args()
+
+    if args.show:
+        show(args)
+        return
+
+    try:
+        record(json.loads(sys.stdin.read() or "{}"))
+    except Exception:
+        # Deliberately silent — see the module docstring. A hook that can break
+        # the thing it observes is worse than no hook.
+        pass
+
+
+if __name__ == "__main__":
+    main()
+    sys.exit(0)
