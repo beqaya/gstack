@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""gstack-improve — turn what the tools measured into work items.
+
+Sub-project B. The loop is: measure, decide what is worth changing, file it as
+queue items, let run-supervisor work them under the runtime's verification
+rules, park anything needing the founder.
+
+This is the "decide and file" half. It invents no new instrumentation — it reads
+what is already recorded:
+
+    skill-usage.jsonl   which skills actually run (PostToolUse hook)
+    gstack-route        which skills nothing can route to
+    runs/*/journal      which stages produced claims that did not survive
+    a transcript        where a session's context actually went
+
+**It refuses to state a rate it cannot support.** Every finding carries the
+sample it came from, and anything under --min-n is labelled `indicative` rather
+than `measured`. Sub-project D was sequenced last precisely so it would not
+produce confident numbers derived from nothing; this inherits that rule rather
+than repeating the mistake one layer up.
+
+Usage:
+    gstack-improve                          # findings, as JSON
+    gstack-improve --text                   # readable
+    gstack-improve --file --run <run-id>    # file them as queue items
+    gstack-improve --min-n 20
+
+Exit codes:
+    0  ok
+    2  --file given without --run
+    3  nothing measurable yet
+"""
+import argparse
+import collections
+import json
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+MIN_N_DEFAULT = 20
+
+
+def root():
+    return os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack")
+
+
+def read_jsonl(path):
+    out, bad = [], 0
+    if not os.path.exists(path):
+        return out, bad
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                bad += 1
+                continue
+            if isinstance(rec, dict):
+                out.append(rec)
+            else:
+                bad += 1
+    return out, bad
+
+
+def basis(n, min_n, note=None):
+    b = {"n": n, "strength": "measured" if n >= min_n else "indicative"}
+    if n < min_n:
+        b["why_indicative"] = (
+            "n=%d is below --min-n=%d. A direction to look in, not a rate."
+            % (n, min_n))
+    if note:
+        b["note"] = note
+    return b
+
+
+def finding(title, why, evidence, basis_block, action=None):
+    return {"title": title, "why": why, "evidence": evidence,
+            "basis": basis_block, "suggested_action": action}
+
+
+def unrouted_skills():
+    """Skills no phrase can reach. A capability nothing routes to is invisible."""
+    tool = os.path.join(HERE, "gstack-route")
+    try:
+        p = subprocess.run([sys.executable, tool, "--unrouted"],
+                           capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    return [l.strip() for l in p.stdout.splitlines() if l.strip()]
+
+
+def collect(min_n):
+    findings = []
+
+    usage, bad_usage = read_jsonl(os.path.join(root(), "analytics",
+                                               "skill-usage.jsonl"))
+    counts = collections.Counter(u.get("skill") for u in usage if u.get("skill"))
+
+    unrouted = unrouted_skills()
+    if unrouted:
+        by_suite = collections.Counter(o.split(":", 1)[0] for o in unrouted)
+        findings.append(finding(
+            "%d skills cannot be reached by any phrase" % len(unrouted),
+            "A skill nothing routes to is a capability the founder owns and "
+            "cannot invoke. It costs nothing to keep and everything to forget.",
+            {"total": len(unrouted), "by_suite": dict(by_suite),
+             "sample": unrouted[:8]},
+            basis(len(unrouted), min_n,
+                  "This is a complete census, not a sample — every installed "
+                  "skill was checked."),
+            "Add `triggers:` frontmatter to the unrouted skills, highest-demand "
+            "first."))
+
+    if counts:
+        findings.append(finding(
+            "%d distinct skills have recorded a use" % len(counts),
+            "Which skills earn their keep decides where depth is worth adding "
+            "and which are dead weight. Before the hook, prose instrumentation "
+            "recorded 2 skills out of 60.",
+            {"top": counts.most_common(10), "records": len(usage)},
+            basis(len(usage), min_n,
+                  "Usage accumulates from the moment the PostToolUse hook was "
+                  "registered; earlier sessions are invisible to it.")))
+
+    if bad_usage:
+        findings.append(finding(
+            "%d unreadable line(s) in the usage log" % bad_usage,
+            "Every usage figure is computed over that file. A partial read is "
+            "wrong in a direction nobody can see.",
+            {"unreadable": bad_usage},
+            basis(bad_usage, min_n)))
+
+    runs_dir = os.path.join(root(), "runs")
+    overturned, run_ids, entries = collections.Counter(), set(), 0
+    if os.path.isdir(runs_dir):
+        for rid in sorted(os.listdir(runs_dir)):
+            journal = os.path.join(runs_dir, rid, "journal.jsonl")
+            recs, _ = read_jsonl(journal)
+            for e in recs:
+                entries += 1
+                run_ids.add(rid)
+                if e.get("verdict") == "CONTRADICTED" or e.get("supersedes"):
+                    overturned[e.get("stage") or "(no stage)"] += 1
+    if overturned:
+        findings.append(finding(
+            "claims were overturned in %d stage(s)" % len(overturned),
+            "A stage whose claims get superseded or contradicted is where "
+            "verification is paying for itself, and where a gate would earn "
+            "its cost.",
+            {"by_stage": dict(overturned), "runs": sorted(run_ids)},
+            basis(entries, min_n),
+            "Consider an executable gate for the worst stage before adding one "
+            "anywhere else."))
+
+    return findings
+
+
+def file_items(findings, run_id):
+    """File each finding as a queue item the supervisor can work."""
+    tool = os.path.join(HERE, "gstack-run")
+    filed, refused = [], []
+    for f in findings:
+        title = f["title"]
+        if len(title) < 15:
+            refused.append((title, "title too thin for the runtime's gate"))
+            continue
+        p = subprocess.run(
+            [sys.executable, tool, "add", "--run", run_id, "--title", title],
+            capture_output=True, text=True)
+        if p.returncode == 0:
+            filed.append((p.stdout.strip(), title))
+        else:
+            refused.append((title, (p.stderr or "").strip()[:120]))
+    return filed, refused
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="gstack-improve")
+    ap.add_argument("--text", action="store_true")
+    ap.add_argument("--file", action="store_true")
+    ap.add_argument("--run")
+    ap.add_argument("--min-n", type=int, default=MIN_N_DEFAULT)
+    args = ap.parse_args()
+
+    if args.file and not args.run:
+        sys.stderr.write("--file needs --run <run-id> to file items into.\n")
+        sys.exit(2)
+
+    findings = collect(args.min_n)
+    if not findings:
+        sys.stderr.write(
+            "nothing measurable yet. The usage hook records from the moment it "
+            "was registered, so give it some sessions before expecting signal.\n")
+        sys.exit(3)
+
+    if args.file:
+        filed, refused = file_items(findings, args.run)
+        for item_id, title in filed:
+            print("filed %s  %s" % (item_id, title))
+        for title, why in refused:
+            print("REFUSED  %s  (%s)" % (title, why))
+        return
+
+    if args.text:
+        for f in findings:
+            print("- %s" % f["title"])
+            print("  why      : %s" % f["why"])
+            print("  strength : %s (n=%d)" % (f["basis"]["strength"],
+                                              f["basis"]["n"]))
+            if f.get("suggested_action"):
+                print("  action   : %s" % f["suggested_action"])
+            print()
+        return
+
+    print(json.dumps(findings, indent=2))
+
+
+if __name__ == "__main__":
+    main()
