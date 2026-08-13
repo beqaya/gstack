@@ -58,26 +58,62 @@ def names_file():
     return os.path.join(os.path.expanduser("~"), ".gstack", "session-names.json")
 
 
-def load_names():
+def load_labels():
+    """{session_id: {"name": str, "tag": str}}.
+
+    Tolerates the older flat {id: name} shape rather than discarding it — a
+    tool that silently loses the names you already assigned is worse than one
+    that never offered naming.
+    """
     try:
         with open(names_file(), "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+    if not isinstance(data, dict):
+        return {}
+    out = {}
+    for key, value in data.items():
+        if isinstance(value, str):
+            out[key] = {"name": value}
+        elif isinstance(value, dict):
+            out[key] = value
+    return out
 
 
-def save_name(session_id, label):
-    names = load_names()
-    if label:
-        names[session_id] = label
+def save_label(session_id, field, value):
+    labels = load_labels()
+    entry = labels.setdefault(session_id, {})
+    if value:
+        entry[field] = value
     else:
-        names.pop(session_id, None)
+        entry.pop(field, None)
+    if not entry:
+        labels.pop(session_id, None)
     os.makedirs(os.path.dirname(names_file()), exist_ok=True)
     tmp = names_file() + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(names, fh, indent=2, sort_keys=True)
+        json.dump(labels, fh, indent=2, sort_keys=True)
     os.replace(tmp, names_file())
+
+
+# Each compaction writes this handoff preamble into the transcript, so counting
+# it gives the EXACT number of times a session has been summarised — not an
+# estimate from file size. That count, not the token total, is the signal that
+# a session has been through too many lossy rounds to trust.
+COMPACTION_MARKER = "This session is being continued from a previous conversation"
+
+
+def compaction_count(path):
+    n = 0
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if COMPACTION_MARKER in line:
+                    n += 1
+    except OSError:
+        return None
+    return n
 
 
 def project_dir_for_cwd():
@@ -156,6 +192,7 @@ def sessions_in(directory, limit):
         path = os.path.join(directory, name)
         first, last = first_and_last(path)
         out.append({
+            "_dir": directory,
             "id": name[:-6],
             "project": os.path.basename(directory),
             "modified": datetime.datetime.fromtimestamp(
@@ -176,12 +213,21 @@ def main():
     ap.add_argument("--limit", type=int, default=15)
     ap.add_argument("--name", nargs=2, metavar=("SESSION_ID", "LABEL"),
                     help="give a session a name; an empty LABEL removes it")
+    ap.add_argument("--tag", nargs=2, metavar=("SESSION_ID", "TAG"),
+                    help="tag a session so related ones list together")
+    ap.add_argument("--stats", action="store_true",
+                    help="count how many times each session has been compacted")
     args = ap.parse_args()
 
     if args.name:
         session_id, label = args.name
-        save_name(session_id, label.strip())
+        save_label(session_id, "name", label.strip())
         print("%s -> %s" % (session_id, label.strip() or "(name removed)"))
+        return
+    if args.tag:
+        session_id, tag = args.tag
+        save_label(session_id, "tag", tag.strip())
+        print("%s tagged: %s" % (session_id, tag.strip() or "(tag removed)"))
         return
 
     if args.all:
@@ -209,16 +255,42 @@ def main():
         print(json.dumps(rows, indent=2))
         return
 
-    names = load_names()
+    labels = load_labels()
     for r in rows:
-        label = names.get(r["id"])
-        print("%s  %5.1f MB  %s%s" % (r["modified"], r["megabytes"], r["id"],
-                                      ("   [%s]" % label) if label else ""))
-        print("   started : %s" % (clip(r["started_with"]) or "(nothing a person typed)"))
-        if r["last_asked"] and r["last_asked"] != r["started_with"]:
-            print("   last    : %s" % clip(r["last_asked"]))
-        print("   resume  : %s" % r["resume"])
-        print()
+        entry = labels.get(r["id"], {})
+        r["name"] = entry.get("name")
+        r["tag"] = entry.get("tag")
+
+    # Tagged sessions group together, newest group first; untagged fall to the
+    # end. Related work listing as one block is the whole point of a tag.
+    groups = {}
+    for r in rows:
+        groups.setdefault(r["tag"], []).append(r)
+
+    for tag in sorted(groups, key=lambda t: (t is None, t or "")):
+        members = groups[tag]
+        if tag:
+            print("### %s  (%d session%s)" % (tag, len(members),
+                                              "" if len(members) == 1 else "s"))
+        elif len(groups) > 1:
+            print("### untagged")
+        for r in members:
+            head = "%s  %5.1f MB  %s" % (r["modified"], r["megabytes"], r["id"])
+            if r["name"]:
+                head += "   [%s]" % r["name"]
+            print(head)
+            if args.stats:
+                n = compaction_count(os.path.join(
+                    r["_dir"], r["id"] + ".jsonl"))
+                if n is not None:
+                    note = "" if n < 2 else ("   <- hand off; %d lossy rounds" % n)
+                    print("   compacted %d time%s%s"
+                          % (n, "" if n == 1 else "s", note))
+            print("   started : %s" % (clip(r["started_with"]) or "(nothing a person typed)"))
+            if r["last_asked"] and r["last_asked"] != r["started_with"]:
+                print("   last    : %s" % clip(r["last_asked"]))
+            print("   resume  : %s" % r["resume"])
+            print()
 
 
 def clip(text, width=110):
