@@ -136,13 +136,25 @@ def cmd_compacted(payload):
 
 
 def cmd_notify(payload):
-    """UserPromptSubmit: surface the hand-off once it is due, not every turn."""
+    """UserPromptSubmit: enrol the session, then surface the hand-off when due."""
     state = load_state()
     session = payload.get("session_id") or ""
+    name = bound_thread(state, payload.get("cwd"))
+
+    # Record which sessions belong to this thread, once each. Written on the
+    # first prompt rather than at session start, so a session that opened and
+    # was abandoned never joins the roster.
+    if name and session:
+        seen = state.setdefault("enrolled", {})
+        if seen.get(session) != name:
+            seen[session] = name
+            save_state(state)
+            append(name, "- %s  session %s joined this thread" % (stamp(), session))
+
     n = (state.get("compactions") or {}).get(session, 0)
     if n < 2:
         return
-    name = bound_thread(state, payload.get("cwd")) or "(none bound)"
+    name = name or "(none bound)"
     # Printed to stdout so it reaches the assistant's context, once conditions
     # are met. Silent otherwise — a warning on every turn is a warning nobody
     # reads.
@@ -235,6 +247,10 @@ def main():
     ap = argparse.ArgumentParser(prog="gstack-thread")
     ap.add_argument("--resume", metavar="THREAD",
                     help="print the resume command for that thread's newest session")
+    ap.add_argument("--resume-id", metavar="THREAD",
+                    help="print only the newest session id, for scripts")
+    ap.add_argument("--launcher", metavar="THREAD",
+                    help="write a double-clickable .cmd that resumes this thread")
     ap.add_argument("--set")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--note")
@@ -253,6 +269,54 @@ def main():
         return
 
     state = load_state()
+
+    if args.resume_id:
+        found = sessions_for_thread(state, args.resume_id)
+        if not found:
+            sys.exit(2)
+        print(found[0][1])
+        return
+
+    if args.launcher:
+        name = args.launcher
+        found = sessions_for_thread(state, name)
+        if not found:
+            sys.stderr.write("thread %r has no sessions yet.\n" % name)
+            sys.exit(2)
+        workdir = next((d for d, t in (state.get("bindings") or {}).items()
+                        if t == name), None) or os.getcwd()
+        launch_dir = os.path.join(os.path.expanduser("~"), ".claude", "launchers")
+        os.makedirs(launch_dir, exist_ok=True)
+        path = os.path.join(launch_dir, "resume-%s.cmd" % name)
+        # The session id is resolved when the launcher RUNS, never baked in —
+        # a hardcoded id is stale the moment the thread gains a newer session,
+        # which is the failure this whole feature exists to prevent.
+        script = (
+            '@echo off\r\n'
+            'setlocal\r\n'
+            'set "PY=%s"\r\n'
+            'set "THREAD=%s"\r\n'
+            'set "TOOL=%s"\r\n'
+            # The whole command needs an OUTER pair of quotes inside the
+            # backticks. Without it, cmd splits on the space in
+            # "C:\Program Files" and reports 'C:\Program' is not recognized —
+            # which surfaces as "No session found", blaming the thread for a
+            # quoting bug.
+            'for /f "usebackq delims=" %%%%i in (`""%%PY%%" "%%TOOL%%" --resume-id %%THREAD%%"`) do set "SID=%%%%i"\r\n'
+            'if not defined SID (\r\n'
+            '  echo No session found for thread %%THREAD%%.\r\n'
+            '  pause\r\n'
+            '  exit /b 1\r\n'
+            ')\r\n'
+            'echo Resuming %%THREAD%% : %%SID%%\r\n'
+            'cd /d "%s"\r\n'
+            'claude --resume %%SID%%\r\n'
+        ) % (sys.executable, name, os.path.abspath(__file__), workdir)
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(script)
+        print("launcher: %s" % path)
+        print("resolves the newest %r session each time it runs" % name)
+        return
 
     if args.resume:
         found = sessions_for_thread(state, args.resume)
