@@ -151,8 +151,90 @@ def cmd_notify(payload):
           "(gstack-thread --show). Say it plainly, once." % (n, name))
 
 
+def transcript_cwd(path):
+    """The working directory a transcript belongs to, read from the file itself.
+
+    Deriving it from the project folder name means reversing a lossy slug. The
+    transcript records `cwd` on its rows, so ask the file rather than guess.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for _ in range(40):
+                line = fh.readline()
+                if not line:
+                    break
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict) and row.get("cwd"):
+                    return row["cwd"]
+    except OSError:
+        pass
+    return None
+
+
+def sessions_for_thread(state, name, min_bytes=50_000):
+    """Every transcript whose cwd is bound to this thread, newest first.
+
+    Sessions under `min_bytes` are skipped: a 0.2 MB transcript is an aborted
+    start or a one-line probe, and resuming one instead of the real thread is
+    the failure this whole feature exists to prevent.
+    """
+    wanted = {key_for(d) for d, t in (state.get("bindings") or {}).items()
+              if t == name}
+
+    # An explicit tag beats the directory binding. Several unrelated subjects
+    # get worked on in one folder — this project's directory holds Lezam work,
+    # session-recovery work and throwaway probes — so a directory alone answers
+    # "which sessions happened here", not "which sessions were about this".
+    # A session tagged for another thread is excluded even if the cwd matches.
+    tags = {}
+    tag_path = os.path.join(root(), "session-names.json")
+    try:
+        with open(tag_path, "r", encoding="utf-8") as fh:
+            for sid, entry in (json.load(fh) or {}).items():
+                if isinstance(entry, dict) and entry.get("tag"):
+                    tags[sid] = entry["tag"]
+    except (OSError, ValueError):
+        pass
+    # A thread may exist purely as tags, with no directory of its own — several
+    # subjects share one folder. Bail only when neither source knows it.
+    if not wanted and name not in set(tags.values()):
+        return []
+
+    projects = os.path.join(os.path.expanduser("~"), ".claude", "projects")
+    found = []
+    if not os.path.isdir(projects):
+        return []
+    for proj in os.listdir(projects):
+        pdir = os.path.join(projects, proj)
+        if not os.path.isdir(pdir):
+            continue
+        for f in os.listdir(pdir):
+            if not f.endswith(".jsonl"):
+                continue
+            path = os.path.join(pdir, f)
+            try:
+                if os.path.getsize(path) < min_bytes:
+                    continue
+            except OSError:
+                continue
+            sid = f[:-6]
+            explicit = tags.get(sid)
+            if explicit and explicit != name:
+                continue
+            cwd = transcript_cwd(path)
+            if explicit == name or (cwd and key_for(cwd) in wanted):
+                found.append((os.path.getmtime(path), sid, path))
+    found.sort(reverse=True)
+    return found
+
+
 def main():
     ap = argparse.ArgumentParser(prog="gstack-thread")
+    ap.add_argument("--resume", metavar="THREAD",
+                    help="print the resume command for that thread's newest session")
     ap.add_argument("--set")
     ap.add_argument("--show", action="store_true")
     ap.add_argument("--note")
@@ -171,6 +253,26 @@ def main():
         return
 
     state = load_state()
+
+    if args.resume:
+        found = sessions_for_thread(state, args.resume)
+        if not found:
+            sys.stderr.write(
+                "no sessions found for thread %r. Bind a directory with "
+                "--set %s from inside it.\n" % (args.resume, args.resume))
+            sys.exit(2)
+        mtime, sid, path = found[0]
+        when = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+        print("thread   : %s" % args.resume)
+        print("latest   : %s   (%s, %.1f MB)"
+              % (sid, when, os.path.getsize(path) / 1024 / 1024))
+        print("resume   : claude --resume %s" % sid)
+        if len(found) > 1:
+            print("older    : %d more session(s) on this thread" % (len(found) - 1))
+        ctx = thread_file(args.resume)
+        if os.path.exists(ctx):
+            print("context  : %s" % ctx)
+        return
 
     if args.set:
         state.setdefault("bindings", {})[os.getcwd()] = args.set
