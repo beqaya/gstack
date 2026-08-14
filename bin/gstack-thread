@@ -186,12 +186,60 @@ def transcript_cwd(path):
     return None
 
 
-def sessions_for_thread(state, name, min_bytes=50_000):
+# Things that look like a user turn in a transcript but nobody typed.
+_NOT_TYPED = (
+    "<system-reminder", "<command-name", "<command-message", "<command-args",
+    "<local-command", "Caveat:", "[SYSTEM NOTIFICATION", "<task-notification",
+    "<user-prompt-submit-hook", "<extra-context",
+    "This session is being continued from a previous conversation",
+    "Your task is to create a detailed summary",
+)
+
+
+def has_human_turn(path, scan_lines=600, big=200_000):
+    """Did a person actually say something in this session?
+
+    This replaces a file-size floor. Size is the wrong test: a session opened
+    two minutes ago is small because transcripts flush periodically, not
+    because it was abandoned — so a size floor skips the very session you just
+    worked in and lands you on an older one. That is the failure this feature
+    exists to prevent, reintroduced by the guard meant to prevent it.
+
+    What "abandoned" actually means is that nobody typed anything.
+    """
+    try:
+        if os.path.getsize(path) > big:
+            return True  # Far past any aborted start; do not parse it.
+    except OSError:
+        return False
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for _ in range(scan_lines):
+                line = fh.readline()
+                if not line:
+                    break
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict) or row.get("type") != "user":
+                    continue
+                content = (row.get("message") or {}).get("content")
+                if not isinstance(content, str):
+                    continue  # A list means tool results, never typing.
+                text = content.strip()
+                if text and not text.startswith(_NOT_TYPED):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def sessions_for_thread(state, name):
     """Every transcript whose cwd is bound to this thread, newest first.
 
-    Sessions under `min_bytes` are skipped: a 0.2 MB transcript is an aborted
-    start or a one-line probe, and resuming one instead of the real thread is
-    the failure this whole feature exists to prevent.
+    A session with no human turn is skipped — that is what an aborted start
+    really is. A brand-new session with one message is kept, however small.
     """
     wanted = {key_for(d) for d, t in (state.get("bindings") or {}).items()
               if t == name}
@@ -227,17 +275,14 @@ def sessions_for_thread(state, name, min_bytes=50_000):
             if not f.endswith(".jsonl"):
                 continue
             path = os.path.join(pdir, f)
-            try:
-                if os.path.getsize(path) < min_bytes:
-                    continue
-            except OSError:
-                continue
             sid = f[:-6]
             explicit = tags.get(sid)
             if explicit and explicit != name:
                 continue
             cwd = transcript_cwd(path)
             if explicit == name or (cwd and key_for(cwd) in wanted):
+                if not has_human_turn(path):
+                    continue
                 found.append((os.path.getmtime(path), sid, path))
     found.sort(reverse=True)
     return found
