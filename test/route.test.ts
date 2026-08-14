@@ -45,7 +45,7 @@ describe('routing coverage', () => {
   // 61 of 120 skills declare no triggers, so no table can reach them. This
   // test states the current number so that it can only go DOWN: any skill
   // added without triggers fails the build.
-  const KNOWN_UNROUTED = 19;
+  const KNOWN_UNROUTED = 15;
 
   test('the unrouted set does not grow', () => {
     const lines = route(['--unrouted']).stdout.split(/\r?\n/).filter(Boolean);
