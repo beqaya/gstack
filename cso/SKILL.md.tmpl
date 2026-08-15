@@ -12,8 +12,9 @@ description: |
 voice-triggers:
   - "see-so"
   - "see so"
-  - "security review"
-  - "security check"
+  # "security review" / "security check" deliberately NOT claimed: those are
+  # org-security phrasings that must trigger the which-skill question
+  # (/cso vs cyber security-review vs monthly-check), not silently route here.
   - "vulnerability scan"
   - "run security"
 allowed-tools:
