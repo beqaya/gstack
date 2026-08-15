@@ -65,7 +65,13 @@ for (const file of SKILL_FILES) {
 console.log('\n  Templates:');
 const TEMPLATES = discoverTemplates(ROOT);
 
+// Skills the claude host deliberately never generates (hosts/claude.ts
+// skipSkills — e.g. the `claude` outside-voice skill exists only for
+// non-Claude hosts). A missing SKILL.md there is by design, not an error.
+const CLAUDE_SKIPPED = new Set(['claude']);
+
 for (const { tmpl, output } of TEMPLATES) {
+  if (CLAUDE_SKIPPED.has(path.dirname(output))) continue;
   const tmplPath = path.join(ROOT, tmpl);
   const outPath = path.join(ROOT, output);
   if (!fs.existsSync(tmplPath)) {
@@ -132,11 +138,21 @@ for (const hostConfig of getExternalHosts()) {
 
 import { ALL_HOST_CONFIGS } from '../hosts/index';
 
+// On a gbrain-enabled install, setup renders the :user variant (brain-aware
+// blocks) into the tree, so comparing against the canonical variant reports
+// every such file STALE forever. Compare against the variant actually on disk.
+let gbrainLive = false;
+try {
+  execSync('bun bin/gstack-gbrain-detect --is-ok', { cwd: ROOT, stdio: 'pipe' });
+  gbrainLive = true;
+} catch { /* canonical variant on disk */ }
+
 for (const hostConfig of ALL_HOST_CONFIGS) {
   const hostFlag = hostConfig.name === 'claude' ? '' : ` --host ${hostConfig.name}`;
+  const variantFlag = gbrainLive && hostConfig.name === 'claude' ? ' --respect-detection' : '';
   console.log(`\n  Freshness (${hostConfig.displayName}):`);
   try {
-    execSync(`bun run scripts/gen-skill-docs.ts${hostFlag} --dry-run`, { cwd: ROOT, stdio: 'pipe' });
+    execSync(`bun run scripts/gen-skill-docs.ts${hostFlag}${variantFlag} --dry-run`, { cwd: ROOT, stdio: 'pipe' });
     console.log(`  \u2705 All ${hostConfig.displayName} generated files are fresh`);
   } catch (err: any) {
     hasErrors = true;
