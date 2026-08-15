@@ -1141,9 +1141,13 @@ QUEUE_JSON=$(bun run bin/gstack-next-version \
   --base "$BASE_BRANCH" \
   --bump patch \
   --current-version "$BASE_VERSION" 2>/dev/null || echo '{"offline":true}')
-NEXT_SLOT=$(echo "$QUEUE_JSON" | jq -r '.version // empty')
-CLAIMED_COUNT=$(echo "$QUEUE_JSON" | jq -r '.claimed | length // 0')
-OFFLINE=$(echo "$QUEUE_JSON" | jq -r '.offline // false')
+if command -v jq >/dev/null 2>&1; then
+  NEXT_SLOT=$(echo "$QUEUE_JSON" | jq -r '.version // empty')
+  CLAIMED_COUNT=$(echo "$QUEUE_JSON" | jq -r '.claimed | length // 0')
+  OFFLINE=$(echo "$QUEUE_JSON" | jq -r '.offline // false')
+else
+  OFFLINE=true  # no jq on this machine — treat as no signal rather than emit empty fields
+fi
 ```
 
 - If `OFFLINE=true`: skip this section (no signal to report).

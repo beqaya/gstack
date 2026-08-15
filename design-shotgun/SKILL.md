@@ -811,14 +811,14 @@ visual brainstorming, not a review process.
 ```bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 D=""
-if [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design" ]; then
-  D="$_ROOT/.claude/skills/gstack/design/dist/design"
-elif [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design.exe" ]; then
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design.exe" ]; then
   D="$_ROOT/.claude/skills/gstack/design/dist/design.exe"
-elif [ -x "$HOME/.claude/skills/gstack/design/dist/design" ]; then
-  D="$HOME/.claude/skills/gstack/design/dist/design"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/design/dist/design" ]; then
+  D="$_ROOT/.claude/skills/gstack/design/dist/design"
 elif [ -x "$HOME/.claude/skills/gstack/design/dist/design.exe" ]; then
   D="$HOME/.claude/skills/gstack/design/dist/design.exe"
+elif [ -x "$HOME/.claude/skills/gstack/design/dist/design" ]; then
+  D="$HOME/.claude/skills/gstack/design/dist/design"
 fi
 if [ -x "$D" ]; then
   echo "DESIGN_READY: $D"
