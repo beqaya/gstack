@@ -3,5 +3,6 @@
 # wrapper makes the TypeScript hook executable via bun. Settings.json
 # references this file directly.
 set -e
+command -v bun >/dev/null 2>&1 || exit 0  # fail-safe: never break a turn if bun is missing
 HERE="$(cd "$(dirname "$0")" && pwd)"
 exec bun "$HERE/question-log-hook.ts"

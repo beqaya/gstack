@@ -1,20 +1,7 @@
 ---
 name: parity
 version: 1.0.0
-description: |
-  Detects gstack repo edits that never reached the live copies a user runs. The
-  live skills at `~/.claude/skills/<name>/SKILL.md` are COPIES of the repo's, so
-  a correct repo edit changes nothing until someone copies it. Compares every
-  skill to its live counterpart by SHA-256 and reports four buckets: IDENTICAL,
-  DRIFTED (which side is newer), REPO-ONLY (invisible to the user), and
-  LIVE-ONLY (informational -- many are hand-authored or belong to other
-  projects). `--sync` copies repo to live for DRIFTED and REPO-ONLY, re-verifies
-  by hash, and refuses when the working tree has uncommitted changes to a file
-  it would copy. Sync is one-directional and NEVER copies live back to the repo:
-  a live-side hand-edit landing in version control would be committed as if it
-  were reviewed source. Use when asked to "check parity", "did my skill edit
-  actually land", "sync skills to live", or "why isn't my SKILL.md change
-  showing up". (gstack)
+description: Detects gstack repo edits that never reached the live copies a user runs. (gstack)
 triggers:
   - check parity
   - is my skill edit live
@@ -29,6 +16,23 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+The
+live skills at `~/.claude/skills/<name>/SKILL.md` are COPIES of the repo's, so
+a correct repo edit changes nothing until someone copies it. Compares every
+skill to its live counterpart by SHA-256 and reports four buckets: IDENTICAL,
+DRIFTED (which side is newer), REPO-ONLY (invisible to the user), and
+LIVE-ONLY (informational -- many are hand-authored or belong to other
+projects). `--sync` copies repo to live for DRIFTED and REPO-ONLY, re-verifies
+by hash, and refuses when the working tree has uncommitted changes to a file
+it would copy. Sync is one-directional and NEVER copies live back to the repo:
+a live-side hand-edit landing in version control would be committed as if it
+were reviewed source. Use when asked to "check parity", "did my skill edit
+actually land", "sync skills to live", or "why isn't my SKILL.md change
+showing up".
 
 # /parity -- Repo-to-Live Skill Drift Detector
 

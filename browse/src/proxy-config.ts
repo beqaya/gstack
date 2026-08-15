@@ -135,9 +135,16 @@ export function toUpstreamConfig(cfg: ParsedProxyConfig): UpstreamConfig {
 export function computeConfigHash(opts: {
   proxyUrl: string | null | undefined;
   headed: boolean;
+  /** Named Chromium profile (--profile <name>). Treated as part of config
+   *  identity so swapping profiles forces an explicit disconnect+reconnect. */
+  profileName?: string | null;
 }): string {
   const proxyKey = canonicalizeProxyUrl(opts.proxyUrl);
-  const input = JSON.stringify({ proxy: proxyKey, headed: opts.headed });
+  const input = JSON.stringify({
+    proxy: proxyKey,
+    headed: opts.headed,
+    profile: opts.profileName || null,
+  });
   return createHash('sha256').update(input).digest('hex').slice(0, 16);
 }
 

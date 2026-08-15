@@ -27,6 +27,7 @@ import {
   validateSkillName,
 } from '../src/browser-skill-write';
 import type { TierPaths } from '../src/browser-skills';
+import { linkOrCopySync } from '../../test/helpers/link-or-copy';
 
 let tmpRoot: string;
 let tiers: TierPaths;
@@ -218,7 +219,7 @@ describe('commitSkill', () => {
     fs.mkdirSync(realDir, { recursive: true });
     fs.writeFileSync(path.join(realDir, 'SKILL.md'), 'fake\n');
     const symlink = path.join(tmpRoot, 'symlinked-staging');
-    fs.symlinkSync(realDir, symlink);
+    linkOrCopySync(realDir, symlink);
 
     expect(() =>
       commitSkill({ name: 'sym-skill', tier: 'global', stagedDir: symlink, tiers }),

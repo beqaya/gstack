@@ -3,6 +3,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { linkOrCopySync } from './helpers/link-or-copy';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const UNINSTALL = path.join(ROOT, 'bin', 'gstack-uninstall');
@@ -45,9 +46,20 @@ describe('gstack-uninstall', () => {
       fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'gstack'), { recursive: true });
       fs.writeFileSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'SKILL.md'), 'test');
 
-      // Create per-skill symlinks (both old unprefixed and new prefixed)
-      fs.symlinkSync('gstack/review', path.join(mockHome, '.claude', 'skills', 'review'));
-      fs.symlinkSync('gstack/ship', path.join(mockHome, '.claude', 'skills', 'gstack-ship'));
+      // The per-skill sources must exist so the Windows copy-fallback in
+      // linkOrCopySync produces a REAL entry. A dangling relative symlink
+      // (source absent) is silently skipped on Windows, which would make the
+      // removal assertions below pass vacuously — exercising none of the
+      // per-skill-removal logic this test exists to verify.
+      fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'review'), { recursive: true });
+      fs.writeFileSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'review', 'SKILL.md'), 'test');
+      fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'ship'), { recursive: true });
+      fs.writeFileSync(path.join(mockHome, '.claude', 'skills', 'gstack', 'ship', 'SKILL.md'), 'test');
+
+      // Create per-skill entries (symlink on POSIX, real copy on Windows;
+      // both old unprefixed and new prefixed names).
+      linkOrCopySync('gstack/review', path.join(mockHome, '.claude', 'skills', 'review'));
+      linkOrCopySync('gstack/ship', path.join(mockHome, '.claude', 'skills', 'gstack-ship'));
 
       // Create a non-gstack symlink (should NOT be removed)
       fs.mkdirSync(path.join(mockHome, '.claude', 'skills', 'other-tool'), { recursive: true });

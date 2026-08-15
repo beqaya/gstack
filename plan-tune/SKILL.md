@@ -2,19 +2,7 @@
 name: plan-tune
 preamble-tier: 2
 version: 1.0.0
-description: |
-  Self-tuning question sensitivity + developer psychographic for gstack (v1: observational).
-  Review which AskUserQuestion prompts fire across gstack skills, set per-question preferences
-  (never-ask / always-ask / ask-only-for-one-way), inspect the dual-track
-  profile (what you declared vs what your behavior suggests), and enable/disable
-  question tuning. Conversational interface — no CLI syntax required.
-
-  Use when asked to "tune questions", "stop asking me that", "too many questions",
-  "show my profile", "what questions have I been asked", "show my vibe",
-  "developer profile", or "turn off question tuning". (gstack)
-
-  Proactively suggest when the user says the same gstack question has come up before,
-  or when they explicitly override a recommendation for the Nth time.
+description: "Self-tuning question sensitivity + developer psychographic for gstack (v1: observational). (gstack)"
 triggers:
   - tune questions
   - stop asking me that
@@ -34,6 +22,21 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Review which AskUserQuestion prompts fire across gstack skills, set per-question preferences
+(never-ask / always-ask / ask-only-for-one-way), inspect the dual-track
+profile (what you declared vs what your behavior suggests), and enable/disable
+question tuning. Conversational interface — no CLI syntax required.
+
+Use when asked to "tune questions", "stop asking me that", "too many questions",
+"show my profile", "what questions have I been asked", "show my vibe",
+"developer profile", or "turn off question tuning". 
+
+Proactively suggest when the user says the same gstack question has come up before,
+or when they explicitly override a recommendation for the Nth time.
 
 ## Preamble (run first)
 
@@ -190,16 +193,16 @@ touch ~/.gstack/.writing-style-prompted
 
 Skip if `WRITING_STYLE_PENDING` is `no`.
 
-If `LAKE_INTRO` is `no`: say "gstack follows the **Boil the Ocean** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
+If `LAKE_INTRO` is `no` AND `~/.gstack/.onboarding-deferred` does NOT exist: say "gstack follows the **Boil the Lake** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
 
 ```bash
 open https://garryslist.org/posts/boil-the-ocean
 touch ~/.gstack/.completeness-intro-seen
 ```
 
-Only run `open` if yes. Always run `touch`.
+Only run `open` if yes. Always run `touch`. If the deferred sentinel exists, skip this section entirely.
 
-If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes`: ask telemetry once via AskUserQuestion:
+If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask telemetry once via AskUserQuestion:
 
 > Help gstack get better. Share usage data only: skill, duration, crashes, stable device ID. No code or file paths. Your repo name is recorded locally only and stripped before any upload.
 
@@ -227,7 +230,7 @@ touch ~/.gstack/.telemetry-prompted
 
 Skip if `TEL_PROMPTED` is `yes`.
 
-If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes`: ask once:
+If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask once:
 
 > Let gstack proactively suggest skills, like /qa for "does this work?" or /investigate for bugs?
 
@@ -263,7 +266,7 @@ Then run `touch ~/.gstack/.first-loop-tip-shown 2>/dev/null || true`.
 
 Skip this section if `ACTIVATED` and `FIRST_LOOP_SHOWN` are both `yes`.
 
-If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes`:
+If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist:
 Check if a CLAUDE.md file exists in the project root. If it does not exist, create it.
 
 Use AskUserQuestion:

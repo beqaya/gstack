@@ -17,11 +17,14 @@ import { writeSecureFile, mkdirSecure } from './file-permissions';
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
 import { parseProxyConfig, computeConfigHash, ProxyConfigError } from './proxy-config';
 import { redactProxyUrl } from './proxy-redact';
-import { spawnTerminalAgent } from './terminal-agent-control';
+import { spawnTerminalAgent, readAgentRecord, agentRecordPath } from './terminal-agent-control';
 
 const config = resolveConfig();
 const IS_WINDOWS = process.platform === 'win32';
-const MAX_START_WAIT = IS_WINDOWS ? 15000 : (process.env.CI ? 30000 : 8000); // Node+Chromium takes longer on Windows
+// Node+Chromium takes longer on Windows, especially first launch. The previous
+// 15s ceiling produced false-failure reports when the server was actually healthy
+// (just slow to bind). 45s reflects first-launch Chromium setup on Windows.
+const MAX_START_WAIT = IS_WINDOWS ? 45000 : (process.env.CI ? 30000 : 8000);
 
 export function resolveServerScript(
   env: Record<string, string | undefined> = process.env,
@@ -357,9 +360,20 @@ async function startServer(extraEnv?: Record<string, string>): Promise<ServerSta
     await Bun.sleep(100);
   }
 
+  // Loop expired. One last check before declaring failure — the timeout
+  // might have raced a slow-but-successful boot (Chromium first-launch on
+  // Windows is the common case). Prevents false-failure reports where
+  // status immediately after connect shows everything healthy.
+  const finalState = readState();
+  if (finalState && await isServerHealthy(finalState.port)) {
+    console.warn(`[browse] Server took >${MAX_START_WAIT / 1000}s to start but is healthy now.`);
+    return finalState;
+  }
+
   // Server didn't start in time — check the on-disk startup error log.
-  // Both platforms now spawn with stdio: 'ignore', so the server writes
-  // errors to disk for the CLI to read (see server.ts start().catch).
+  // Both platforms now spawn with stdio: 'ignore' (v1.52+), so the server
+  // writes errors to disk for the CLI to read (see server.ts start().catch).
+  // Supersedes the v1.42.1.0 macOS/Linux-only proc.stderr reader.
   const errorLogPath = path.join(config.stateDir, 'browse-startup-error.log');
   try {
     const errorLog = fs.readFileSync(errorLogPath, 'utf-8').trim();
@@ -369,7 +383,13 @@ async function startServer(extraEnv?: Record<string, string>): Promise<ServerSta
   } catch (e: any) {
     if (e.code !== 'ENOENT') throw e;
   }
-  throw new Error(`Server failed to start within ${MAX_START_WAIT / 1000}s`);
+  // Provide a useful diagnostic — include whether a state file existed at all.
+  const stateExists = fs.existsSync(config.stateFile);
+  throw new Error(
+    `Server failed to start within ${MAX_START_WAIT / 1000}s` +
+    (stateExists ? ' (state file present but /health did not respond)' : ' (no state file written — server never reached startup)') +
+    `. Run \`browse doctor\` for a full diagnostic.`
+  );
 }
 
 /**
@@ -407,7 +427,18 @@ async function ensureServer(flags?: GlobalFlags): Promise<ServerState> {
   const extraEnv: Record<string, string> = {};
   if (flags?.proxyUrl) extraEnv.BROWSE_PROXY_URL = flags.proxyUrl;
   if (flags?.headed) extraEnv.BROWSE_HEADED = '1';
+  if (flags?.profileName) extraEnv.BROWSE_PROFILE_NAME = flags.profileName;
   if (desiredHash) extraEnv.BROWSE_CONFIG_HASH = desiredHash;
+
+  // "Off means off" — if the user explicitly disconnected, refuse to silently
+  // auto-start a fresh headless daemon on any subsequent command. They must
+  // re-invoke `connect` or `start` to opt back in. Bypass with BROWSE_FORCE_START=1.
+  const disconnectedSentinel = path.join(config.stateDir, 'disconnected');
+  if (!state && fs.existsSync(disconnectedSentinel) && process.env.BROWSE_FORCE_START !== '1') {
+    console.error('[browse] Browser is disconnected. Run `browse connect` (headed) or `browse start` (headless) to begin a new session.');
+    console.error('[browse] To override one-shot: BROWSE_FORCE_START=1 <command>');
+    process.exit(1);
+  }
 
   // Health-check-first: HTTP is definitive proof the server is alive and responsive.
   // This replaces the PID-gated approach which breaks on Windows (Bun's process.kill
@@ -609,6 +640,9 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
       // plain command (goto/status, no --headed) never silently downgrades a
       // headed session to headless (#1781). Same for proxy/configHash.
       const restartEnv = buildRestartEnv(_globalFlags, oldState);
+      // buildRestartEnv omits profileName; reapply it so a crash-restart keeps
+      // the named profile (Windows profile-lock fix).
+      if (_globalFlags?.profileName) restartEnv.BROWSE_PROFILE_NAME = _globalFlags.profileName;
       const newState = await startServer(Object.keys(restartEnv).length ? restartEnv : undefined);
       return sendCommand(newState, command, args, retries + 1);
     }
@@ -764,13 +798,17 @@ function hasFlag(args: string[], flag: string): boolean {
 }
 
 export interface GlobalFlags {
-  /** Cleaned argv with --proxy/--headed stripped out. */
+  /** Cleaned argv with --proxy/--headed/--profile/--har stripped out. */
   args: string[];
   /** Resolved BROWSE_PROXY_URL (with creds embedded) or null. */
   proxyUrl: string | null;
   /** Whether --headed was passed. */
   headed: boolean;
-  /** Hash of (proxy + headed) for daemon-mismatch check. */
+  /** Named Chromium profile (`--profile work`). null = default. */
+  profileName: string | null;
+  /** HAR record path (--har <path>). Absolute; flushed on context close. null = no recording. */
+  harPath: string | null;
+  /** Hash of (proxy + headed + profile) for daemon-mismatch check. */
   configHash: string;
   /** Redacted form of proxyUrl, safe for logs. */
   redactedProxyUrl: string;
@@ -787,6 +825,8 @@ export function extractGlobalFlags(rawArgs: string[], env: NodeJS.ProcessEnv): G
   const out: string[] = [];
   let proxyUrl: string | null = null;
   let headed = false;
+  let profileName: string | null = null;
+  let harPath: string | null = null;
 
   for (let i = 0; i < rawArgs.length; i++) {
     const arg = rawArgs[i];
@@ -807,6 +847,45 @@ export function extractGlobalFlags(rawArgs: string[], env: NodeJS.ProcessEnv): G
       continue;
     }
     if (arg === '--headed') { headed = true; continue; }
+    if (arg === '--profile') {
+      const value = rawArgs[i + 1];
+      if (!value || !/^[A-Za-z0-9_-]{1,64}$/.test(value)) {
+        throw new ProxyConfigError(
+          'usage: --profile <name>  (name: [A-Za-z0-9_-]{1,64})',
+          'invalid --profile name',
+        );
+      }
+      profileName = value;
+      i++;
+      continue;
+    }
+    if (arg.startsWith('--profile=')) {
+      const value = arg.slice('--profile='.length);
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(value)) {
+        throw new ProxyConfigError(
+          'usage: --profile=<name>  (name: [A-Za-z0-9_-]{1,64})',
+          'invalid --profile name',
+        );
+      }
+      profileName = value;
+      continue;
+    }
+    if (arg === '--har') {
+      const value = rawArgs[i + 1];
+      if (!value) {
+        throw new ProxyConfigError(
+          'usage: --har <path>  (e.g. --har ./session.har)',
+          '--har requires a path value',
+        );
+      }
+      harPath = value;
+      i++;
+      continue;
+    }
+    if (arg.startsWith('--har=')) {
+      harPath = arg.slice('--har='.length);
+      continue;
+    }
     out.push(arg);
   }
 
@@ -826,11 +905,21 @@ export function extractGlobalFlags(rawArgs: string[], env: NodeJS.ProcessEnv): G
     canonicalProxyUrl = rebuilt.toString();
   }
 
+  // Resolve --har path to absolute. The browse-manager-side recordHar option
+  // expects an absolute path. We don't try to enforce safe-directories here:
+  // HAR files contain network bodies (potentially sensitive) but the user
+  // chose where to write them — same trust model as `screenshot <path>`.
+  const harPathAbs = harPath
+    ? (path.isAbsolute(harPath) ? harPath : path.resolve(process.cwd(), harPath))
+    : null;
+
   return {
     args: out,
     proxyUrl: canonicalProxyUrl,
     headed,
-    configHash: computeConfigHash({ proxyUrl: canonicalProxyUrl, headed }),
+    profileName,
+    harPath: harPathAbs,
+    configHash: computeConfigHash({ proxyUrl: canonicalProxyUrl, headed, profileName: profileName || undefined }),
     redactedProxyUrl: redactProxyUrl(canonicalProxyUrl),
   };
 }
@@ -1039,10 +1128,327 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
   const command = args[0];
   const commandArgs = args.slice(1);
 
+  // ─── doctor (pre-server diagnostic) ─────────────────────────
+  // Single source of truth for "what's broken". Runs without ensureServer so
+  // it can diagnose a fully-down state. See cli.ts startServer error hint.
+  if (command === 'doctor') {
+    const rows: Array<{ name: string; status: 'OK' | 'WARN' | 'FAIL' | 'INFO'; detail: string }> = [];
+    const stateDir = config.stateDir;
+    const stateFile = config.stateFile;
+
+    rows.push({ name: 'Platform', status: 'INFO', detail: `${process.platform} ${process.arch}` });
+    rows.push({ name: 'Bun version', status: 'INFO', detail: typeof Bun !== 'undefined' ? Bun.version : 'unknown' });
+
+    // gstack version
+    try {
+      const versionPath = path.join(path.dirname(process.execPath), '..', 'dist', '.version');
+      const altPath = path.resolve(__dirname, '..', 'dist', '.version');
+      const v = fs.existsSync(versionPath) ? fs.readFileSync(versionPath, 'utf-8').trim()
+        : fs.existsSync(altPath) ? fs.readFileSync(altPath, 'utf-8').trim() : '';
+      rows.push({ name: 'browse binary', status: 'INFO', detail: v || '(no version file)' });
+    } catch { rows.push({ name: 'browse binary', status: 'WARN', detail: 'version file unreadable' }); }
+
+    // State file
+    const state = readState();
+    if (state) {
+      const healthy = await isServerHealthy(state.port);
+      rows.push({
+        name: 'Server',
+        status: healthy ? 'OK' : 'FAIL',
+        detail: `mode=${state.mode || 'launched'} pid=${state.pid} port=${state.port} healthy=${healthy}`,
+      });
+    } else {
+      const disconnectedSentinel = path.join(stateDir, 'disconnected');
+      const disconnected = fs.existsSync(disconnectedSentinel);
+      rows.push({
+        name: 'Server',
+        status: disconnected ? 'INFO' : 'INFO',
+        detail: disconnected ? 'disconnected (sentinel present — auto-start disabled)' : 'no state file (not started)',
+      });
+    }
+
+    // Terminal-agent (PTY for sidebar chat). Reads the v1.44+ identity record
+    // (`terminal-agent-pid` — JSON with {pid, gen, startedAt}) via the shared
+    // helper; legacy `terminal-agent.pid` from v1.43- is no longer written.
+    const ptyPortFile = path.join(stateDir, 'terminal-port');
+    // On Unix the PTY uses Bun's built-in `terminal:` spawn option. On Windows
+    // it falls back to node-pty (ConPTY). Check that node-pty is installed
+    // when the fallback path matters.
+    const gstackRoot = path.resolve(path.dirname(process.execPath), '..');
+    const ptyAddon = path.join(gstackRoot, 'node_modules', 'node-pty');
+    const ptyAddonAlt = path.resolve(__dirname, '..', '..', 'node_modules', 'node-pty');
+    const ptyAddonAvailable = fs.existsSync(ptyAddon) || fs.existsSync(ptyAddonAlt);
+    const agentRec = readAgentRecord(stateDir);
+    if (process.platform === 'win32' && !ptyAddonAvailable) {
+      rows.push({ name: 'Terminal-agent PTY', status: 'WARN', detail: 'node-pty missing on Windows. Sidebar chat tab will not work. Install: cd ~/.claude/skills/gstack && bun add node-pty' });
+    } else if (agentRec) {
+      try {
+        const alive = isProcessAlive(agentRec.pid);
+        const port = fs.existsSync(ptyPortFile) ? fs.readFileSync(ptyPortFile, 'utf-8').trim() : '?';
+        rows.push({ name: 'Terminal-agent', status: alive ? 'OK' : 'FAIL', detail: `pid=${agentRec.pid} gen=${agentRec.gen} port=${port} alive=${alive}` });
+      } catch { rows.push({ name: 'Terminal-agent', status: 'WARN', detail: `record present at ${agentRecordPath(stateDir)} but unreadable` }); }
+    } else {
+      rows.push({ name: 'Terminal-agent', status: 'INFO', detail: 'not running' });
+    }
+
+    // Chromium profile + lock state. If --profile <name> was passed, show
+    // that named dir; otherwise show the default. Uses the same resolution
+    // logic the server uses so what we show is what actually gets used.
+    const gstackHome = path.join(process.env.HOME || process.env.USERPROFILE || '', '.gstack');
+    const profileDir = globalFlags.profileName
+      ? path.join(gstackHome, 'profiles', globalFlags.profileName)
+      : path.join(gstackHome, 'chromium-profile');
+    const profileExists = fs.existsSync(profileDir);
+    const profileLabel = globalFlags.profileName ? `Chromium profile (--profile ${globalFlags.profileName})` : 'Chromium profile';
+    rows.push({ name: profileLabel, status: profileExists ? 'OK' : 'INFO', detail: profileDir + (profileExists ? '' : ' (not yet created)') });
+    if (profileExists) {
+      for (const lock of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+        const lockPath = path.join(profileDir, lock);
+        if (fs.existsSync(lockPath)) {
+          rows.push({ name: `  ${lock}`, status: 'WARN', detail: 'stale lock present — connect will clean it' });
+        }
+      }
+    }
+
+    // Extension
+    const extCandidates = [
+      path.resolve(__dirname, '..', '..', 'extension'),
+      path.resolve(__dirname, '..', '..', '..', 'extension'),
+      path.join(process.env.HOME || process.env.USERPROFILE || '', '.claude', 'skills', 'gstack', 'extension'),
+    ];
+    const extFound = extCandidates.find(p => fs.existsSync(path.join(p, 'manifest.json')));
+    rows.push({ name: 'Extension', status: extFound ? 'OK' : 'WARN', detail: extFound || 'manifest.json not found in expected paths' });
+
+    // State dir writability
+    try {
+      ensureStateDir(config);
+      const probe = path.join(stateDir, '.doctor-probe');
+      fs.writeFileSync(probe, '1');
+      fs.unlinkSync(probe);
+      rows.push({ name: 'State dir writable', status: 'OK', detail: stateDir });
+    } catch (e: any) {
+      rows.push({ name: 'State dir writable', status: 'FAIL', detail: `${stateDir}: ${e.message}` });
+    }
+
+    // Render
+    const widthName = Math.max(20, ...rows.map(r => r.name.length));
+    const widthStatus = 4;
+    console.log('browse doctor — diagnostic report');
+    console.log('-'.repeat(80));
+    for (const r of rows) {
+      const status = r.status.padEnd(widthStatus);
+      const name = r.name.padEnd(widthName);
+      console.log(`${status}  ${name}  ${r.detail}`);
+    }
+    console.log('-'.repeat(80));
+    const failures = rows.filter(r => r.status === 'FAIL').length;
+    const warnings = rows.filter(r => r.status === 'WARN').length;
+    console.log(`Summary: ${failures} fail, ${warnings} warn, ${rows.length} checks.`);
+    if (failures > 0) console.log("Next: address FAIL rows. Try 'browse disconnect' then 'browse connect' for a clean restart.");
+    process.exit(failures > 0 ? 1 : 0);
+  }
+
+  // ─── Lighthouse audit (pre-server command) ─────────────────
+  // Runs Chrome DevTools' Lighthouse against a URL. Spawns its own headless
+  // Chrome so it doesn't interfere with a running gstack session. Writes
+  // an HTML report next to the URL slug and prints category scores.
+  if (command === 'doctor-perf' || command === 'lighthouse') {
+    const target = commandArgs.find(a => !a.startsWith('--'));
+    if (!target) {
+      console.error('[browse] usage: browse lighthouse <url> [--out <file.html>] [--json] [--mobile]');
+      console.error('[browse] examples:');
+      console.error('[browse]   browse lighthouse https://example.com');
+      console.error('[browse]   browse lighthouse https://example.com --out report.html --mobile');
+      process.exit(1);
+    }
+    let outFlag = commandArgs.indexOf('--out');
+    const outPath = outFlag >= 0 ? commandArgs[outFlag + 1] : null;
+    const wantJson = commandArgs.includes('--json');
+    const mobile = commandArgs.includes('--mobile');
+
+    // Shell out to Lighthouse's CLI rather than calling its programmatic
+    // API. Lighthouse has 100+ transitive deps that don't all resolve from
+    // a Bun-compiled binary's virtual filesystem (lodash-es, locale files,
+    // etc.). The CLI runs in its own Node/Bun process where normal module
+    // resolution works.
+    try {
+      const gstackRoot = path.resolve(path.dirname(process.execPath), '..', '..');
+      const lhCli = path.join(gstackRoot, 'node_modules', 'lighthouse', 'cli', 'index.js');
+      if (!fs.existsSync(lhCli)) {
+        console.error(`[lighthouse] CLI not found at ${lhCli}`);
+        console.error(`[lighthouse] install: cd ~/.claude/skills/gstack && bun add lighthouse chrome-launcher`);
+        process.exit(1);
+      }
+
+      const tmpJson = path.join(config.stateDir, `lighthouse-${Date.now()}.json`);
+      const resolvedOut = outPath
+        ? (path.isAbsolute(outPath) ? outPath : path.resolve(process.cwd(), outPath))
+        : path.resolve(process.cwd(), `lighthouse-${new URL(target).hostname}-${Date.now()}.html`);
+
+      // Bun (the compiled binary's own runtime) can execute the lighthouse
+      // CLI — its own require/import works correctly against gstack's
+      // node_modules. We pass --quiet to keep stdout clean.
+      const bunPath = (Bun as any).which?.('bun') || 'bun';
+      const args = [
+        'run', lhCli,
+        target,
+        '--quiet',
+        '--chrome-flags=--headless=new --disable-gpu --no-sandbox',
+        `--output=html`, `--output=json`,
+        `--output-path=${resolvedOut.replace(/\.html$/, '')}`,
+        `--only-categories=performance,accessibility,best-practices,seo`,
+        ...(mobile ? [] : ['--preset=desktop']),
+      ];
+      console.log(`[lighthouse] Auditing ${target} (${mobile ? 'mobile' : 'desktop'})...`);
+      const r = Bun.spawnSync([bunPath, ...args], {
+        cwd: gstackRoot,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+
+      // Lighthouse CLI with --output-path=<prefix> writes both <prefix>.report.html and <prefix>.report.json.
+      // On Windows, chrome-launcher's temp-profile cleanup often races against
+      // Chrome's file handle release and throws EBUSY at the end — Lighthouse
+      // exits with code 1 even though the audit completed and reports were
+      // written. Gate on report-file existence, not exit code.
+      const htmlPath = resolvedOut.replace(/\.html$/, '.report.html');
+      const jsonPath = resolvedOut.replace(/\.html$/, '.report.json');
+
+      if (!fs.existsSync(jsonPath)) {
+        // No JSON report → audit genuinely failed (not just a cleanup glitch).
+        const errText = new TextDecoder().decode(r.stderr);
+        const outText = new TextDecoder().decode(r.stdout);
+        console.error(`[lighthouse] audit failed (no report produced). Exit code: ${r.exitCode}`);
+        if (errText) console.error(errText.split('\n').slice(0, 5).join('\n'));
+        if (outText) console.error(outText.split('\n').slice(0, 5).join('\n'));
+        process.exit(1);
+      }
+
+      {
+        const report = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+        const categories = report.categories || {};
+        console.log('');
+        console.log(`Lighthouse — ${report.finalUrl || target}`);
+        console.log('-'.repeat(60));
+        for (const cat of Object.values(categories) as any[]) {
+          const score = cat.score === null ? '-' : Math.round(cat.score * 100).toString();
+          const label = String(cat.title).padEnd(20);
+          const verdict = cat.score === null ? 'n/a' : (cat.score >= 0.9 ? 'good' : cat.score >= 0.5 ? 'ok' : 'poor');
+          console.log(`  ${label} ${score.padStart(3)}/100  ${verdict}`);
+        }
+        console.log('-'.repeat(60));
+
+        const audits = report.audits || {};
+        const perfAudits = (categories.performance?.auditRefs || [])
+          .filter((r: any) => r.weight > 0)
+          .map((r: any) => ({ ...audits[r.id], weight: r.weight }))
+          .filter((a: any) => a && a.score !== null && a.score < 0.9)
+          .sort((a: any, b: any) => (b.weight * (1 - b.score)) - (a.weight * (1 - a.score)))
+          .slice(0, 3);
+        if (perfAudits.length > 0) {
+          console.log('Top perf issues:');
+          for (const a of perfAudits) {
+            console.log(`  - ${a.title}${a.displayValue ? ` (${a.displayValue})` : ''}`);
+          }
+        }
+        if (!wantJson) {
+          // User didn't ask for JSON; clean up the intermediate file.
+          try { fs.unlinkSync(jsonPath); } catch {}
+        } else {
+          console.log(`JSON report: ${jsonPath}`);
+        }
+      }
+      if (fs.existsSync(htmlPath)) {
+        console.log(`HTML report: ${htmlPath}`);
+      }
+    } catch (err: any) {
+      console.error(`[lighthouse] error: ${err.message}`);
+      console.error(`[lighthouse] verify lighthouse is installed: cd ~/.claude/skills/gstack && bun add lighthouse chrome-launcher`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
+  // ─── Attach (pre-server command) ───────────────────────────
+  // Connect to a user-owned Chrome started with --remote-debugging-port=<n>.
+  // gstack inherits the user's real profile (cookies, logins, extensions)
+  // and does NOT kill Chrome on disconnect. Sidebar extension features
+  // unavailable in this mode (Chrome was already running without --load-extension).
+  if (command === 'attach') {
+    safeUnlinkQuiet(path.join(config.stateDir, 'disconnected'));
+
+    const target = commandArgs[0];
+    if (!target) {
+      console.error('[browse] usage: browse attach <ws-url or port>');
+      console.error('[browse] examples:');
+      console.error('[browse]   browse attach 9222');
+      console.error('[browse]   browse attach http://127.0.0.1:9222');
+      console.error('[browse]   browse attach ws://127.0.0.1:9222/devtools/browser/abc123');
+      console.error('[browse] start Chrome with: chrome --remote-debugging-port=9222');
+      process.exit(1);
+    }
+    let cdpUrl: string;
+    if (/^\d{2,5}$/.test(target)) {
+      cdpUrl = `http://127.0.0.1:${target}`;
+    } else if (target.startsWith('http://') || target.startsWith('https://') || target.startsWith('ws://') || target.startsWith('wss://')) {
+      cdpUrl = target;
+    } else {
+      console.error(`[browse] attach: invalid target "${target}" — expected port number or http(s)/ws(s) URL`);
+      process.exit(1);
+    }
+
+    // Kill any existing gstack server. attach doesn't co-exist with headed/launched modes.
+    const existingState = readState();
+    if (existingState && isProcessAlive(existingState.pid)) {
+      safeKill(existingState.pid, 'SIGTERM');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (isProcessAlive(existingState.pid)) {
+        safeKill(existingState.pid, 'SIGKILL');
+      }
+    }
+    safeUnlinkQuiet(config.stateFile);
+
+    console.log(`Attaching to existing Chrome at ${cdpUrl}...`);
+    try {
+      const serverEnv: Record<string, string> = {
+        BROWSE_ATTACH_URL: cdpUrl,
+        BROWSE_PORT: '34567',
+        BROWSE_PARENT_PID: '0',
+      };
+      const newState = await startServer(serverEnv);
+      const resp = await fetch(`http://127.0.0.1:${newState.port}/command`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${newState.token}`,
+        },
+        body: JSON.stringify({ command: 'status', args: [] }),
+        signal: AbortSignal.timeout(5000),
+      });
+      console.log(`Attached. Browser is now driven via CDP.`);
+      console.log(await resp.text());
+      console.log('');
+      console.log('Notes:');
+      console.log('  - Your existing Chrome tabs are now addressable via `browse tabs` / `browse tab <id>`.');
+      console.log('  - `browse disconnect` detaches the CDP session but does NOT close Chrome.');
+      console.log('  - Sidebar extension features unavailable in attach mode.');
+    } catch (err: any) {
+      console.error(`[browse] attach failed: ${err.message}`);
+      console.error(`[browse] verify Chrome was started with --remote-debugging-port=<port>`);
+      console.error(`[browse] and that ${cdpUrl}/json/version returns valid JSON`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
   // ─── Headed Connect (pre-server command) ────────────────────
   // connect must be handled BEFORE ensureServer() because it needs
   // to restart the server in headed mode with the Chrome extension.
   if (command === 'connect') {
+    // Explicit connect clears the disconnected sentinel so auto-start works
+    // again. See ensureServer() for the "off means off" rationale.
+    safeUnlinkQuiet(path.join(config.stateDir, 'disconnected'));
+
     // Check if already in headed mode and healthy
     const existingState = readState();
     if (existingState && existingState.mode === 'headed' && isProcessAlive(existingState.pid)) {
@@ -1095,6 +1501,8 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
         // `browse --proxy <url> connect` would launch headed Chromium
         // bypassing the SOCKS bridge entirely.
         ...(globalFlags.proxyUrl ? { BROWSE_PROXY_URL: globalFlags.proxyUrl } : {}),
+        ...(globalFlags.profileName ? { BROWSE_PROFILE_NAME: globalFlags.profileName } : {}),
+        ...(globalFlags.harPath ? { BROWSE_HAR_PATH: globalFlags.harPath } : {}),
         ...(globalFlags.configHash ? { BROWSE_CONFIG_HASH: globalFlags.configHash } : {}),
       };
       const newState = await startServer(serverEnv);
@@ -1127,6 +1535,9 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
       // server.ts watchdog respawn path share one implementation. The
       // helper handles prior-PID cleanup, script lookup, and env wiring.
       try {
+        // Windows-detach is handled inside spawnTerminalAgent (uses a Node
+        // child_process launcher when IS_WINDOWS, falls through to Bun.spawn
+        // elsewhere). Same helper used by the server.ts watchdog respawn path.
         const newPid = spawnTerminalAgent({
           stateFile: config.stateFile,
           serverPort: newState.port,
@@ -1241,22 +1652,26 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
   // guard blocks all commands when the server is unresponsive.
   if (command === 'disconnect') {
     const existingState = readState();
-    // disconnect applies when there's a non-default daemon — headed mode OR
-    // any custom config (--proxy/--headed) recorded as configHash. Plain
-    // headless daemons should use 'stop' instead.
-    const hasCustomConfig = existingState && (existingState.mode === 'headed' || existingState.configHash);
+    // disconnect applies when there's a non-default daemon — headed mode,
+    // attached mode, OR any custom config (--proxy/--headed) recorded as
+    // configHash. Plain headless daemons should use 'stop' instead.
+    const hasCustomConfig = existingState && (
+      existingState.mode === 'headed' ||
+      existingState.mode === 'attached' ||
+      existingState.configHash
+    );
     if (!existingState || !hasCustomConfig) {
-      console.log('Not in headed/custom-config mode — nothing to disconnect.');
+      console.log('Not in headed/attached/custom-config mode — nothing to disconnect.');
       process.exit(0);
     }
-    // For headed-mode daemons: try graceful shutdown via the server's
+    // For headed/attached-mode daemons: try graceful shutdown via the server's
     // /command endpoint. For proxy-only / custom-config daemons (no headed
     // mode), the server's `disconnect` handler currently only tears down
     // headed state — it returns 200 "Not in headed mode" without cleaning
     // up the bridge or Xvfb. So we skip the graceful path for those and
     // jump straight to force-cleanup, which kills the daemon process and
     // lets process.on('exit') in server.ts close the bridge + Xvfb.
-    if (existingState.mode === 'headed') {
+    if (existingState.mode === 'headed' || existingState.mode === 'attached') {
       try {
         const resp = await fetch(`http://127.0.0.1:${existingState.port}/command`, {
           method: 'POST',
@@ -1268,6 +1683,8 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
           signal: AbortSignal.timeout(3000),
         });
         if (resp.ok) {
+          // Set sentinel so subsequent commands don't silently auto-restart.
+          try { ensureStateDir(config); fs.writeFileSync(path.join(config.stateDir, 'disconnected'), String(Date.now())); } catch {}
           console.log('Disconnected from real browser.');
           process.exit(0);
         }
@@ -1283,6 +1700,18 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
         safeKill(existingState.pid, 'SIGKILL');
       }
     }
+    // Also force-kill the terminal-agent. The daemon's shutdown handler does
+    // this on graceful exit, but force-kill skips that path. Without this, the
+    // record file lingers and doctor reports a stale alive=false agent.
+    const taStateDir = path.dirname(config.stateFile);
+    const taRec = readAgentRecord(taStateDir);
+    if (taRec && isProcessAlive(taRec.pid)) {
+      safeKill(taRec.pid, 'SIGTERM');
+    }
+    safeUnlinkQuiet(path.join(taStateDir, 'terminal-port'));
+    safeUnlinkQuiet(agentRecordPath(taStateDir));
+    safeUnlinkQuiet(path.join(taStateDir, 'terminal-agent.pid')); // legacy v1.43- — harmless if absent
+    safeUnlinkQuiet(path.join(taStateDir, 'terminal-internal-token'));
     // #1781: killing the daemon can orphan its Chromium child tree, which keeps
     // holding the SingletonLock and makes the next `connect` fail to launch.
     // Reap the orphan via the lock, then clear the lock files + state.
@@ -1305,6 +1734,8 @@ Refs:           After 'snapshot', use @e1, @e2... as selectors:
       }
     }
     safeUnlinkQuiet(config.stateFile);
+    // Set sentinel so subsequent commands don't silently auto-restart.
+    try { ensureStateDir(config); fs.writeFileSync(path.join(config.stateDir, 'disconnected'), String(Date.now())); } catch {}
     console.log('Disconnected (server was unresponsive — force cleaned).');
     process.exit(0);
   }

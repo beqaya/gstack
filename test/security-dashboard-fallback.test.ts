@@ -22,11 +22,11 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { linkOrCopySync } from "./helpers/link-or-copy";
 
 const ROOT = join(import.meta.dir, "..");
 const SEC_BIN = join(ROOT, "bin", "gstack-security-dashboard");
@@ -103,7 +103,7 @@ function run(
     mkdirSync(toolBin, { recursive: true });
     for (const tool of ["mktemp", "cat", "grep", "head", "sed", "awk", "rm", "sh", "bash", "tr", "tail"]) {
       const real = Bun.which(tool);
-      if (real) symlinkSync(real, join(toolBin, tool));
+      if (real) linkOrCopySync(real, join(toolBin, tool));
     }
     pathEnv = `${stubBin}:${toolBin}`;
   }

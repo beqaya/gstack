@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# gstack-resolve-skill-conflicts — one-command fix for generated-SKILL.md merge
+# conflicts.
+#
+# The 54 SKILL.md files are generated (from SKILL.md.tmpl + resolvers) yet
+# committed as source, so any two branches touching a shared resolver collide
+# across nearly the whole corpus — a wall of spurious conflicts. The templates
+# themselves merge cleanly; only their generated outputs conflict. The correct
+# resolution is therefore: take either side (just to clear the markers), then
+# regenerate from the already-merged templates and stage. This script codifies
+# that ritual (previously done by hand on every upstream merge).
+#
+# Usage: after `git merge` reports SKILL.md conflicts, run:
+#   bin/gstack-resolve-skill-conflicts
+# then review `git diff --staged` and finish the merge.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$ROOT"
+
+mapfile -t CONFLICTS < <(git diff --name-only --diff-filter=U 2>/dev/null | grep -E '(^|/)SKILL\.md$' || true)
+
+if [ "${#CONFLICTS[@]}" -eq 0 ]; then
+  echo "No conflicted SKILL.md files. Nothing to do."
+  exit 0
+fi
+
+echo "Clearing conflict markers on ${#CONFLICTS[@]} generated SKILL.md file(s) (regenerated next)..."
+for f in "${CONFLICTS[@]}"; do
+  # Take theirs purely to clear the markers; content is overwritten by regen.
+  git checkout --theirs -- "$f" 2>/dev/null || true
+  git add -- "$f"
+done
+
+# Any non-SKILL.md conflicts are NOT auto-resolved — surface them and stop so a
+# human resolves real code conflicts before the generated docs are regenerated.
+REMAINING="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
+if [ -n "$REMAINING" ]; then
+  echo ""
+  echo "WARNING: non-SKILL.md conflicts remain — resolve these by hand, then re-run:"
+  echo "$REMAINING" | sed 's/^/  /'
+  exit 1
+fi
+
+echo "Regenerating SKILL.md from the merged templates..."
+bun run gen:skill-docs --host all >/dev/null
+
+# Stage the regenerated docs (only files that actually changed get staged).
+git add -A -- '*/SKILL.md' 'SKILL.md' 2>/dev/null || true
+
+echo ""
+echo "Done. Review with 'git diff --staged', then commit to finish the merge."

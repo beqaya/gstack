@@ -49,11 +49,20 @@
     "slop:diff": "bun run scripts/slop-diff.ts"
   },
   "dependencies": {
+    "@google-cloud/error-reporting": "^3.0.5",
+    "@google-cloud/logging": "^11.2.1",
+    "@google-cloud/monitoring": "^5.3.2",
     "@huggingface/transformers": "^4.1.0",
     "@ngrok/ngrok": "^1.7.0",
+    "chokidar": "^5.0.0",
+    "chrome-launcher": "^1.2.1",
     "diff": "^7.0.0",
     "html-to-docx": "1.8.0",
+    "js-yaml": "^4.1.1",
+    "lighthouse": "^13.3.0",
     "marked": "^18.0.2",
+    "minimatch": "^10.2.5",
+    "node-pty": "^1.1.0",
     "playwright": "^1.58.2",
     "puppeteer-core": "^24.40.0",
     "socks": "^2.8.8"
@@ -76,6 +85,9 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "xterm": "5",
     "xterm-addon-fit": "^0.8.0"
+  },
+  "optionalDependencies": {
+    "keytar": "^7.9.0"
   },
   "overrides": {
     "basic-ftp": "5.3.1"

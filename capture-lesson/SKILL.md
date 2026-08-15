@@ -1,22 +1,7 @@
 ---
 name: capture-lesson
 version: 1.0.0
-description: |
-  Captures a lesson at the MOMENT it is learned, instead of waiting for the
-  weekly batch sweep. Fires on exactly three triggers: a defect is found in
-  something already reported done, an error is recovered from after
-  non-trivial diagnosis, or the user corrects a behavior. Classifies what was
-  learned as a DURABLE FACT (written to a memory file with Why /
-  How-to-apply sections) or a REPEATABLE PROCEDURE (staged as a
-  SKILL.md.draft, never auto-activated). A durable fact is then scoped and
-  routed: PROJECT facts go to the open project's own memory dir and index,
-  TOOLING facts (about gstack/a skill/the harness/the dev environment) go to
-  the shared gstack lessons doc instead of one project's private memory, and
-  USER/GLOBAL facts are proposed as a CLAUDE.md addition and require the
-  user's go-ahead before writing. Routine successful work produces no lesson.
-  Use when a bug is found after something was called done, right after
-  recovering from a non-trivial error, or when the user corrects your
-  behavior. (gstack)
+description: Captures a lesson at the MOMENT it is learned, instead of waiting for the weekly batch sweep. (gstack)
 triggers:
   - that's wrong, I told you
   - this was already broken when you said it was done
@@ -33,6 +18,24 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Fires on exactly three triggers: a defect is found in
+something already reported done, an error is recovered from after
+non-trivial diagnosis, or the user corrects a behavior. Classifies what was
+learned as a DURABLE FACT (written to a memory file with Why /
+How-to-apply sections) or a REPEATABLE PROCEDURE (staged as a
+SKILL.md.draft, never auto-activated). A durable fact is then scoped and
+routed: PROJECT facts go to the open project's own memory dir and index,
+TOOLING facts (about gstack/a skill/the harness/the dev environment) go to
+the shared gstack lessons doc instead of one project's private memory, and
+USER/GLOBAL facts are proposed as a CLAUDE.md addition and require the
+user's go-ahead before writing. Routine successful work produces no lesson.
+Use when a bug is found after something was called done, right after
+recovering from a non-trivial error, or when the user corrects your
+behavior.
 
 ## Preamble (run first)
 
@@ -189,16 +192,16 @@ touch ~/.gstack/.writing-style-prompted
 
 Skip if `WRITING_STYLE_PENDING` is `no`.
 
-If `LAKE_INTRO` is `no`: say "gstack follows the **Boil the Ocean** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
+If `LAKE_INTRO` is `no` AND `~/.gstack/.onboarding-deferred` does NOT exist: say "gstack follows the **Boil the Lake** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
 
 ```bash
 open https://garryslist.org/posts/boil-the-ocean
 touch ~/.gstack/.completeness-intro-seen
 ```
 
-Only run `open` if yes. Always run `touch`.
+Only run `open` if yes. Always run `touch`. If the deferred sentinel exists, skip this section entirely.
 
-If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes`: ask telemetry once via AskUserQuestion:
+If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask telemetry once via AskUserQuestion:
 
 > Help gstack get better. Share usage data only: skill, duration, crashes, stable device ID. No code or file paths. Your repo name is recorded locally only and stripped before any upload.
 
@@ -226,7 +229,7 @@ touch ~/.gstack/.telemetry-prompted
 
 Skip if `TEL_PROMPTED` is `yes`.
 
-If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes`: ask once:
+If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask once:
 
 > Let gstack proactively suggest skills, like /qa for "does this work?" or /investigate for bugs?
 
@@ -262,7 +265,7 @@ Then run `touch ~/.gstack/.first-loop-tip-shown 2>/dev/null || true`.
 
 Skip this section if `ACTIVATED` and `FIRST_LOOP_SHOWN` are both `yes`.
 
-If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes`:
+If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist:
 Check if a CLAUDE.md file exists in the project root. If it does not exist, create it.
 
 Use AskUserQuestion:

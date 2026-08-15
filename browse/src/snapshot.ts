@@ -239,6 +239,94 @@ export async function handleSnapshot(
     output.push(outputLine);
   }
 
+  // ─── Iframe walk ────────────────────────────────────────────
+  // Playwright's ariaSnapshot() traverses the active frame including its
+  // shadow-DOM contents, but it does NOT cross frame boundaries — each
+  // <iframe> is its own Frame with a separate accessibility tree. Without
+  // this loop, snapshot only sees the top page and any embedded content
+  // (YouTube embeds, Stripe checkout, cross-origin login widgets) is
+  // invisible to `click @eN` etc.
+  //
+  // Skip when:
+  //   - opts.selector is set: scoped snapshot, intentionally narrow
+  //   - inFrame: user already drilled into a specific frame
+  //   - cross-origin frames may throw — caught + reported per-frame
+  if (!opts.selector && !inFrame) {
+    const childFrames = page.frames().filter(f =>
+      f !== page.mainFrame() &&
+      !f.isDetached() &&
+      // Empty/placeholder frames have nothing to snapshot. srcdoc frames
+      // report 'about:srcdoc' which DOES have content, so keep those.
+      f.url() !== 'about:blank' &&
+      !f.url().startsWith('chrome-error:'),
+    );
+
+    for (const frame of childFrames) {
+      let frameAriaText: string;
+      try {
+        frameAriaText = await frame.locator('body').ariaSnapshot();
+      } catch (err: any) {
+        // Cross-origin iframes throw on access; surface a one-liner so the
+        // model knows there's content here even if we can't see it.
+        output.push('');
+        output.push(`── iframe (inaccessible): ${frame.url()} — ${err?.message?.split('\n')[0] || 'unknown'} ──`);
+        continue;
+      }
+      if (!frameAriaText || !frameAriaText.trim()) continue;
+
+      output.push('');
+      output.push(`── iframe: ${frame.url()} ──`);
+
+      const frameLines = frameAriaText.split('\n');
+      // role+name counts are scoped per-frame so nth() disambiguation lines up
+      // with the per-frame accessibility tree, not a global one.
+      const frameCounts = new Map<string, number>();
+      const frameSeen = new Map<string, number>();
+      for (const fline of frameLines) {
+        const fnode = parseLine(fline);
+        if (!fnode) continue;
+        const key = `${fnode.role}:${fnode.name || ''}`;
+        frameCounts.set(key, (frameCounts.get(key) || 0) + 1);
+      }
+
+      for (const fline of frameLines) {
+        const fnode = parseLine(fline);
+        if (!fnode) continue;
+        const fdepth = Math.floor(fnode.indent / 2);
+        const fIsInteractive = INTERACTIVE_ROLES.has(fnode.role);
+        if (opts.depth !== undefined && fdepth > opts.depth) continue;
+        if (opts.interactive && !fIsInteractive) {
+          const key = `${fnode.role}:${fnode.name || ''}`;
+          frameSeen.set(key, (frameSeen.get(key) || 0) + 1);
+          continue;
+        }
+        if (opts.compact && !fIsInteractive && !fnode.name && !fnode.children) continue;
+
+        const ref = `e${refCounter++}`;
+        const indent = '  '.repeat(fdepth);
+        const key = `${fnode.role}:${fnode.name || ''}`;
+        const seenIndex = frameSeen.get(key) || 0;
+        frameSeen.set(key, seenIndex + 1);
+        const totalCount = frameCounts.get(key) || 1;
+
+        // Locator anchored on the iframe's own Frame — Playwright routes
+        // .click()/.fill()/etc. transparently through to the right frame.
+        let flocator: Locator = frame.getByRole(fnode.role as any, {
+          name: fnode.name || undefined,
+        });
+        if (totalCount > 1) flocator = flocator.nth(seenIndex);
+
+        refMap.set(ref, { locator: flocator, role: fnode.role, name: fnode.name || '' });
+
+        let outputLine = `${indent}@${ref} [${fnode.role}]`;
+        if (fnode.name) outputLine += ` "${fnode.name}"`;
+        if (fnode.props) outputLine += ` ${fnode.props}`;
+        if (fnode.children) outputLine += `: ${fnode.children}`;
+        output.push(outputLine);
+      }
+    }
+  }
+
   // ─── Cursor-interactive scan (-C, or auto with -i) ────────
   // Auto-enable cursor scan when interactive mode is on — agents asking for
   // interactive elements should always see clickable non-ARIA items too.

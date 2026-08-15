@@ -40,6 +40,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 URL_BIN="$SCRIPT_DIR/gstack-artifacts-url"
 REMOTE_FILE="$HOME/.gstack-artifacts-remote.txt"
 
+# Read a JSON field from stdin portably: prefer jq, fall back to the
+# bun-powered gstack-json. Git Bash on Windows ships no jq, and the callers
+# below had NO guard — a missing jq silently produced an empty REMOTE_URL.
+_json_field_stdin() {  # _json_field_stdin <.dotted.path>
+  if command -v jq >/dev/null 2>&1; then
+    jq -r "$1 // empty" 2>/dev/null || true
+  else
+    bun "$SCRIPT_DIR/gstack-json" "$1" 2>/dev/null || true
+  fi
+}
+
 REMOTE_URL=""
 HOST_PREF=""
 URL_FORM_SUPPORTED="false"
@@ -152,14 +163,14 @@ if [ -z "$REMOTE_URL" ]; then
       fi
       echo "Creating GitLab repo: $REPO_NAME ..."
       if ! glab repo create "$REPO_NAME" --private --description "$DESCRIPTION" 2>/dev/null; then
-        REMOTE_URL=$(glab repo view "$REPO_NAME" -F json 2>/dev/null | jq -r '.web_url // empty' 2>/dev/null || echo "")
+        REMOTE_URL=$(glab repo view "$REPO_NAME" -F json 2>/dev/null | _json_field_stdin '.web_url')
         if [ -z "$REMOTE_URL" ]; then
           echo "Failed to create or find '$REPO_NAME'. Try --remote <url>." >&2
           exit 1
         fi
         echo "Repo already exists; using $REMOTE_URL"
       else
-        REMOTE_URL=$(glab repo view "$REPO_NAME" -F json 2>/dev/null | jq -r '.web_url // empty' 2>/dev/null || echo "")
+        REMOTE_URL=$(glab repo view "$REPO_NAME" -F json 2>/dev/null | _json_field_stdin '.web_url')
       fi
       ;;
     manual)

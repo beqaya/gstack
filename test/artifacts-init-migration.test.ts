@@ -6,8 +6,9 @@ import { describe, expect, test, beforeEach } from 'bun:test';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { fileURLToPath } from 'url';
 
-const REPO_ROOT = new URL('..', import.meta.url).pathname;
+const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const MIGRATION = join(REPO_ROOT, 'gstack-upgrade', 'migrations', 'v1.38.1.0.sh');
 
 function setupFakeHome(): string {
@@ -29,6 +30,12 @@ function runMigration(fakeHome: string): { code: number; stdout: string; stderr:
     stderr: new TextDecoder().decode(proc.stderr),
   };
 }
+
+// The migration script degrades gracefully without jq (WARN + skip the
+// privacy-map patch — see `command -v jq` in the .sh). Tests that assert the
+// jq-mutated content have nothing meaningful to check on a machine without
+// jq on PATH, so they're skipped there rather than asserting a false negative.
+const HAS_JQ = Bun.spawnSync({ cmd: ['bash', '-c', 'command -v jq'] }).exitCode === 0;
 
 describe('v1.38.1.0 migration', () => {
   test('adds patterns to allowlist before USER ADDITIONS marker', () => {
@@ -58,7 +65,7 @@ describe('v1.38.1.0 migration', () => {
     }
   });
 
-  test('adds entries to privacy-map.json via jq (preserves JSON validity)', () => {
+  test.skipIf(!HAS_JQ)('adds entries to privacy-map.json via jq (preserves JSON validity)', () => {
     const home = setupFakeHome();
     try {
       writeFileSync(join(home, '.gstack', '.brain-privacy-map.json'), JSON.stringify([
@@ -138,7 +145,7 @@ describe('v1.38.1.0 migration', () => {
     }
   });
 
-  test('repairs privacy-map even when allowlist is missing (per-file independence)', () => {
+  test.skipIf(!HAS_JQ)('repairs privacy-map even when allowlist is missing (per-file independence)', () => {
     const home = setupFakeHome();
     try {
       // No .brain-allowlist; only privacy-map present
@@ -260,7 +267,7 @@ describe('v1.40.0.0 migration', () => {
     }
   });
 
-  test('adds eng-review-test-plan entry to privacy-map.json via jq', () => {
+  test.skipIf(!HAS_JQ)('adds eng-review-test-plan entry to privacy-map.json via jq', () => {
     const home = setupFakeHome();
     try {
       writeFileSync(join(home, '.gstack', '.brain-privacy-map.json'), JSON.stringify([

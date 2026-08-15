@@ -1,0 +1,4 @@
+name: email
+pattern: '[\w.+-]+@[\w-]+\.[\w.-]+'
+flags: g
+replacement: '<email>'

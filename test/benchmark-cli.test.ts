@@ -115,7 +115,19 @@ describe('gstack-model-benchmark --dry-run', () => {
         PATH: process.env.PATH ?? '',
         TERM: process.env.TERM ?? 'xterm',
         HOME: emptyHome,
+        // os.homedir() reads USERPROFILE (not HOME) on Windows — override
+        // both so the adapters' credentials-path checks are redirected
+        // regardless of platform.
+        USERPROFILE: emptyHome,
       };
+      if (process.platform === 'win32') {
+        // spawnSync on Windows needs these for the child process to boot at
+        // all (module resolution, temp paths); without them `bun run`
+        // itself can fail before ever reaching the adapters.
+        for (const key of ['SystemRoot', 'ComSpec', 'TEMP', 'TMP']) {
+          if (process.env[key]) minimalEnv[key] = process.env[key]!;
+        }
+      }
       const result = spawnSync('bun', ['run', BIN, '--prompt', 'hi', '--models', 'claude,gpt,gemini', '--dry-run'], {
         cwd: ROOT,
         env: minimalEnv,

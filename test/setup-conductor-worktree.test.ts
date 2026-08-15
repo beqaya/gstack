@@ -3,6 +3,7 @@ import { spawnSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { linkOrCopySync } from './helpers/link-or-copy';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const SETUP_SCRIPT = path.join(ROOT, 'setup');
@@ -138,7 +139,7 @@ describe('setup: Conductor worktree guard', () => {
       const dest = path.join(tmp, 'dest-symlink');
       fs.mkdirSync(source);
       fs.mkdirSync(oldSource);
-      fs.symlinkSync(oldSource, dest);
+      linkOrCopySync(oldSource, dest);
       // Existing symlink: -L is true, so the guard does NOT trigger. ln -snf
       // should atomically retarget the symlink to the new source.
       const script = `

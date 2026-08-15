@@ -91,6 +91,7 @@ Run with `browse <command> [args]`. Full reference: `browse/SKILL.md`.
 - `inspect [selector] [--all] [--history]`: Deep CSS inspection via CDP — full rule cascade, box model, computed styles
 - `is <prop> <sel|@ref>`: State check on element.
 - `js <expr> [--out <file>] [--raw]`: Run inline JavaScript expression in the page context and return result as string.
+- `lighthouse <url> [--out report.html] [--mobile] [--json]`: Run Google Lighthouse audit (performance, accessibility, best-practices, SEO).
 - `network [--clear]`: Network requests
 - `perf`: Page load timings
 - `storage  |  storage set <key> <value>`: Read both localStorage and sessionStorage as JSON.
@@ -122,6 +123,8 @@ Run with `browse <command> [args]`. Full reference: `browse/SKILL.md`.
 - `domain-skill save|list|show|edit|promote-to-global|rollback|rm <host?>`: Per-site notes the agent writes for itself.
 - `frame <sel|@ref|--name n|--url pattern|main>`: Switch to iframe context (or main to return)
 - `inbox [--clear]`: List messages from sidebar scout inbox
+- `record start [--out <file.json>]  |  record stop`: Record clicks/fills/keys/navigations into a JSON file for later replay
+- `replay <file.json> [--speed <n>] [--no-delay]`: Replay a previously-recorded flow against the current browser.
 - `skill list|show|run|test|rm <name?> [--arg k=v]... [--timeout=Ns]`: Run a browser-skill: deterministic Playwright script that drives the daemon over loopback HTTP.
 - `watch [stop]`: Passive observation — periodic snapshots while user browses
 
@@ -143,9 +146,11 @@ Run with `browse <command> [args]`. Full reference: `browse/SKILL.md`.
 - `text`: Cleaned page text
 
 ### Server
+- `attach <port-or-url>`: Attach to a user-owned Chrome via CDP (chrome --remote-debugging-port=<n>).
 - `connect`: Launch headed Chromium with Chrome extension
 - `disconnect`: Disconnect headed browser, return to headless mode
-- `focus [@ref]`: Bring headed browser window to foreground (macOS)
+- `doctor`: Diagnostic report: platform, server, terminal-agent, extension, locks, state-dir writability
+- `focus [@ref]`: Bring headed browser window to foreground (macOS / Windows / Linux with wmctrl|xdotool)
 - `handoff [message]`: Open visible Chrome at current page for user takeover
 - `memory [--json]`: Snapshot Bun heap + per-tab JS heap + Chromium process tree + bounded buffer sizes.
 - `restart`: Restart server

@@ -33,6 +33,29 @@ import { mintSkillToken, revokeSkillToken, generateSpawnId } from './skill-token
 const DEFAULT_TIMEOUT_SECONDS = 60;
 const MAX_STDOUT_BYTES = 1024 * 1024; // 1 MB
 
+/**
+ * Resolve the `bun` binary for spawning `bun test` / `bun run`. NOT the same
+ * as `process.execPath`: when this module runs from the compiled
+ * `browse/dist/browse` binary, execPath is that binary, not bun — spawning
+ * `[process.execPath, 'run', scriptPath]` would hand `run scriptPath` to the
+ * embedded program instead of invoking bun. Bun.which() finds the real bun
+ * on PATH (honoring Windows PATHEXT for the `bun.cmd` shim). Falls back to
+ * execPath for the source/dev-run case where it genuinely is bun.
+ */
+function resolveBunBinary(): string {
+  const found = Bun.which('bun');
+  if (found) return found;
+  // Only trust execPath if it genuinely IS bun (the source/dev-run case). From
+  // the compiled `browse/dist/browse` binary, execPath is that binary, not bun
+  // — spawning `[execPath, 'run'/'test', …]` would mis-dispatch to the embedded
+  // program. Fail loudly instead of silently running the wrong executable.
+  const base = path.basename(process.execPath).toLowerCase();
+  if (base === 'bun' || base === 'bun.exe') return process.execPath;
+  throw new Error(
+    'Cannot resolve the bun binary: bun is not on PATH and this process is not bun itself. Install bun or add it to PATH.',
+  );
+}
+
 // ─── Public command dispatcher ──────────────────────────────────
 
 export interface SkillCommandContext {
@@ -185,7 +208,7 @@ async function handleTest(args: string[], ctx: SkillCommandContext): Promise<str
     throw new Error(`Skill "${name}" has no script.test.ts at ${testFile}`);
   }
 
-  const proc = Bun.spawn(['bun', 'test', testFile], {
+  const proc = Bun.spawn([resolveBunBinary(), 'test', testFile], {
     cwd: skill.dir,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -263,7 +286,7 @@ export async function spawnSkill(opts: SpawnSkillOptions): Promise<SpawnSkillRes
       throw new Error(`Skill "${opts.skill.name}" missing script.ts at ${scriptPath}`);
     }
 
-    const proc = Bun.spawn(['bun', 'run', scriptPath, '--', ...opts.skillArgs], {
+    const proc = Bun.spawn([resolveBunBinary(), 'run', scriptPath, '--', ...opts.skillArgs], {
       cwd: opts.skill.dir,
       env,
       stdout: 'pipe',

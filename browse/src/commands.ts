@@ -36,7 +36,7 @@ export const META_COMMANDS = new Set([
   'chain', 'diff',
   'url', 'snapshot',
   'handoff', 'resume',
-  'connect', 'disconnect', 'focus',
+  'connect', 'disconnect', 'focus', 'doctor', 'attach', 'lighthouse', 'record', 'replay',
   'inbox',
   'watch',
   'state',
@@ -163,7 +163,12 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   // Headed mode
   'connect': { category: 'Server', description: 'Launch headed Chromium with Chrome extension', usage: 'connect' },
   'disconnect': { category: 'Server', description: 'Disconnect headed browser, return to headless mode' },
-  'focus':   { category: 'Server', description: 'Bring headed browser window to foreground (macOS)', usage: 'focus [@ref]' },
+  'focus':   { category: 'Server', description: 'Bring headed browser window to foreground (macOS / Windows / Linux with wmctrl|xdotool)', usage: 'focus [@ref]' },
+  'doctor':  { category: 'Server', description: 'Diagnostic report: platform, server, terminal-agent, extension, locks, state-dir writability', usage: 'doctor' },
+  'attach':  { category: 'Server', description: 'Attach to a user-owned Chrome via CDP (chrome --remote-debugging-port=<n>). Inherits real cookies/sessions. Does NOT kill Chrome on disconnect.', usage: 'attach <port-or-url>' },
+  'lighthouse': { category: 'Inspection', description: 'Run Google Lighthouse audit (performance, accessibility, best-practices, SEO). Spawns its own headless Chrome.', usage: 'lighthouse <url> [--out report.html] [--mobile] [--json]' },
+  'record':  { category: 'Meta', description: 'Record clicks/fills/keys/navigations into a JSON file for later replay', usage: 'record start [--out <file.json>]  |  record stop' },
+  'replay':  { category: 'Meta', description: 'Replay a previously-recorded flow against the current browser. Preserves inter-action delays unless --no-delay.', usage: 'replay <file.json> [--speed <n>] [--no-delay]' },
   // Inbox
   'inbox':   { category: 'Meta', description: 'List messages from sidebar scout inbox', usage: 'inbox [--clear]' },
   // Watch

@@ -969,7 +969,13 @@ for (const currentHost of hostsToRun) {
         if (currentHostConfig.generation.skipSkills.includes(dir)) continue;
       }
 
-      const { outputPath, content, symlinkLoop, catalogParts } = processTemplate(tmplPath, currentHost);
+      const { outputPath, content: _rawContent, symlinkLoop, catalogParts } = processTemplate(tmplPath, currentHost);
+      // Force LF: on a Windows checkout the assembled content can carry CRLF,
+      // which makes the generated SKILL.md start with "---\r\n" and fails the
+      // skill-coverage-floor frontmatter assertion (and CI regenerates via
+      // gen:skill-docs before tests). Normalizing here also keeps the DRY_RUN
+      // freshness compare below consistent with the LF-on-disk files.
+      const content = _rawContent.replace(/\r\n/g, '\n');
       if (catalogParts) {
         // Root-skill detection: when the template lives at ROOT/SKILL.md.tmpl,
         // path.basename(path.dirname(tmplPath)) returns the repo's directory
@@ -1038,7 +1044,8 @@ for (const currentHost of hostsToRun) {
       if (currentHostConfig.generation.skipSkills?.length &&
           currentHostConfig.generation.skipSkills.includes(sec.skillDir)) continue;
 
-      const { outputPath, content } = processSectionTemplate(path.join(ROOT, sec.tmpl), sec.skillDir, currentHost);
+      const { outputPath, content: _rawSecContent } = processSectionTemplate(path.join(ROOT, sec.tmpl), sec.skillDir, currentHost);
+      const content = _rawSecContent.replace(/\r\n/g, '\n'); // force LF (see SKILL.md loop above)
       const relOutput = path.relative(OUT_DIR || ROOT, outputPath);
 
       if (DRY_RUN) {

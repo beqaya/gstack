@@ -24,10 +24,28 @@ import { tmpdir } from 'os';
 
 let TMP_HOME: string;
 const ORIGINAL_HOME = process.env.GSTACK_HOME;
+const ORIGINAL_PATH = process.env.PATH;
+
+// Every test here assumes gbrain is unreachable ("no gbrain mock" — see the
+// schema-mismatch tests below). That's true on a bare CI runner, but a dev
+// machine with a real `gbrain` shim on PATH (e.g. ~/.local/bin/gbrain.cmd)
+// makes cmdGet's rebuild path actually invoke it; the shim then eats its
+// full internal 10s spawnGbrain timeout before failing, blowing this test's
+// budget. Strip any PATH entry that resolves a gbrain binary so "unreachable"
+// stays true regardless of what's installed locally.
+function stripGbrainFromPath(pathValue: string | undefined): string {
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const names = process.platform === 'win32' ? ['gbrain.cmd', 'gbrain.exe', 'gbrain'] : ['gbrain'];
+  return (pathValue ?? '')
+    .split(sep)
+    .filter((dir) => dir && !names.some((name) => existsSync(join(dir, name))))
+    .join(sep);
+}
 
 beforeEach(() => {
   TMP_HOME = mkdtempSync(join(tmpdir(), 'gstack-cache-test-'));
   process.env.GSTACK_HOME = TMP_HOME;
+  process.env.PATH = stripGbrainFromPath(ORIGINAL_PATH);
   // Reload the cache module fresh per test so it picks up the new HOME.
   delete require.cache[require.resolve('../bin/gstack-brain-cache')];
 });
@@ -35,6 +53,7 @@ beforeEach(() => {
 afterEach(() => {
   if (ORIGINAL_HOME) process.env.GSTACK_HOME = ORIGINAL_HOME;
   else delete process.env.GSTACK_HOME;
+  if (ORIGINAL_PATH !== undefined) process.env.PATH = ORIGINAL_PATH;
   try { rmSync(TMP_HOME, { recursive: true, force: true }); } catch { /* best effort */ }
 });
 

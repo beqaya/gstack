@@ -1,0 +1,65 @@
+#!/usr/bin/env bun
+// gstack-json — tiny, dependency-free JSON field extractor.
+//
+// A portable stand-in for the `jq -r '.a.b // empty'` pattern used across the
+// bin/ scripts. `bun` is a guaranteed gstack dependency; `jq` is NOT (Git Bash
+// on Windows ships no jq), so scripts that must read JSON on every platform use
+// this instead of hard-failing or silently corrupting when jq is absent.
+//
+// Usage:
+//   echo '{"a":{"b":"x"}}' | gstack-json '.a.b'      -> x
+//   gstack-json '.web_url' file.json                  -> value (or empty line)
+//   echo '{}' | gstack-json '.missing'                -> (empty line, exit 0)
+//
+// Supports dotted paths with optional bracket indexes: .a.b, .a.b[0].c
+// Missing/null yields an empty string (mirrors jq's `// empty`), exit 0.
+// Invalid JSON prints nothing to stdout and exits 1 (callers already tolerate
+// an empty result; a non-zero code lets strict callers detect the parse fail).
+
+import * as fs from 'fs';
+
+const path = process.argv[2];
+const file = process.argv[3];
+
+if (!path) {
+  process.stderr.write('gstack-json: usage: gstack-json <.dotted.path> [file]\n');
+  process.exit(2);
+}
+
+let raw: string;
+try {
+  raw = file ? fs.readFileSync(file, 'utf-8') : fs.readFileSync(0, 'utf-8');
+} catch {
+  process.exit(1);
+}
+
+let data: unknown;
+try {
+  data = JSON.parse(raw);
+} catch {
+  process.exit(1);
+}
+
+// Parse a jq-lite path: leading '.', dotted keys, optional [index].
+const tokens: (string | number)[] = [];
+for (const seg of path.replace(/^\./, '').split('.')) {
+  if (seg === '') continue;
+  const m = seg.match(/^([^[\]]*)((?:\[\d+\])*)$/);
+  if (!m) { process.stdout.write('\n'); process.exit(0); }
+  if (m[1]) tokens.push(m[1]);
+  for (const idx of m[2].matchAll(/\[(\d+)\]/g)) tokens.push(Number(idx[1]));
+}
+
+let cur: unknown = data;
+for (const t of tokens) {
+  if (cur == null) break;
+  cur = (cur as Record<string | number, unknown>)[t];
+}
+
+if (cur == null) {
+  process.stdout.write('\n');
+} else if (typeof cur === 'object') {
+  process.stdout.write(JSON.stringify(cur) + '\n');
+} else {
+  process.stdout.write(String(cur) + '\n');
+}

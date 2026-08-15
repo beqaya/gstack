@@ -314,7 +314,16 @@ function buildTabAwarenessHint(stateDir: string): string {
   ].join('\n');
 }
 
-/** Spawn claude in a PTY. Returns null if claude not on PATH. */
+/**
+ * Spawn claude in a PTY. Returns null if claude not on PATH or PTY unsupported
+ * on this platform.
+ *
+ * Platform matrix:
+ *   - macOS / Linux: Bun's `terminal:` spawn option (built-in, since Bun 1.3.10).
+ *   - Windows: requires `node-pty` (or any drop-in with ConPTY). Loaded
+ *     dynamically; if unavailable returns null so the caller surfaces a
+ *     clear error to the sidebar instead of crashing.
+ */
 function spawnClaude(cols: number, rows: number, onData: (chunk: Buffer) => void) {
   const claudePath = findClaude();
   if (!claudePath) return null;
@@ -341,6 +350,14 @@ function spawnClaude(cols: number, rows: number, onData: (chunk: Buffer) => void
   const stateDir = path.dirname(STATE_FILE);
   const tabHint = buildTabAwarenessHint(stateDir);
 
+  if (process.platform === 'win32') {
+    // ConPTY path. node-pty must be installed in gstack's node_modules.
+    // Returns a normalized handle shaped like Bun.spawn's PTY return so the
+    // rest of terminal-agent.ts doesn't need branching.
+    return spawnClaudeWindowsPty(claudePath, tabHint, cols, rows, env, onData);
+  }
+
+  // Unix (macOS / Linux): Bun's native terminal: spawn option.
   const proc = (Bun as any).spawn([claudePath, '--append-system-prompt', tabHint], {
     terminal: {
       rows,
@@ -350,6 +367,92 @@ function spawnClaude(cols: number, rows: number, onData: (chunk: Buffer) => void
     env,
   });
   return proc;
+}
+
+/**
+ * Windows-only spawn path. Uses node-pty (ConPTY) loaded at runtime so the
+ * dependency is optional — terminal-agent boots and answers /health even when
+ * node-pty isn't installed; spawn just returns null.
+ *
+ * Install: `cd ~/.claude/skills/gstack && bun add node-pty`. Prebuilt binaries
+ * exist for Windows x64 in recent versions; rebuild required only for ARM64.
+ *
+ * Returns a shape compatible with Bun.spawn's PTY return:
+ *   { pid, killed, kill(sig), exited (Promise), terminal: { write, resize, close } }
+ */
+function spawnClaudeWindowsPty(
+  claudePath: string,
+  tabHint: string,
+  cols: number,
+  rows: number,
+  env: Record<string, string>,
+  onData: (chunk: Buffer) => void,
+): any {
+  let pty: any;
+  try {
+    // Resolve from gstack's node_modules. cli.ts spawns terminal-agent with
+    // cwd at the user's project dir, so node_modules resolution won't find
+    // node-pty there. Walk up from this file's location to gstack root.
+    const gstackRoot = path.resolve(__dirname, '..', '..');
+    const ptyPath = path.join(gstackRoot, 'node_modules', 'node-pty');
+    if (!fs.existsSync(ptyPath)) {
+      console.error('[terminal-agent] node-pty not installed at', ptyPath);
+      console.error('[terminal-agent] install: cd ~/.claude/skills/gstack && bun add node-pty');
+      return null;
+    }
+    pty = require(ptyPath);
+  } catch (err: any) {
+    console.error('[terminal-agent] failed to load node-pty:', err.message);
+    return null;
+  }
+
+  let ptyProc: any;
+  try {
+    ptyProc = pty.spawn(claudePath, ['--append-system-prompt', tabHint], {
+      name: 'xterm-256color',
+      cols,
+      rows,
+      cwd: process.cwd(),
+      env,
+      useConpty: true,
+    });
+  } catch (err: any) {
+    console.error('[terminal-agent] pty.spawn failed:', err.message);
+    return null;
+  }
+
+  ptyProc.onData((data: string) => {
+    onData(Buffer.from(data, 'utf-8'));
+  });
+
+  // Build a Bun-compatible facade so call sites in terminal-agent.ts that
+  // expect `.terminal.write` / `.terminal.resize` / `.terminal.close` /
+  // `.exited` / `.kill(sig)` keep working without branching.
+  let exitResolve: ((code: number) => void) | null = null;
+  const exited = new Promise<number>((resolve) => { exitResolve = resolve; });
+  ptyProc.onExit(({ exitCode }: { exitCode: number }) => {
+    if (exitResolve) exitResolve(exitCode);
+  });
+
+  return {
+    pid: ptyProc.pid,
+    killed: false,
+    kill(_sig?: string) {
+      try { ptyProc.kill(); } catch {}
+    },
+    exited,
+    terminal: {
+      write(buf: Buffer | string) {
+        try { ptyProc.write(typeof buf === 'string' ? buf : buf.toString('utf-8')); } catch {}
+      },
+      resize(c: number, r: number) {
+        try { ptyProc.resize(c, r); } catch {}
+      },
+      close() {
+        try { ptyProc.kill(); } catch {}
+      },
+    },
+  };
 }
 
 /** Cleanup a PTY session: SIGINT, then SIGKILL after 3s. */
@@ -469,13 +572,34 @@ function maybeSpawnPty(ws: any, session: PtySession): boolean {
     }
   });
   if (!proc) {
+    // spawnClaude returns null for two distinct reasons: claude binary not on
+    // PATH, or PTY backend unavailable (Windows without node-pty). Disambiguate
+    // with a quick re-check so the sidebar can render the right install hint.
+    const claudeMissing = !findClaude();
+    const isWindows = process.platform === 'win32';
     try {
-      ws.send(JSON.stringify({
-        type: 'error',
-        code: 'CLAUDE_NOT_FOUND',
-        message: 'claude CLI not on PATH. Install: https://docs.anthropic.com/en/docs/claude-code',
-      }));
-      ws.close(4404, 'claude not found');
+      if (claudeMissing) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          code: 'CLAUDE_NOT_FOUND',
+          message: 'claude CLI not on PATH. Install: https://docs.anthropic.com/en/docs/claude-code',
+        }));
+        ws.close(4404, 'claude not found');
+      } else if (isWindows) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          code: 'PTY_DEPS_MISSING',
+          message: 'Sidebar terminal needs node-pty on Windows. Install: `cd ~/.claude/skills/gstack && bun add node-pty`, then re-run `browse connect`.',
+        }));
+        ws.close(4500, 'pty deps missing');
+      } else {
+        ws.send(JSON.stringify({
+          type: 'error',
+          code: 'PTY_SPAWN_FAILED',
+          message: 'PTY spawn failed unexpectedly. Run `browse doctor` for diagnostics.',
+        }));
+        ws.close(4500, 'pty spawn failed');
+      }
     } catch {}
     return false;
   }
@@ -790,6 +914,10 @@ function buildServer() {
         // wasn't sent first. Both paths land in the same maybeSpawnPty
         // helper for behavior parity.
         if (!session.spawned) {
+          // Lazy spawn on first binary byte. The helper handles UTF-8 boundary
+          // buffering (#1272), the platform-aware error disambiguation
+          // (CLAUDE_NOT_FOUND / PTY_DEPS_MISSING / PTY_SPAWN_FAILED), and the
+          // exit-watch wiring. Falls back to Windows node-pty automatically.
           if (!maybeSpawnPty(ws, session)) return;
         }
         try {
@@ -977,7 +1105,8 @@ function main() {
   // v1.43- `pkill -f terminal-agent\.ts` regex teardown that could kill
   // sibling gstack sessions. Callers (cli.ts spawn site, server.ts
   // shutdown, the v1.44 watchdog) now route through killAgentByRecord in
-  // terminal-agent-control.ts.
+  // terminal-agent-control.ts. Supersedes the v1.42.1.0 cross-platform
+  // PID_FILE — upstream's record-based identity is strictly more robust.
   writeAgentRecord(dir, { pid: process.pid, gen: CURRENT_GEN, startedAt: Date.now() });
 
   // Hand the parent the internal token so it can call /internal/grant.

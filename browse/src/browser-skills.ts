@@ -130,6 +130,10 @@ function detectBundledRoot(): string {
  * missing required fields (host, triggers, args).
  */
 export function parseSkillFile(content: string, opts: { skillName?: string } = {}): { frontmatter: SkillFrontmatter; bodyMd: string } {
+  // Normalize CRLF → LF up front. Windows git checkouts (core.autocrlf) can
+  // hand this function \r\n-terminated content; every downstream check below
+  // assumes bare \n.
+  content = content.replace(/\r\n/g, '\n');
   if (!content.startsWith('---\n')) {
     throw new Error('SKILL.md missing frontmatter block (expected starting "---\\n")');
   }

@@ -2,13 +2,7 @@
 name: make-pdf
 preamble-tier: 1
 version: 1.0.0
-description: |
-  Turn any markdown file into a publication-quality PDF. Proper 1in margins,
-  intelligent page breaks, page numbers, cover pages, running headers, curly
-  quotes and em dashes, clickable TOC, diagonal DRAFT watermark. Not a draft
-  artifact — a finished artifact. Use when asked to "make a PDF", "export to
-  PDF", "turn this markdown into a PDF", or "generate a document". (gstack)
-  Voice triggers (speech-to-text aliases): "make this a pdf", "make it a pdf", "export to pdf", "turn this into a pdf", "turn this markdown into a pdf", "generate a pdf", "make a pdf from", "pdf this markdown".
+description: Turn any markdown file into a publication-quality PDF. (gstack)
 triggers:
   - markdown to pdf
   - generate pdf
@@ -21,6 +15,17 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
+
+
+## When to invoke this skill
+
+Proper 1in margins,
+intelligent page breaks, page numbers, cover pages, running headers, curly
+quotes and em dashes, clickable TOC, diagonal DRAFT watermark. Not a draft
+artifact — a finished artifact. Use when asked to "make a PDF", "export to
+PDF", "turn this markdown into a PDF", or "generate a document".
+
+Voice triggers (speech-to-text aliases): "make this a pdf", "make it a pdf", "export to pdf", "turn this into a pdf", "turn this markdown into a pdf", "generate a pdf", "make a pdf from", "pdf this markdown".
 
 ## Preamble (run first)
 
@@ -215,16 +220,16 @@ touch ~/.gstack/.writing-style-prompted
 
 Skip if `WRITING_STYLE_PENDING` is `no`.
 
-If `LAKE_INTRO` is `no`: say "gstack follows the **Boil the Ocean** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
+If `LAKE_INTRO` is `no` AND `~/.gstack/.onboarding-deferred` does NOT exist: say "gstack follows the **Boil the Lake** principle — do the complete thing when AI makes marginal cost near-zero. Read more: https://garryslist.org/posts/boil-the-ocean" Offer to open:
 
 ```bash
 open https://garryslist.org/posts/boil-the-ocean
 touch ~/.gstack/.completeness-intro-seen
 ```
 
-Only run `open` if yes. Always run `touch`.
+Only run `open` if yes. Always run `touch`. If the deferred sentinel exists, skip this section entirely.
 
-If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes`: ask telemetry once via AskUserQuestion:
+If `TEL_PROMPTED` is `no` AND `LAKE_INTRO` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask telemetry once via AskUserQuestion:
 
 > Help gstack get better. Share usage data only: skill, duration, crashes, stable device ID. No code or file paths. Your repo name is recorded locally only and stripped before any upload.
 
@@ -252,7 +257,7 @@ touch ~/.gstack/.telemetry-prompted
 
 Skip if `TEL_PROMPTED` is `yes`.
 
-If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes`: ask once:
+If `PROACTIVE_PROMPTED` is `no` AND `TEL_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist: ask once:
 
 > Let gstack proactively suggest skills, like /qa for "does this work?" or /investigate for bugs?
 
@@ -288,7 +293,7 @@ Then run `touch ~/.gstack/.first-loop-tip-shown 2>/dev/null || true`.
 
 Skip this section if `ACTIVATED` and `FIRST_LOOP_SHOWN` are both `yes`.
 
-If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes`:
+If `HAS_ROUTING` is `no` AND `ROUTING_DECLINED` is `false` AND `PROACTIVE_PROMPTED` is `yes` AND `~/.gstack/.onboarding-deferred` does NOT exist:
 Check if a CLAUDE.md file exists in the project root. If it does not exist, create it.
 
 Use AskUserQuestion:

@@ -10,6 +10,7 @@ import {
   _resetCapabilityMemo,
   type GbrainSourceRow,
 } from "../lib/gbrain-guards";
+import { linkOrCopySync } from "./helpers/link-or-copy";
 
 const HOME = os.homedir();
 const clonesPath = (name: string) => join(HOME, ".gbrain", "clones", name);
@@ -182,7 +183,7 @@ describe("isInside", () => {
     const base = fs.mkdtempSync(join(os.tmpdir(), "clones-"));
     const outside = fs.mkdtempSync(join(os.tmpdir(), "outside-"));
     const link = join(base, "sneaky");
-    fs.symlinkSync(outside, link);
+    linkOrCopySync(outside, link);
     // link lives under base, but realpath resolves to `outside` → not inside base.
     expect(isInside(link, base)).toBe(false);
   });

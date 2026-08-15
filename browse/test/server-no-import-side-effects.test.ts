@@ -62,7 +62,7 @@ console.log(JSON.stringify({
 process.exit(0);
 `;
 
-    const proc = Bun.spawn(['bun', '-e', childScript], {
+    const proc = Bun.spawn([process.execPath, '-e', childScript], {
       env: {
         ...process.env,
         HOME: tmpHome,
