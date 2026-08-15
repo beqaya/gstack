@@ -179,9 +179,13 @@ stay agent judgment; the slot pick stays `gstack-next-version`.
 3. **Queue-aware pick** (workspace-aware ship):
    ```bash
    QUEUE_JSON=$(bun run ~/.claude/skills/gstack/bin/gstack-next-version --base <base> --bump "$BUMP_LEVEL" --current-version "$BASE_VERSION" 2>/dev/null || echo '{"offline":true}')
-   NEW_VERSION=$(echo "$QUEUE_JSON" | jq -r '.version // empty')
+   if command -v jq >/dev/null 2>&1; then
+     NEW_VERSION=$(echo "$QUEUE_JSON" | jq -r '.version // empty')
+   else
+     NEW_VERSION=""  # no jq — force the offline fallback below instead of dying on an empty version
+   fi
    ```
-   If `offline`/util fails: fall back to local `BUMP_LEVEL` arithmetic and print `⚠ workspace-aware ship offline — using local bump only`. If `claimed` is non-empty, render the queue table so the user sees landing order. If an active sibling workspace holds a version `>= NEW_VERSION`, **AskUserQuestion**: advance past (unrelated work) or abort and sync with the sibling.
+   If `offline`/util fails **or `NEW_VERSION` is empty**: fall back to local `BUMP_LEVEL` arithmetic and print `⚠ workspace-aware ship offline — using local bump only`. If `claimed` is non-empty, render the queue table so the user sees landing order. If an active sibling workspace holds a version `>= NEW_VERSION`, **AskUserQuestion**: advance past (unrelated work) or abort and sync with the sibling.
 
 4. **Write the bump** (FRESH, or an approved rebump):
    ```bash
