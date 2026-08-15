@@ -34,12 +34,6 @@ const REGISTRY: Record<string, PrimitiveMeta> = {
     est_latency_ms: 500,
     description: "Run git diff with optional range.",
   },
-  health_score: {
-    op: "health_score", mutating: false,
-    inputs: ["surface"], outputs: ["score"],
-    est_latency_ms: 30000,
-    description: "Invoke /health skill for the given surface.",
-  },
   prod_query: {
     op: "prod_query", mutating: false,
     inputs: ["provider", "query"], outputs: ["json"],

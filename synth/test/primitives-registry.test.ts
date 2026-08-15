@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { primitiveMetadata, allPrimitives, isReadOnly } from "../src/primitives/registry";
 
 describe("primitive registry", () => {
-  test("allPrimitives lists the Phase 1.1-1.3 primitives", () => {
+  test("allPrimitives lists the salvaged primitives", () => {
+    // health_score was dropped at salvage (it nested a full claude -p session).
     expect(allPrimitives().sort()).toEqual([
-      "git_diff", "git_log", "grep", "health_score",
+      "git_diff", "git_log", "grep",
       "parallel", "prod_query", "read_file", "sequential",
     ]);
   });

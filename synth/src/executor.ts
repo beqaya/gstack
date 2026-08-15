@@ -2,7 +2,6 @@ import { runReadFile } from "./primitives/read-file";
 import { runGrep } from "./primitives/grep";
 import { runGitLog } from "./primitives/git-log";
 import { runGitDiff } from "./primitives/git-diff";
-import { runHealthScore } from "./primitives/health-score";
 import { runProdQuery } from "./primitives/prod-query";
 import { runParallel } from "./primitives/parallel";
 import { runSequential } from "./primitives/sequential";
@@ -95,7 +94,10 @@ async function defaultNodeRunner(
     case "grep":          return runGrep(p, { cwd: ctx.cwd });
     case "git_log":       return runGitLog(p, { cwd: ctx.cwd });
     case "git_diff":      return runGitDiff(p, { cwd: ctx.cwd });
-    case "health_score":  return runHealthScore(p, { cwd: ctx.cwd });
+    // health_score was dropped at salvage: it spawned a nested `claude -p`
+    // session and regexed the score out of stdout — a full model call to read
+    // a number a direct /health run gives you.
+    case "health_score":  throw new Error("health_score primitive was removed; run /health directly");
     case "prod_query":    return runProdQuery(p, { cwd: ctx.cwd });
     case "parallel":      return runParallel(p, { resolveRef: async (ref) => outputs[ref] });
     case "sequential":    return runSequential(p, { resolveRef: async (ref) => outputs[ref] });
