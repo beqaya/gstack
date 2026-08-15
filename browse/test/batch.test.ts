@@ -27,7 +27,13 @@ async function batch(commands: any[], opts: { timeout?: number; stream?: boolean
   return res.json();
 }
 
+// Bun cannot launch Chromium on Windows (broken pipe handling, oven-sh/bun#4253
+// — the same limitation setup works around by verifying via Node). bm.launch()
+// hangs past every hook timeout, so the whole file is Linux/macOS-only; CI covers it.
+const WIN = process.platform === 'win32';
+
 beforeAll(async () => {
+  if (WIN) return;
   testServer = startTestServer(0);
   baseUrl = testServer.url;
 
@@ -43,6 +49,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (WIN) return;
   try { testServer.server.stop(); } catch {}
   // Close only this file's own browser — never process.exit(): bun test runs
   // all files in one process, so a delayed exit kills the whole suite
@@ -67,7 +74,7 @@ const handleReadCommand = (cmd: string, args: string[], b: BrowserManager) =>
 const handleWriteCommand = (cmd: string, args: string[], b: BrowserManager) =>
   _handleWriteCommand(cmd, args, b.getActiveSession(), b);
 
-describe('Batch execution', () => {
+describe.skipIf(WIN)('Batch execution', () => {
   test('multi-tab parallel: goto + text on different tabs', async () => {
     // Create two tabs
     const tab1 = await bm.newTab(baseUrl + '/basic.html');
