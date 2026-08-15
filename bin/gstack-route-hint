@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""gstack-route-hint — UserPromptSubmit hook that surfaces the routed skill.
+
+The routing table in `triggers:` frontmatter had no consumer: it was exercised
+by tests and read by nobody at runtime, so routing still happened by prose.
+This hook closes that loop. It scans the typed prompt for claimed trigger
+phrases (via gstack-route --scan logic, imported in-process — one interpreter,
+not two) and, on a hit, injects one line of additionalContext naming the skill.
+
+An observer, never a gate: silence on no match, silence on any error, always
+exit 0. The model decides whether to invoke; ambiguous phrases list every
+owner so the model can ask, per the user's routing rules.
+"""
+import json
+import os
+import sys
+
+
+def load_router():
+    """Import gstack-route (extensionless sibling) as a module."""
+    from importlib.machinery import SourceFileLoader
+    from importlib.util import module_from_spec, spec_from_loader
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "gstack-route")
+    spec = spec_from_loader("gstack_route", SourceFileLoader("gstack_route", path))
+    mod = module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return
+    prompt = (payload.get("prompt") or "").strip()
+    # A slash command already names its skill; hinting on it is noise. Very
+    # short prompts ("yes", "continue") never contain a routable phrase.
+    if not prompt or prompt.startswith("/") or len(prompt.split()) < 3:
+        return
+
+    router = load_router()
+    index, _ = router.build_index()
+    if not index:
+        return
+    matches = router.scan_text(index, prompt)
+    if not matches:
+        return
+
+    lines = []
+    for phrase, owners in matches[:3]:
+        skills = ", ".join("/%s" % o.split(":", 1)[1] for o in owners)
+        if len(owners) == 1:
+            lines.append("'%s' -> %s" % (phrase, skills))
+        else:
+            lines.append("'%s' -> contested: %s (ask which)" % (phrase, skills))
+    context = (
+        "gstack-route matched this prompt: %s. If one skill clearly fits the "
+        "actual request, invoke it via the Skill tool (announce 'using /x'); "
+        "if the match is incidental to what the user wants, ignore this."
+        % "; ".join(lines)
+    )
+    sys.stdout.write(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": context,
+        }
+    }) + "\n")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:
+        pass
+    sys.exit(0)
