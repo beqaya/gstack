@@ -1,4 +1,4 @@
-import type { TemplateContext } from './types';
+import { type TemplateContext, toShellPath } from './types';
 import { AI_SLOP_BLACKLIST, OPENAI_HARD_REJECTIONS, OPENAI_LITMUS_CHECKS } from './constants';
 
 export function generateDesignReviewLite(ctx: TemplateContext): string {
@@ -806,14 +806,14 @@ else
   echo "DESIGN_NOT_AVAILABLE"
 fi
 B=""
-if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ]; then
-  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
-elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe" ]; then
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe" ]; then
   B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe"
-elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse" ]; then
-  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ]; then
+  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
 elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe" ]; then
   B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe"
+elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse" ]; then
+  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
 fi
 if [ -x "$B" ]; then
   echo "BROWSE_READY: $B"

@@ -71,15 +71,11 @@ These patterns are allowed without warning:
 
 ## How it works
 
-`bin/check-careful.sh` exists and, if it were wired into
-`~/.claude/settings.json` (the same way `gstack-freeze-wire` wires
-`check-freeze.sh` for `/freeze`), would read the command from the tool
-input JSON, check it against the patterns above, and return
-`permissionDecision: "ask"` with a warning message on a match. That wiring
-has not been done — no `bin/gstack-careful-wire` (or equivalent) exists,
-and `~/.claude/settings.json` has no `PreToolUse` entry for the `Bash`
-matcher. So today the script only runs if you invoke it yourself; it is
-never triggered by the harness.
+The hook reads the command from the tool input JSON, checks it against the
+patterns above, and returns a `hookSpecificOutput` payload with
+`permissionDecision: "ask"` and a warning reason if a match is found (the
+decision must be nested under `hookSpecificOutput` — Claude Code ignores a
+top-level `permissionDecision`). You can always override the warning and proceed.
 
 What actually happens when you run `/careful` is that the assistant reads
 this file and follows it as instructions for the rest of the session: check

@@ -43,8 +43,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawnSync } from 'child_process';
-import { fileURLToPath } from 'url';
+import { runBin, repoRoot } from './spawn-bin';
 import { isConductor } from '../../../lib/is-conductor';
 import { classifyQuestion } from '../../../scripts/one-way-doors';
 
@@ -241,9 +240,7 @@ function loadRegistry(): Record<string, RegistryEntry> {
   registryCache = {};
   try {
     // Hook lives at hosts/claude/hooks/; registry at scripts/question-registry.ts
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const repoRoot = path.resolve(here, '..', '..', '..');
-    const regPath = path.join(repoRoot, 'scripts', 'question-registry.ts');
+    const regPath = path.join(repoRoot(), 'scripts', 'question-registry.ts');
     if (!fs.existsSync(regPath)) return registryCache;
     const src = fs.readFileSync(regPath, 'utf-8');
     // Cheap regex extraction so the hook doesn't need to import the TS file
@@ -335,9 +332,6 @@ function logAutoDecided(
   cwd: string | undefined,
 ): void {
   try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const repoRoot = path.resolve(here, '..', '..', '..');
-    const bin = path.join(repoRoot, 'bin', 'gstack-question-log');
     const payload: Record<string, unknown> = {
       skill: 'unknown',
       question_id: questionId,
@@ -349,13 +343,7 @@ function logAutoDecided(
       session_id: sessionId?.slice(0, 64),
       tool_use_id: toolUseId?.slice(0, 128),
     };
-    // bin/gstack-question-log is a `#!/usr/bin/env bash` script — Windows
-    // CreateProcess can't dispatch on a shebang, so wrap it in bash there.
-    const payloadArg = JSON.stringify(payload);
-    const [cmd, cmdArgs] = process.platform === 'win32'
-      ? [Bun.which('bash') ?? bin, [bin, payloadArg]]
-      : [bin, [payloadArg]];
-    spawnSync(cmd, cmdArgs, {
+    runBin('gstack-question-log', [JSON.stringify(payload)], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 3000,

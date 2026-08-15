@@ -90,8 +90,10 @@ in that same list, not a separate matcher entry. Without this step nothing
 ever invokes the script and the boundary is inert.
 
 The hook reads `file_path` from the Edit/Write tool input JSON, then checks
-whether the path starts with the freeze directory. If not, it returns
-`permissionDecision: "deny"` to block the operation.
+whether the path starts with the freeze directory. If not, it returns a
+`hookSpecificOutput` payload with `permissionDecision: "deny"` to block the
+operation (nested under `hookSpecificOutput` — Claude Code ignores a top-level
+`permissionDecision`).
 
 The freeze boundary persists across sessions via the state file
 (`freeze-dir.txt`) AND the settings.json hook entry — both survive until

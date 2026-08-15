@@ -60,8 +60,8 @@
     },
     "cso": {
       "lead": "Chief Security Officer mode.",
-      "routing": "Infrastructure-first security audit: secrets archaeology,\ndependency supply chain, CI/CD pipeline security, LLM/AI security, skill supply chain\nscanning, plus OWASP Top 10, STRIDE threat modeling, and active verification.\nTwo modes: daily (zero-noise, 8/10 confidence gate) and comprehensive (monthly deep\nscan, 2/10 bar). Trend tracking across audit runs.\nUse when: \"security audit\", \"threat model\", \"pentest review\", \"OWASP\", \"CSO review\".",
-      "voice_line": "Voice triggers (speech-to-text aliases): \"see-so\", \"see so\", \"security review\", \"security check\", \"vulnerability scan\", \"run security\"."
+      "routing": "Infrastructure-first security audit: secrets archaeology,\ndependency supply chain, CI/CD pipeline security, LLM/AI security, skill supply chain\nscanning, plus OWASP Top 10, STRIDE threat modeling, and active verification.\nTwo modes: daily (zero-noise, 8/10 confidence gate) and comprehensive (monthly deep\nscan, 2/10 bar). Trend tracking across audit runs.\nUse when: \"security audit\", \"threat model\", \"pentest review\", \"OWASP\", \"CSO review\". \n# \"security review\" / \"security check\" deliberately NOT claimed: those are\n# org-security phrasings that must trigger the which-skill question\n# (/cso vs cyber security-review vs monthly-check), not silently route here.\n- \"vulnerability scan\"\n- \"run security\"",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"see-so\", \"see so\", \"vulnerability scan\", \"run security\"."
     },
     "design-consultation": {
       "lead": "Design consultation: understands your product, researches the landscape, proposes a complete design system (aesthetic, typography, color, layout, spacing, motion), and generates font+color preview...",
@@ -89,8 +89,8 @@
       "voice_line": "Voice triggers (speech-to-text aliases): \"dx audit\", \"test the developer experience\", \"try the onboarding\", \"developer experience test\"."
     },
     "diagram": {
-      "lead": "Turn an English description (or mermaid source) into a diagram triplet: the source, an editable .excalidraw file you can open",
-      "routing": "on excalidraw.com,\nand rendered SVG + PNG (clean mermaid style; the .excalidraw carries the\nhand-drawn aesthetic). Fully offline.\nUse when asked to \"make a diagram\", \"draw the architecture\", \"create a\nflowchart\", \"diagram this\", or \"visualize this flow\".",
+      "lead": "Turn an English description (or mermaid source) into a diagram triplet: the source, an editable .excalidraw file you can open on excalidraw.com, and rendered SVG + PNG.",
+      "routing": "The SVG/PNG use clean mermaid style; the\n.excalidraw carries the hand-drawn aesthetic. Fully offline.\nUse when asked to \"make a diagram\", \"draw the architecture\", \"create a\nflowchart\", \"diagram this\", or \"visualize this flow\".",
       "voice_line": null
     },
     "document-generate": {
@@ -284,8 +284,8 @@
       "voice_line": null
     },
     "sync-gbrain": {
-      "lead": "Keep gbrain current with this repo's code and refresh agent search guidance in CLAUDE.md. Wraps the gstack-gbrain-sync orchestrator with state",
-      "routing": "probing, native code-surface registration, capability checks,\nand a verdict block. Re-runnable, idempotent. Use when: \"sync gbrain\",\n\"refresh gbrain\", \"re-index this repo\", \"gbrain search isn't finding\nthings\".",
+      "lead": "Keep gbrain current with this repo's code and refresh agent search guidance in CLAUDE.md.",
+      "routing": "Wraps the gstack-gbrain-sync orchestrator with\nstate probing, native code-surface registration, capability checks,\nand a verdict block. Re-runnable, idempotent. Use when: \"sync gbrain\",\n\"refresh gbrain\", \"re-index this repo\", \"gbrain search isn't finding\nthings\".",
       "voice_line": null
     },
     "unfreeze": {

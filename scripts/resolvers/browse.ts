@@ -1,4 +1,4 @@
-import type { TemplateContext } from './types';
+import { type TemplateContext, toShellPath } from './types';
 import { COMMAND_DESCRIPTIONS } from '../../browse/src/commands';
 import { SNAPSHOT_FLAGS } from '../../browse/src/snapshot';
 

@@ -1,4 +1,4 @@
-import type { TemplateContext } from './types';
+import { type TemplateContext, toShellPath } from './types';
 
 /**
  * {{MAKE_PDF_SETUP}} — emits the shell preamble that resolves $P to the
@@ -18,10 +18,10 @@ export function generateMakePdfSetup(ctx: TemplateContext): string {
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 P=""
 [ -n "$MAKE_PDF_BIN" ] && [ -x "$MAKE_PDF_BIN" ] && P="$MAKE_PDF_BIN"
-[ -z "$P" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf" ] && P="$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf"
 [ -z "$P" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf.exe" ] && P="$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf.exe"
-[ -z "$P" ] && [ -x "$HOME${ctx.paths.makePdfDir.replace(/^~/, '')}/pdf" ] && P="$HOME${ctx.paths.makePdfDir.replace(/^~/, '')}/pdf"
+[ -z "$P" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf" ] && P="$_ROOT/${ctx.paths.localSkillRoot}/make-pdf/dist/pdf"
 [ -z "$P" ] && [ -x "$HOME${ctx.paths.makePdfDir.replace(/^~/, '')}/pdf.exe" ] && P="$HOME${ctx.paths.makePdfDir.replace(/^~/, '')}/pdf.exe"
+[ -z "$P" ] && [ -x "$HOME${ctx.paths.makePdfDir.replace(/^~/, '')}/pdf" ] && P="$HOME${ctx.paths.makePdfDir.replace(/^~/, '')}/pdf"
 if [ -x "$P" ]; then
   echo "MAKE_PDF_READY: $P"
   alias _p_="$P"   # shellcheck alias helper (not exported)
