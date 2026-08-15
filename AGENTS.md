@@ -59,6 +59,11 @@ Invoke them by name (e.g., `/office-hours`).
 | `/context-save` | Save working context (git state, decisions, remaining work). |
 | `/context-restore` | Resume from a saved context, even across Conductor workspaces. |
 | `/learn` | Manage what gstack learned across sessions. |
+| `/capture-lesson` | Capture a lesson the moment it is learned, not in the weekly batch sweep. |
+| `/parity` | Detect repo edits that never reached the live installed copies. |
+| `/run-supervisor` | Worker loop for unattended gstack runs. |
+| `/scratch` | Read-only side answer without touching the main task's state. |
+| `/verify-outcome` | Prove an "X now works" claim with user-recognizable evidence. |
 | `/retro` | Weekly retro with per-person breakdowns and shipping streaks. |
 | `/health` | Code quality dashboard (type checker, linter, tests, dead code). |
 | `/benchmark` | Performance regression detection (page load, Core Web Vitals). |

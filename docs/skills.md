@@ -40,6 +40,11 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/health`](#health) | **Code Quality Dashboard** | Wraps type checker, linter, tests, dead code detection. Computes a weighted 0-10 score; tracks trends over time. |
 | [`/landing-report`](#landing-report) | **Ship Queue Dashboard** | Read-only snapshot of the workspace-aware ship queue. Which version slots are claimed, which sibling workspaces have WIP. |
 | [`/benchmark-models`](#benchmark-models) | **Model Benchmark** | Side-by-side cross-model benchmark for skills (Claude vs GPT vs Gemini). Latency, tokens, cost, optional LLM-judged quality. |
+| `/capture-lesson` | **Instant Lesson** | Capture a lesson at the moment it is learned instead of waiting for the weekly batch sweep. |
+| `/parity` | **Install Parity** | Detect repo edits that never reached the live installed skill copies; sync and re-verify. |
+| `/run-supervisor` | **Run Supervisor** | Worker loop for unattended gstack runs (claim, execute, report). |
+| `/scratch` | **Side Answer** | Answer a side question read-only without disturbing the main task's state. |
+| `/verify-outcome` | **Outcome Proof** | Prove an "X now works" claim with evidence a user would recognize; rejects proxy signals. |
 | | | |
 | **Multi-AI** | | |
 | [`/codex`](#codex) | **Second Opinion** | Independent review from OpenAI Codex CLI. Three modes: code review (pass/fail gate), adversarial challenge, and open consultation with session continuity. Cross-model analysis when both `/review` and `/codex` have run. |
