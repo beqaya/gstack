@@ -101,6 +101,10 @@ def collect(min_n):
 
     usage, bad_usage = read_jsonl(os.path.join(root(), "analytics",
                                                "skill-usage.jsonl"))
+    # hook_fire records are wiring proof from other writers (check-freeze,
+    # telemetry probes), not skill invocations — counting them makes safety-mode
+    # skills look 10x more used than anything else. Same filter as gstack-analytics.
+    usage = [u for u in usage if u.get("event") != "hook_fire"]
     counts = collections.Counter(u.get("skill") for u in usage if u.get("skill"))
 
     unrouted = unrouted_skills()
