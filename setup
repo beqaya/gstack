@@ -30,6 +30,11 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT) IS_WINDOWS=1 ;;
 esac
 
+# On Windows, Bun compiles the binary as browse.exe. Git Bash's `-x`/CreateProcess
+# resolve the bare name anyway, so everything works IN bash — but the path we
+# print/emit would not exist for PowerShell or any stat call. Prefer the real name.
+if [ -f "$BROWSE_BIN.exe" ]; then BROWSE_BIN="$BROWSE_BIN.exe"; fi
+
 # ─── Symlink-or-copy helper ───────────────────────────────────
 # On macOS/Linux: create a symlink (existing behavior).
 # On Windows without Developer Mode (MSYS2/Git Bash): plain ln -snf silently
@@ -243,6 +248,7 @@ migrate_direct_codex_install() {
   INSTALL_GSTACK_DIR="$migrated_dir"
   INSTALL_SKILLS_DIR="$(dirname "$INSTALL_GSTACK_DIR")"
   BROWSE_BIN="$SOURCE_GSTACK_DIR/browse/dist/browse"
+  if [ -f "$BROWSE_BIN.exe" ]; then BROWSE_BIN="$BROWSE_BIN.exe"; fi
 }
 
 if [ "$INSTALL_CODEX" -eq 1 ]; then

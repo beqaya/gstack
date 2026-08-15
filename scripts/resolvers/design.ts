@@ -791,14 +791,14 @@ export function generateDesignSetup(ctx: TemplateContext): string {
 \`\`\`bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 D=""
-if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ]; then
-  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
-elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe" ]; then
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe" ]; then
   D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe"
-elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design" ]; then
-  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ]; then
+  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
 elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe" ]; then
   D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe"
+elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design" ]; then
+  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
 fi
 if [ -x "$D" ]; then
   echo "DESIGN_READY: $D"
@@ -851,14 +851,14 @@ export function generateDesignMockup(ctx: TemplateContext): string {
 \`\`\`bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 D=""
-if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ]; then
-  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
-elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe" ]; then
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe" ]; then
   D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design.exe"
-elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design" ]; then
-  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design" ]; then
+  D="$_ROOT/${ctx.paths.localSkillRoot}/design/dist/design"
 elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe" ]; then
   D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design.exe"
+elif [ -x "$HOME${ctx.paths.designDir.replace(/^~/, '')}/design" ]; then
+  D="$HOME${ctx.paths.designDir.replace(/^~/, '')}/design"
 fi
 [ -x "$D" ] && echo "DESIGN_READY" || echo "DESIGN_NOT_AVAILABLE"
 \`\`\`

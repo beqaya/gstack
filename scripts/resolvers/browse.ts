@@ -105,14 +105,14 @@ export function generateBrowseSetup(ctx: TemplateContext): string {
 \`\`\`bash
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 B=""
-if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ]; then
-  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
-elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe" ]; then
+if [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe" ]; then
   B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse.exe"
-elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse" ]; then
-  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
+elif [ -n "$_ROOT" ] && [ -x "$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse" ]; then
+  B="$_ROOT/${ctx.paths.localSkillRoot}/browse/dist/browse"
 elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe" ]; then
   B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse.exe"
+elif [ -x "$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse" ]; then
+  B="$HOME${ctx.paths.browseDir.replace(/^~/, '')}/browse"
 fi
 if [ -x "$B" ]; then
   echo "READY: $B"
