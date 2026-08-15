@@ -7,12 +7,14 @@ delta survives upstream merges without CHANGELOG conflicts.
 Upgrade procedure: merge `upstream/main`, never `git reset --hard`. Full steps in
 the auto-memory note `gstack-fork-upgrade` and the /gstack-safe-upgrade skill.
 
-## Fork capabilities (on top of upstream v1.61.0.0)
+## Fork capabilities (on top of upstream v1.64.0.0, merged 2026-08-15)
 
 - **Frontmatter routing** — `bin/gstack-route` resolves plain-language intents to
   skills from `triggers:`/`voice-triggers:` frontmatter across the gstack and
   cyberteam suites. Coverage pinned by `test/route.test.ts` (15 deliberately
-  unrouted cyberteam skills, founder call).
+  unrouted cyberteam skills, founder call). `--scan` finds phrases inside real
+  sentences; `bin/gstack-route-hint` (UserPromptSubmit hook) surfaces the match
+  each prompt.
 - **Skill-usage instrumentation** — PostToolUse hook `bin/gstack-skill-usage`
   records real skill invocations to `~/.gstack/analytics/skill-usage.jsonl`.
 - **Context census** — `bin/gstack-context-census` attributes where a session's
