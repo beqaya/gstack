@@ -560,6 +560,36 @@ export const PATTERNS: RedactPattern[] = [
     validate: (span, match) => !insideUuid(match) && luhnValid(span),
   },
   {
+    id: "pii.iban_sa",
+    tier: "MEDIUM",
+    category: "pii",
+    description: "Saudi IBAN (SA + 22 digits)",
+    regex: /\b(SA\d{22})\b/,
+    autoRedactable: true,
+    redactToken: "<REDACTED-IBAN>",
+  },
+  {
+    id: "pii.phone.ksa",
+    tier: "MEDIUM",
+    category: "pii",
+    description: "Saudi mobile number (+966/966/05 prefix)",
+    regex: /(?<![\w.])((?:\+966|966|0)5\d{8})(?![\w.])/,
+    autoRedactable: true,
+    redactToken: "<REDACTED-PHONE>",
+    validate: (span, match) => !insideUuid(match) && !looksLikeCompactTimestamp(span),
+  },
+  {
+    id: "pii.national_id_ksa",
+    tier: "LOW",
+    category: "pii",
+    description:
+      "Possible Saudi national ID / iqama (10 digits starting 1 or 2). LOW on purpose: " +
+      "the bare shape is numerically identical to a unix epoch timestamp, so this is " +
+      "an FYI, not a gate.",
+    regex: /\b([12]\d{9})\b/,
+    validate: (span, match) => !insideUuid(match) && !looksLikeCompactTimestamp(span),
+  },
+  {
     id: "pii.ip_public",
     tier: "MEDIUM",
     category: "pii",
