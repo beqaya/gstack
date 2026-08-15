@@ -163,7 +163,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   // Headed mode
   'connect': { category: 'Server', description: 'Launch headed Chromium with Chrome extension', usage: 'connect' },
   'disconnect': { category: 'Server', description: 'Disconnect headed browser, return to headless mode' },
-  'focus':   { category: 'Server', description: 'Bring headed browser window to foreground (macOS / Windows / Linux with wmctrl|xdotool)', usage: 'focus [@ref]' },
+  'focus':   { category: 'Server', description: 'Bring headed browser window to foreground (macOS / Windows / Linux with wmctrl or xdotool)', usage: 'focus [@ref]' },
   'doctor':  { category: 'Server', description: 'Diagnostic report: platform, server, terminal-agent, extension, locks, state-dir writability', usage: 'doctor' },
   'attach':  { category: 'Server', description: 'Attach to a user-owned Chrome via CDP (chrome --remote-debugging-port=<n>). Inherits real cookies/sessions. Does NOT kill Chrome on disconnect.', usage: 'attach <port-or-url>' },
   'lighthouse': { category: 'Inspection', description: 'Run Google Lighthouse audit (performance, accessibility, best-practices, SEO). Spawns its own headless Chrome.', usage: 'lighthouse <url> [--out report.html] [--mobile] [--json]' },
