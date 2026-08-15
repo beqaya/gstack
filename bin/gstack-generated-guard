@@ -139,12 +139,10 @@ def check_scratch_mode():
 
 
 def allow():
-    sys.stdout.write(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-        }
-    }) + "\n")
+    # Stay neutral: an explicit permissionDecision "allow" is a positive
+    # override that auto-approves the call and could mask a sibling hook's
+    # deny (e.g. check-freeze.sh in the same Write|Edit group). Silence
+    # means "no opinion" and lets the rest of the permission system run.
     sys.exit(0)
 
 
