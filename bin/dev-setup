@@ -13,6 +13,35 @@ set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# _link_dir SRC TARGET — a LIVE directory link, verified.
+#
+# `ln -s` on Windows without Developer Mode does not fail: it silently writes
+# a frozen copy and exits 0, so edits to SRC never reach TARGET — the exact
+# opposite of dev mode. Verify a real symlink materialized; if not, fall back
+# to an NTFS junction (works without elevation), and if that also fails, STOP
+# loudly. A silent copy here is worse than an error.
+_link_dir() {
+  local src="$1" target="$2"
+  rm -rf "$target" 2>/dev/null || true
+  ln -s "$src" "$target" 2>/dev/null || true
+  if [ -L "$target" ]; then return 0; fi
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if command -v cmd.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+        rm -rf "$target" 2>/dev/null || true
+        if cmd.exe /c mklink /J "$(cygpath -w "$target")" "$(cygpath -w "$src")" >/dev/null 2>&1 \
+            && [ -d "$target" ]; then
+          echo "  (junction: $target)"
+          return 0
+        fi
+      fi
+      ;;
+  esac
+  echo "Error: could not create a live link at $target (symlink and junction both failed)." >&2
+  echo "Dev mode needs a live link; a copy would silently go stale. Enable Developer Mode or run elevated." >&2
+  exit 1
+}
+
 # 1. Copy .env from main worktree (if we're a worktree and don't have one)
 if [ ! -f "$REPO_ROOT/.env" ]; then
   MAIN_WORKTREE="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | head -1 | sed 's/^worktree //')"
@@ -42,7 +71,7 @@ elif [ -d "$GSTACK_LINK" ]; then
   echo "Remove it manually if you want to use dev mode." >&2
   exit 1
 fi
-ln -s "$REPO_ROOT" "$GSTACK_LINK"
+_link_dir "$REPO_ROOT" "$GSTACK_LINK"
 
 # 5. Create .agents/skills/gstack → repo root (for Codex/Gemini/Cursor)
 mkdir -p "$REPO_ROOT/.agents/skills"
@@ -53,7 +82,7 @@ elif [ -d "$AGENTS_LINK" ]; then
   echo "Warning: .agents/skills/gstack is a real directory, skipping." >&2
 fi
 if [ ! -e "$AGENTS_LINK" ]; then
-  ln -s "$REPO_ROOT" "$AGENTS_LINK"
+  _link_dir "$REPO_ROOT" "$AGENTS_LINK"
 fi
 
 # 6. Run setup via the symlink so it detects .claude/skills/ as its parent.
@@ -107,7 +136,13 @@ if [ -x "$GBRAIN_DETECT" ] && "$GBRAIN_DETECT" --is-ok 2>/dev/null; then
       target="$(readlink "$skill_link")"
       skilldir="$(basename "$(dirname "$target")")"
       rendered="$RENDER_DIR/$skilldir/SKILL.md"
-      if [ -f "$rendered" ]; then ln -snf "$rendered" "$skill_link"; repointed=$((repointed + 1)); fi
+      if [ -f "$rendered" ]; then
+        ln -snf "$rendered" "$skill_link" 2>/dev/null || true
+        # ln -snf silently copies on Windows; a stale copy here serves old
+        # skill text, so verify and warn rather than count it as repointed.
+        if [ -L "$skill_link" ]; then repointed=$((repointed + 1));
+        else echo "  warning: $skill_link is a copy, not a link — will go stale" >&2; fi
+      fi
     done
     echo "  $repointed workspace skills now serve brain-aware blocks (worktree stays canonical)."
   else
