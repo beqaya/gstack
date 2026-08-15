@@ -42,9 +42,9 @@ describe('gstack-route resolves, and refuses to guess', () => {
 });
 
 describe('routing coverage', () => {
-  // 61 of 120 skills declare no triggers, so no table can reach them. This
-  // test states the current number so that it can only go DOWN: any skill
-  // added without triggers fails the build.
+  // 15 cyberteam skills deliberately declare no triggers (they overlap in
+  // scope; the founder routes between them by judgment, not phrase). This
+  // ceiling can only go DOWN: any skill added without triggers fails the build.
   const KNOWN_UNROUTED = 15;
 
   test('the unrouted set does not grow', () => {
@@ -52,7 +52,7 @@ describe('routing coverage', () => {
     expect(lines.length).toBeLessThanOrEqual(KNOWN_UNROUTED);
   }, T);
 
-  test('every gstack skill except run-supervisor is routable', () => {
+  test('every gstack skill is routable', () => {
     const unrouted = route(['--unrouted']).stdout.split(/\r?\n/).filter(Boolean);
     const gstackUnrouted = unrouted.filter(l => l.startsWith('gstack:'));
     expect(gstackUnrouted).toEqual([]);
