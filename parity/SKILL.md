@@ -25,8 +25,7 @@ live skills at `~/.claude/skills/<name>/SKILL.md` are COPIES of the repo's, so
 a correct repo edit changes nothing until someone copies it. Compares every
 skill to its live counterpart by SHA-256 and reports four buckets: IDENTICAL,
 DRIFTED (which side is newer), REPO-ONLY (invisible to the user), and
-LIVE-ONLY (informational -- many are hand-authored or belong to other
-projects). `--sync` copies repo to live for DRIFTED and REPO-ONLY, re-verifies
+LIVE-ONLY (informational). `--sync` copies repo to live for DRIFTED and REPO-ONLY, re-verifies
 by hash, and refuses when the working tree has uncommitted changes to a file
 it would copy. Sync is one-directional and NEVER copies live back to the repo:
 a live-side hand-edit landing in version control would be committed as if it
