@@ -38,6 +38,7 @@ import * as os from 'os';
 import { promotedEnv } from '../../lib/conductor-env-shim';
 import { isProcessAlive, safeUnlink } from '../../browse/src/error-handling';
 import { skillCensus, frontmatterName } from './skill-census';
+import { linkOrCopySync } from './link-or-copy';
 
 /** Exact env names a hermetic child keeps. Everything not listed (or matched
  * by a prefix rule below) is dropped. */
@@ -280,12 +281,14 @@ export function hermeticSkillsConfigDir(): string {
     // so the two walk entries collapse to one registry dir.
     fs.mkdirSync(target, { recursive: true });
     safeUnlink(path.join(target, 'SKILL.md'));
-    fs.symlinkSync(skillMd, path.join(target, 'SKILL.md'));
+    // linkOrCopySync, not symlinkSync: symlinks need Developer Mode on Windows
+    // (EPERM otherwise), and this seeding runs on every hermetic E2E test.
+    linkOrCopySync(skillMd, path.join(target, 'SKILL.md'));
     if (rel !== 'SKILL.md') {
       const sections = path.join(root, skillDir, 'sections');
       if (fs.existsSync(sections)) {
         safeUnlink(path.join(target, 'sections'));
-        fs.symlinkSync(sections, path.join(target, 'sections'));
+        linkOrCopySync(sections, path.join(target, 'sections'));
       }
     }
   }
