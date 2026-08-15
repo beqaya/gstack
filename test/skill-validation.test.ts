@@ -1,4 +1,7 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, setDefaultTimeout } from 'bun:test';
+
+// Windows file-IO cost pushes the git-tracked-binaries scan past bun's 5s default
+if (process.platform === 'win32') setDefaultTimeout(60_000);
 import { validateSkill, extractRemoteSlugPatterns, extractWeightsFromTable } from './helpers/skill-parser';
 import { ALL_COMMANDS, COMMAND_DESCRIPTIONS, READ_COMMANDS, WRITE_COMMANDS, META_COMMANDS } from '../browse/src/commands';
 import { SNAPSHOT_FLAGS } from '../browse/src/snapshot';
@@ -963,15 +966,18 @@ describe('CEO review mode validation', () => {
 
 describe('gstack-slug', () => {
   const SLUG_BIN = path.join(ROOT, 'bin', 'gstack-slug');
+  // Windows can't exec a shebang script directly — route through bash there
+  const SLUG_ARGV = process.platform === 'win32' ? ['bash', SLUG_BIN] : [SLUG_BIN];
 
-  test('binary exists and is executable', () => {
+  // Unix exec-bit mode is not represented in Windows file modes
+  test.skipIf(process.platform === 'win32')('binary exists and is executable', () => {
     expect(fs.existsSync(SLUG_BIN)).toBe(true);
     const stat = fs.statSync(SLUG_BIN);
     expect(stat.mode & 0o111).toBeGreaterThan(0);
   });
 
   test('outputs SLUG and BRANCH lines in a git repo', () => {
-    const result = Bun.spawnSync([SLUG_BIN], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    const result = Bun.spawnSync(SLUG_ARGV, { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
     expect(result.exitCode).toBe(0);
     const output = result.stdout.toString();
     expect(output).toContain('SLUG=');
@@ -979,21 +985,21 @@ describe('gstack-slug', () => {
   });
 
   test('SLUG does not contain forward slashes', () => {
-    const result = Bun.spawnSync([SLUG_BIN], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    const result = Bun.spawnSync(SLUG_ARGV, { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
     const slug = result.stdout.toString().match(/SLUG=(.*)/)?.[1] ?? '';
     expect(slug).not.toContain('/');
     expect(slug.length).toBeGreaterThan(0);
   });
 
   test('BRANCH does not contain forward slashes', () => {
-    const result = Bun.spawnSync([SLUG_BIN], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    const result = Bun.spawnSync(SLUG_ARGV, { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
     const branch = result.stdout.toString().match(/BRANCH=(.*)/)?.[1] ?? '';
     expect(branch).not.toContain('/');
     expect(branch.length).toBeGreaterThan(0);
   });
 
   test('output is eval-compatible (KEY=VALUE format)', () => {
-    const result = Bun.spawnSync([SLUG_BIN], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    const result = Bun.spawnSync(SLUG_ARGV, { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
     const lines = result.stdout.toString().trim().split('\n');
     expect(lines.length).toBe(2);
     expect(lines[0]).toMatch(/^SLUG=.+/);
@@ -1001,7 +1007,7 @@ describe('gstack-slug', () => {
   });
 
   test('output values contain only safe characters (no shell metacharacters)', () => {
-    const result = Bun.spawnSync([SLUG_BIN], { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
+    const result = Bun.spawnSync(SLUG_ARGV, { cwd: ROOT, stdout: 'pipe', stderr: 'pipe' });
     const slug = result.stdout.toString().match(/SLUG=(.*)/)?.[1] ?? '';
     const branch = result.stdout.toString().match(/BRANCH=(.*)/)?.[1] ?? '';
     // Only alphanumeric, dot, dash, underscore are allowed (#133)

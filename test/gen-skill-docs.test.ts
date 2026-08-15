@@ -1,4 +1,7 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
+import { describe, test, expect, beforeAll, setDefaultTimeout } from 'bun:test';
+
+// Windows process-spawn cost pushes the multi-host regen beforeAll hooks past bun's 5s default
+if (process.platform === 'win32') setDefaultTimeout(60_000);
 import { COMMAND_DESCRIPTIONS } from '../browse/src/commands';
 import { SNAPSHOT_FLAGS } from '../browse/src/snapshot';
 import * as fs from 'fs';
@@ -1790,7 +1793,13 @@ describe('Codex generation (--host codex)', () => {
   test('no ~/.claude/ paths in Codex output', () => {
     for (const skill of CODEX_SKILLS) {
       const content = fs.readFileSync(path.join(AGENTS_DIR, skill.codexName, 'SKILL.md'), 'utf-8');
-      expect(content).not.toContain('~/.claude/');
+      // Fork-intentional (6535af2a): honesty prose in careful/freeze/guard/etc documents the real
+      // hook/plugin mechanism, which lives in Claude's ~/.claude/settings.json (and ~/.claude/AGENTS.md)
+      // regardless of host — those literal references are allowed; install-path leakage is still caught.
+      const scrubbed = content
+        .replaceAll('~/.claude/settings.json', '')
+        .replaceAll('~/.claude/AGENTS.md', '');
+      expect(scrubbed).not.toContain('~/.claude/');
     }
   });
 
@@ -1821,7 +1830,8 @@ describe('Codex generation (--host codex)', () => {
     expect(content).toContain('is_error');
   });
 
-  test('Claude temp file templates are accepted by host mktemp', () => {
+  // Git Bash mktemp prints a POSIX /tmp/... path that Bun's fs.unlinkSync cannot resolve on Windows (ENOENT)
+  test.skipIf(process.platform === 'win32')('Claude temp file templates are accepted by host mktemp', () => {
     for (const template of [
       '/tmp/gstack-claude-prompt-XXXXXX',
       '/tmp/gstack-claude-response-XXXXXX',
@@ -1927,18 +1937,20 @@ describe('Codex generation (--host codex)', () => {
     // Regression: gen-skill-docs rewrote .claude/skills/review → .agents/skills/gstack-review
     // but setup puts sidecars under .agents/skills/gstack/review/. Must match setup layout.
     const content = fs.readFileSync(path.join(AGENTS_DIR, 'gstack-review', 'SKILL.md'), 'utf-8');
-    // Correct: references to sidecar files use gstack/review/ path
-    expect(content).toContain('.agents/skills/gstack/review/checklist.md');
-    // design-checklist.md is now referenced via Review Army specialist (Claude only, stripped for Codex)
+    // Fork-intentional: sidecars are referenced via $GSTACK_ROOT, which the Codex preamble
+    // resolves to .agents/skills/gstack — same target as setup's sidecar layout.
+    expect(content).toContain('$GSTACK_ROOT/review/checklist.md');
     // Wrong: must NOT reference gstack-review/checklist.md (file doesn't exist there)
     expect(content).not.toContain('.agents/skills/gstack-review/checklist.md');
+    expect(content).not.toContain('$GSTACK_ROOT-review/');
   });
 
   test('sidecar paths in ship skill point to gstack/review/ for pre-landing review', () => {
     const content = fs.readFileSync(path.join(AGENTS_DIR, 'gstack-ship', 'SKILL.md'), 'utf-8');
     // Ship references the review checklist in its pre-landing review step
     if (content.includes('checklist.md')) {
-      expect(content).toContain('.agents/skills/gstack/review/');
+      // Fork-intentional: sidecar refs go through $GSTACK_ROOT (Codex preamble resolves it to .agents/skills/gstack)
+      expect(content).toContain('$GSTACK_ROOT/review/');
       expect(content).not.toContain('.agents/skills/gstack-review/checklist');
     }
   });
@@ -1946,7 +1958,8 @@ describe('Codex generation (--host codex)', () => {
   test('greptile-triage sidecar path is correct', () => {
     const content = fs.readFileSync(path.join(AGENTS_DIR, 'gstack-review', 'SKILL.md'), 'utf-8');
     if (content.includes('greptile-triage')) {
-      expect(content).toContain('.agents/skills/gstack/review/greptile-triage.md');
+      // Fork-intentional: sidecar refs go through $GSTACK_ROOT (Codex preamble resolves it to .agents/skills/gstack)
+      expect(content).toContain('$GSTACK_ROOT/review/greptile-triage.md');
       expect(content).not.toContain('.agents/skills/gstack-review/greptile-triage');
     }
   });
@@ -1991,7 +2004,8 @@ describe('Codex generation (--host codex)', () => {
   test('Claude output unchanged: review skill still uses .claude/skills/ paths', () => {
     // Codex changes must NOT affect Claude output
     const content = fs.readFileSync(path.join(ROOT, 'review', 'SKILL.md'), 'utf-8');
-    expect(content).toContain('.claude/skills/review/checklist.md');
+    // Fork-intentional: Claude sidecar refs use the global-install path (~/.claude/skills/gstack/review/)
+    expect(content).toContain('~/.claude/skills/gstack/review/checklist.md');
     expect(content).toContain('~/.claude/skills/gstack');
     // Must NOT contain Codex HOST paths. `~/.codex/sessions/` is exempt: the
     // timeout-wrapper guidance documents the Codex CLI's own rollout-log
@@ -3219,7 +3233,8 @@ describe('plan-mode-info resolver (handshake-replacement)', () => {
     expect(preludeIdx).toBeGreaterThan(presentIdx);
     const between = content.slice(presentIdx, preludeIdx);
     expect(between).toContain('**STOP.**');
-    expect(between).toContain('Do NOT proceed to Step 0D or 0F until the user responds to 0C-bis');
+    // Fork-intentional (5e25623d): 0D runs after 0F in this fork's flow, so the STOP names only 0F
+    expect(between).toContain('Do NOT proceed to Step 0F until the user responds to 0C-bis');
   });
 });
 
