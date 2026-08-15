@@ -1002,7 +1002,8 @@ for (const currentHost of hostsToRun) {
           voice_line: catalogParts.voiceLine,
         };
       }
-      const relOutput = path.relative(OUT_DIR || ROOT, outputPath);
+      // POSIX-style output paths on every platform (Windows path.relative emits backslashes)
+      const relOutput = path.relative(OUT_DIR || ROOT, outputPath).split(path.sep).join('/');
 
       if (symlinkLoop) {
         console.log(`SKIPPED (symlink loop): ${relOutput}`);
@@ -1055,7 +1056,8 @@ for (const currentHost of hostsToRun) {
 
       const { outputPath, content: _rawSecContent } = processSectionTemplate(path.join(ROOT, sec.tmpl), sec.skillDir, currentHost);
       const content = _rawSecContent.replace(/\r\n/g, '\n'); // force LF (see SKILL.md loop above)
-      const relOutput = path.relative(OUT_DIR || ROOT, outputPath);
+      // POSIX-style output paths on every platform (Windows path.relative emits backslashes)
+      const relOutput = path.relative(OUT_DIR || ROOT, outputPath).split(path.sep).join('/');
 
       if (DRY_RUN) {
         const existing = fs.existsSync(outputPath) ? fs.readFileSync(outputPath, 'utf-8') : '';
