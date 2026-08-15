@@ -63,22 +63,42 @@ def log_line(path, msg):
         f.write((msg + "\n").encode("utf-8", "replace"))
 
 
-def acquire_lock(name, log):
-    """Machine-wide advisory lock via fcntl (portable on macOS + Linux). Blocks
-    until free so concurrent worktrees serialize rather than saturate the API.
-    Returns the held fd (kept open for the process lifetime)."""
-    import fcntl
+IS_WIN = os.name == "nt"
 
+
+def acquire_lock(name, log):
+    """Machine-wide advisory lock (fcntl on POSIX, msvcrt byte-lock on Windows).
+    Blocks until free so concurrent worktrees serialize rather than saturate
+    the API. Returns the held fd (kept open for the process lifetime)."""
     d = os.path.expanduser("~/.gstack/locks")
     os.makedirs(d, exist_ok=True)
-    fd = open(os.path.join(d, f"{name}.lock"), "w")
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        log_line(log, f"### gstack-detach WAITING for lock '{name}' (another run holds it) ### {_now()}")
-        fcntl.flock(fd, fcntl.LOCK_EX)  # block until released
-    fd.write(f"{os.getpid()} {_now()}\n")
-    fd.flush()
+    path = os.path.join(d, f"{name}.lock")
+    if IS_WIN:
+        import msvcrt
+
+        fd = open(path, "a+")
+        fd.seek(0)
+        waited = False
+        while True:
+            try:
+                msvcrt.locking(fd.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                if not waited:
+                    log_line(log, f"### gstack-detach WAITING for lock '{name}' (another run holds it) ### {_now()}")
+                    waited = True
+                time.sleep(2)
+    else:
+        import fcntl
+
+        fd = open(path, "w")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            log_line(log, f"### gstack-detach WAITING for lock '{name}' (another run holds it) ### {_now()}")
+            fcntl.flock(fd, fcntl.LOCK_EX)  # block until released
+        fd.write(f"{os.getpid()} {_now()}\n")
+        fd.flush()
     log_line(log, f"### gstack-detach LOCK '{name}' ACQUIRED ### {_now()}")
     return fd
 
@@ -88,21 +108,30 @@ def child_run(args, log):
     cmd = args.cmd
     if shutil.which("caffeinate"):  # macOS: block idle-sleep for the run
         cmd = ["caffeinate", "-i", *cmd]
-    log_line(log, f"### gstack-detach START label={args.label} pgid={os.getpgid(0)} ### {_now()}")
+    pgid = os.getpid() if IS_WIN else os.getpgid(0)
+    log_line(log, f"### gstack-detach START label={args.label} pgid={pgid} ### {_now()}")
     with open(log, "ab", buffering=0) as f:
         # start_new_session: the command runs in its OWN process group so the
         # watchdog can killpg() it without also killing this supervisor (which
         # must survive to write the EXIT sentinel).
-        proc = subprocess.Popen(
-            cmd, stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True
-        )
+        popen_kw = dict(stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        if IS_WIN:
+            popen_kw["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            popen_kw["start_new_session"] = True
+        proc = subprocess.Popen(cmd, **popen_kw)
         if args.timeout and args.timeout > 0:
             try:
                 code = proc.wait(timeout=args.timeout)
             except subprocess.TimeoutExpired:
                 log_line(log, f"### gstack-detach WATCHDOG fired after {args.timeout}s — killing ### {_now()}")
                 try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    if IS_WIN:
+                        # /T kills the whole tree — the Windows analogue of killpg.
+                        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    else:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
                 except Exception:
                     pass
                 time.sleep(5)
@@ -127,6 +156,8 @@ def main():
     ap.add_argument("--lock")
     ap.add_argument("--timeout", type=int, default=0)
     ap.add_argument("--label", default="job")
+    ap.add_argument("--_supervise", action="store_true", dest="_supervise",
+                    help=argparse.SUPPRESS)  # internal: Windows detached relaunch
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
     args = ap.parse_args()
 
@@ -141,6 +172,31 @@ def main():
     log = args.log or run_scoped_log(args.label)
     os.makedirs(os.path.dirname(log) or ".", exist_ok=True)
     open(log, "ab").close()
+
+    if IS_WIN:
+        if args._supervise:
+            # We ARE the detached supervisor (relaunched below). Run the job.
+            try:
+                child_run(args, log)
+            except Exception as e:
+                log_line(log, f"### gstack-detach ERROR {e!r} ### {_now()}")
+                log_line(log, f"### gstack-detach EXIT=error ### {_now()}")
+            return
+        # No fork/setsid on Windows: relaunch self as a fully detached
+        # supervisor process. DETACHED_PROCESS + NEW_PROCESS_GROUP puts it
+        # outside the harness's console and ctrl-event group, which is the
+        # SIGTERM-proofing this tool exists for.
+        relaunch = [sys.executable, os.path.abspath(__file__), "--_supervise", "--log", log,
+                    "--label", args.label, "--timeout", str(args.timeout)]
+        if args.lock:
+            relaunch += ["--lock", args.lock]
+        relaunch += ["--", *args.cmd]
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        subprocess.Popen(relaunch, creationflags=flags, close_fds=True,
+                         stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"gstack-detach LOG {log}", flush=True)
+        return
 
     # Detach: fork so the launching shell returns immediately, then setsid in the
     # child to escape the harness's process group / controlling terminal.
