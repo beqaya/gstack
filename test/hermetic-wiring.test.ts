@@ -127,7 +127,18 @@ describe('hermetic wiring tripwire', () => {
     expect(configDir.startsWith(operatorClaude)).toBe(false);
     const skillsDir = path.join(configDir, 'skills');
     for (const entry of fs.readdirSync(skillsDir)) {
-      const target = fs.readlinkSync(path.join(skillsDir, entry, 'SKILL.md'));
+      const seeded = path.join(skillsDir, entry, 'SKILL.md');
+      let target: string;
+      try {
+        target = fs.readlinkSync(seeded);
+      } catch {
+        // Windows without Developer Mode seeds a COPY (linkOrCopySync), not a
+        // symlink. A physical copy under runRoot cannot reference the
+        // operator's ~/.claude at all, so the escape invariant holds by
+        // construction — just prove it's a real file.
+        expect(fs.statSync(seeded).isFile(), `${entry}: seeded SKILL.md missing`).toBe(true);
+        continue;
+      }
       expect(target.startsWith(operatorClaude), `${entry}: symlink escapes to ${target}`).toBe(false);
       expect(fs.realpathSync(target).startsWith(fs.realpathSync(ROOT) + path.sep), `${entry}: symlink outside repo: ${target}`).toBe(true);
     }
