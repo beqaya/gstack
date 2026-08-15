@@ -96,6 +96,57 @@ def unrouted_skills():
     return [l.strip() for l in p.stdout.splitlines() if l.strip()]
 
 
+def load_router():
+    """Import the sibling gstack-route script as a module (it has no .py)."""
+    from importlib.machinery import SourceFileLoader
+    from importlib.util import module_from_spec, spec_from_loader
+    path = os.path.join(HERE, "gstack-route")
+    spec = spec_from_loader("gstack_route", SourceFileLoader("gstack_route", path))
+    mod = module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def prompt_mentions():
+    """Skill INTENT inferred from prompts.jsonl — never merged with invocations.
+
+    Two detectors per prompt: an explicit `/skill-name` token (the user named
+    it), and a routed trigger phrase found by gstack-route's scan (the user
+    described it). Each prompt counts a skill at most once. This is a softer
+    signal than the PostToolUse hook — it records what the user ASKED FOR, not
+    what ran — which is exactly why it stays in its own column.
+    """
+    import re
+    prompts, _ = read_jsonl(os.path.join(root(), "prompts.jsonl"))
+    if not prompts:
+        return collections.Counter()
+    try:
+        router = load_router()
+        index, unrouted = router.build_index()
+        known = {o.split(":", 1)[1] for owners in index.values() for o in owners}
+        known.update(o.split(":", 1)[1] for o in unrouted)
+    except Exception:
+        return collections.Counter()
+    mentions = collections.Counter()
+    for rec in prompts:
+        text = rec.get("prompt") or rec.get("text") or ""
+        if not text:
+            continue
+        hit = set()
+        for m in re.finditer(r"/([a-z][a-z0-9-]+)\b", text.lower()):
+            if m.group(1) in known:
+                hit.add(m.group(1))
+        try:
+            for _phrase, owners in router.scan_text(index, text):
+                if len(owners) == 1:
+                    hit.add(owners[0].split(":", 1)[1])
+        except Exception:
+            pass
+        for name in hit:
+            mentions[name] += 1
+    return mentions
+
+
 def collect(min_n):
     findings = []
 
@@ -122,16 +173,23 @@ def collect(min_n):
             "Add `triggers:` frontmatter to the unrouted skills, highest-demand "
             "first."))
 
-    if counts:
+    mentions = prompt_mentions()
+    if counts or mentions:
         findings.append(finding(
-            "%d distinct skills have recorded a use" % len(counts),
+            "%d distinct skills have recorded a use; %d more show prompt intent"
+            % (len(counts), len(set(mentions) - set(counts))),
             "Which skills earn their keep decides where depth is worth adding "
-            "and which are dead weight. Before the hook, prose instrumentation "
-            "recorded 2 skills out of 60.",
-            {"top": counts.most_common(10), "records": len(usage)},
-            basis(len(usage), min_n,
-                  "Usage accumulates from the moment the PostToolUse hook was "
-                  "registered; earlier sessions are invisible to it.")))
+            "and which are dead weight. Invocations are ground truth but only "
+            "the Skill tool produces them; prompt mentions are INTENT inferred "
+            "from prompts.jsonl (slash tokens + routed trigger phrases) — a "
+            "wider, softer signal. Never sum the two columns.",
+            {"invocations": counts.most_common(10),
+             "prompt_mentions": mentions.most_common(10),
+             "records": len(usage)},
+            basis(len(usage) + sum(mentions.values()), min_n,
+                  "Invocations accumulate from the moment the PostToolUse hook "
+                  "was registered; mentions from the moment prompt logging "
+                  "started. Earlier sessions are invisible to both.")))
 
     if bad_usage:
         findings.append(finding(
