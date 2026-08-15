@@ -14,13 +14,19 @@ data for adding a row, and a silent guess produces no data at all.
 
 Usage:
     gstack-route --intent "check for vulnerabilities"
+    gstack-route --scan "could you check for vulnerabilities in the login flow"
     gstack-route --unrouted
     gstack-route --index
 
+--intent is exact whole-phrase equality; --scan finds every trigger phrase
+CONTAINED in the text (word-boundary), longest first, dropping phrases that
+sit inside a longer matched phrase. Scan exists for the prompt hook: a real
+sentence never equals a trigger verbatim, but it usually contains one.
+
 Exit codes:
     0  resolved (or listing completed)
-    2  no skill claims that phrase
-    3  more than one skill claims it
+    2  no skill claims that phrase (--intent) / no phrase found in text (--scan)
+    3  more than one skill claims it (--intent only; --scan reports all owners)
     4  no skills found on disk
     5  usage error (bad or missing CLI arguments) — kept separate from 2 so a
        downstream consumer harvesting unclaimed intents can tell a real miss
@@ -195,6 +201,25 @@ def build_index():
     return index, sorted(unrouted)
 
 
+def scan_text(index, text):
+    """Trigger phrases contained in the text, longest first.
+
+    Containment is word-boundary ("qa" never matches inside "quality"), and a
+    phrase wholly inside a longer matched phrase is dropped — "security
+    review" beating "review" is the whole reason to prefer length. Returns
+    [(phrase, owners)] with owners as the index stores them.
+    """
+    haystack = " %s " % normalise(text)
+    hits = [p for p in index if " %s " % p in haystack]
+    hits.sort(key=len, reverse=True)
+    kept = []
+    for p in hits:
+        if any(" %s " % p in " %s " % longer for longer in kept):
+            continue
+        kept.append(p)
+    return [(p, index[p]) for p in kept]
+
+
 def near_misses(index, phrase, limit=5):
     """Phrases sharing a content word with the request — what to suggest on a miss."""
     query_words = content_words(phrase)
@@ -217,6 +242,7 @@ class RouteArgumentParser(argparse.ArgumentParser):
 def main():
     ap = RouteArgumentParser(prog="gstack-route")
     ap.add_argument("--intent")
+    ap.add_argument("--scan")
     ap.add_argument("--unrouted", action="store_true")
     ap.add_argument("--index", action="store_true")
     args = ap.parse_args()
@@ -233,8 +259,15 @@ def main():
         for owner in unrouted:
             print(owner)
         return
+    if args.scan is not None:
+        matches = scan_text(index, args.scan)
+        if not matches:
+            sys.exit(2)
+        for phrase, owners in matches:
+            print("%s\t%s" % (phrase, ",".join(owners)))
+        return
     if not args.intent:
-        ap.error("--intent is required unless --unrouted or --index is given")
+        ap.error("--intent is required unless --scan, --unrouted or --index is given")
 
     phrase = normalise(args.intent)
     owners = index.get(phrase, [])

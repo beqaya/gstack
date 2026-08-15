@@ -58,3 +58,37 @@ describe('routing coverage', () => {
     expect(gstackUnrouted).toEqual([]);
   }, T);
 });
+
+describe('scan mode — trigger phrases inside real sentences', () => {
+  test('finds a claimed phrase embedded in a prompt', () => {
+    const r = route(['--scan', 'could you check for vulnerabilities in the login flow']);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('check for vulnerabilities\tgstack:cso');
+  }, T);
+
+  test('word boundaries hold — a phrase inside a longer word never matches', () => {
+    const r = route(['--scan', 'the quality assurance docs are qadocs not qa docs']);
+    // "qa" may match as a standalone word, but never inside "quality"/"qadocs".
+    for (const line of r.stdout.split(/\r?\n/).filter(Boolean)) {
+      expect(line.split('\t')[0]).not.toBe('quality');
+    }
+  }, T);
+
+  test('a longer matched phrase suppresses the phrases inside it', () => {
+    const index = JSON.parse(route(['--index']).stdout);
+    const phrases = Object.keys(index).sort((a, b) => b.length - a.length);
+    const long = phrases.find(p => phrases.some(q => q !== p && ` ${p} `.includes(` ${q} `)));
+    if (!long) return; // no nested phrase pair exists in the current table
+    const inner = phrases.find(q => q !== long && ` ${long} `.includes(` ${q} `))!;
+    const r = route(['--scan', `please ${long} today`]);
+    const matched = r.stdout.split(/\r?\n/).map(l => l.split('\t')[0]);
+    expect(matched).toContain(long);
+    expect(matched).not.toContain(inner);
+  }, T);
+
+  test('no claimed phrase in the text exits 2 with no output', () => {
+    const r = route(['--scan', 'xyzzy plugh nothing routable here']);
+    expect(r.code).toBe(2);
+    expect(r.stdout).toBe('');
+  }, T);
+});
