@@ -178,6 +178,11 @@
       "routing": "Proper 1in margins,\nintelligent page breaks, page numbers, cover pages, running headers, curly\nquotes and em dashes, clickable TOC, diagonal DRAFT watermark. Not a draft\nartifact — a finished artifact. Use when asked to \"make a PDF\", \"export to\nPDF\", \"turn this markdown into a PDF\", or \"generate a document\".",
       "voice_line": "Voice triggers (speech-to-text aliases): \"make this a pdf\", \"make it a pdf\", \"export to pdf\", \"turn this into a pdf\", \"turn this markdown into a pdf\", \"generate a pdf\", \"make a pdf from\", \"pdf this markdown\"."
     },
+    "observe": {
+      "lead": "Pulls production truth into the session: Cloud Logging errors, Error Reporting groups, and Monitoring latency from the project's GCP deployment, normalized into one severity-ranked \"PROD HEALTH\"...",
+      "routing": "Complements /canary, which watches the live app\nfrom the browser side (console errors, page failures); /observe reads the\nserver side (what the platform itself recorded). Use when asked \"what's\nhappening in prod\", \"check prod errors\", \"pull the logs\", \"why is the app\nslow since the deploy\", or \"prod health\". First run per repo walks through\n`gstack-runtime configure`.",
+      "voice_line": "Voice triggers (speech-to-text aliases): \"observe prod\", \"check production\"."
+    },
     "office-hours": {
       "lead": "YC Office Hours — two modes.",
       "routing": "Startup mode: six forcing questions that expose\ndemand reality, status quo, desperate specificity, narrowest wedge, observation,\nand future-fit. Builder mode: design thinking brainstorming for side projects,\nhackathons, learning, and open source. Saves a design doc.\nUse when asked to \"brainstorm this\", \"I have an idea\", \"help me think through\nthis\", \"office hours\", or \"is this worth building\".\nProactively invoke this skill (do NOT answer directly) when the user describes\na new product idea, asks whether something is worth building, wants to think\nthrough design decisions for something that doesn't exist yet, or is exploring\na concept before any code is written.\nUse before /plan-ceo-review or /plan-eng-review.",
