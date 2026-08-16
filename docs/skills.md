@@ -22,6 +22,7 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/ship`](#ship) | **Release Engineer** | Sync main, run tests, audit coverage, push, open PR. Bootstraps test frameworks if you don't have one. One command. |
 | [`/land-and-deploy`](#land-and-deploy) | **Release Engineer** | Merge the PR, wait for CI and deploy, verify production health. One command from "approved" to "verified in production." |
 | [`/canary`](#canary) | **SRE** | Post-deploy monitoring loop. Watches for console errors, performance regressions, and page failures using the browse daemon. |
+| [`/observe`](#observe) | **Production Operator** | Prod health from GCP's own records: error groups, logs, latency — normalized, severity-ranked, PII-redacted before it enters the session. |
 | [`/benchmark`](#benchmark) | **Performance Engineer** | Baseline page load times, Core Web Vitals, and resource sizes. Compare before/after on every PR. Track trends over time. |
 | [`/cso`](#cso) | **Chief Security Officer** | OWASP Top 10 + STRIDE threat modeling security audit. Scans for injection, auth, crypto, and access control issues. |
 | [`/document-release`](#document-release) | **Technical Writer** | Update all project docs to match what you just shipped. Catches stale READMEs automatically. |
@@ -40,11 +41,11 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/health`](#health) | **Code Quality Dashboard** | Wraps type checker, linter, tests, dead code detection. Computes a weighted 0-10 score; tracks trends over time. |
 | [`/landing-report`](#landing-report) | **Ship Queue Dashboard** | Read-only snapshot of the workspace-aware ship queue. Which version slots are claimed, which sibling workspaces have WIP. |
 | [`/benchmark-models`](#benchmark-models) | **Model Benchmark** | Side-by-side cross-model benchmark for skills (Claude vs GPT vs Gemini). Latency, tokens, cost, optional LLM-judged quality. |
-| `/capture-lesson` | **Instant Lesson** | Capture a lesson at the moment it is learned instead of waiting for the weekly batch sweep. |
-| `/parity` | **Install Parity** | Detect repo edits that never reached the live installed skill copies; sync and re-verify. |
-| `/run-supervisor` | **Run Supervisor** | Worker loop for unattended gstack runs (claim, execute, report). |
-| `/scratch` | **Side Answer** | Answer a side question read-only without disturbing the main task's state. |
-| `/verify-outcome` | **Outcome Proof** | Prove an "X now works" claim with evidence a user would recognize; rejects proxy signals. |
+| [`/capture-lesson`](#capture-lesson) | **Instant Lesson** | Capture a lesson at the moment it is learned instead of waiting for the weekly batch sweep. |
+| [`/parity`](#parity) | **Install Parity** | Detect repo edits that never reached the live installed skill copies; sync and re-verify. |
+| [`/run-supervisor`](#run-supervisor) | **Run Supervisor** | Worker loop for unattended gstack runs (claim, execute, report). |
+| [`/scratch`](#scratch) | **Side Answer** | Answer a side question read-only without disturbing the main task's state. |
+| [`/verify-outcome`](#verify-outcome) | **Outcome Proof** | Prove an "X now works" claim with evidence a user would recognize; rejects proxy signals. |
 | | | |
 | **Multi-AI** | | |
 | [`/codex`](#codex) | **Second Opinion** | Independent review from OpenAI Codex CLI. Three modes: code review (pass/fail gate), adversarial challenge, and open consultation with session continuity. Cross-model analysis when both `/review` and `/codex` have run. |
@@ -722,6 +723,30 @@ Claude: Monitoring 8 pages every 2 minutes...
 
 ---
 
+## `/observe`
+
+This is my **production operator mode**.
+
+`/canary` watches your app from the outside — a browser hitting pages. `/observe` reads the inside: what GCP itself recorded. It pulls Cloud Logging errors, Error Reporting groups, and Monitoring latency distributions through `bin/gstack-runtime`, normalizes them into one severity-ranked PROD HEALTH block, and redacts PII (emails, phones, national IDs, card numbers, JWTs — the repo's shared redaction taxonomy) before any of it enters the session.
+
+First run in a repo walks through `gstack-runtime configure`: project detection, keychain-first credential storage, per-provider health probes with rollback if a probe fails. After that it's one command. Adapter failures are isolated — a broken provider degrades to a listed failure instead of killing the fetch, and a region lock can pin all reads to one GCP region for data residency.
+
+```
+You:   what's happening in prod since the deploy?
+
+Claude: PROD HEALTH — myapp (me-central2)
+
+        Verdict: one error group is hurting checkout.
+        1. [gcp/241]  TypeError in payment-svc — first seen 14:02,
+           right after deploy d4f2a91  → console link
+        2. p95 on /api/checkout: 340ms → 2.1s over the same window.
+        No active incidents. Other endpoints unchanged.
+```
+
+Against `/canary`: canary tells you a page broke; observe tells you which server-side error group broke it and when it started. Run canary after a deploy, observe when you need the cause.
+
+---
+
 ## `/benchmark`
 
 This is my **performance engineer mode**.
@@ -1133,6 +1158,121 @@ Claude: Current version: 0.7.4
 ```
 
 Set `auto_upgrade: true` in `~/.gstack/config.yaml` to skip the prompt entirely — gstack upgrades silently at the start of each session when a new version is available.
+
+---
+
+## `/capture-lesson`
+
+This is my **instant memory mode**.
+
+The weekly `/gstack-evolve` sweep mines many sessions for patterns that only show up in aggregate. But some lessons are sharp, singular, and evaporating — a bug found in something already called done, an error that took real diagnosis to recover from, a "no, do X instead" correction. Wait for the batch sweep and the surrounding detail is gone.
+
+`/capture-lesson` fires on exactly those three triggers and nothing else. Routine work produces `NO LESSON` — a first-try fix isn't a lesson. It classifies what was learned by shape: a **DURABLE FACT** (a thing to know) gets written to a memory file; a **REPEATABLE PROCEDURE** (steps you'd follow again) gets staged as a `SKILL.md.draft` that is never auto-activated. Facts then route by scope: project facts to the project's own memory directory, tooling facts to the shared gstack lessons doc, user-level facts proposed as a CLAUDE.md addition that waits for your explicit go-ahead. It checks for an existing entry on the same topic before writing anything — a dated update to an existing file beats a duplicate.
+
+```
+You:   this was already broken when you said it was done
+
+Claude: Trigger 1: defect found in work reported done.
+        Lesson: Vite's dev proxy silently drops requests without same-origin
+        config — 200s, no console error, nothing reveals it.
+        Classified: DURABLE FACT, PROJECT scope. No existing entry found.
+        Wrote reference_vite_proxy_silent_drop.md + one index line in MEMORY.md.
+
+        DURABLE FACT | trigger: defect-after-done | scope: PROJECT
+```
+
+Where `/learn` manages the accumulated store in batch — review, search, prune, export — `/capture-lesson` is the write path at the moment of learning. One incident, one entry, right now.
+
+---
+
+## `/parity`
+
+This is my **"is my edit actually live?" mode**.
+
+The gstack repo lives at `~/.claude/skills/gstack`, but every skill you actually run is a plain file *copy* one level up at `~/.claude/skills/<name>/SKILL.md`. Editing the repo file is necessary but not sufficient — until something copies it out, the live skill is unchanged. This skill exists because of a real incident: a session died after editing the repo but before copying, leaving repo and live silently divergent with no error from anything.
+
+`/parity` compares every repo skill to its live counterpart by SHA-256 and reports four buckets: **IDENTICAL** (count only), **DRIFTED** (named, with which side is newer), **REPO-ONLY** (invisible to the user until synced), and **LIVE-ONLY** (informational — skills that were never part of the repo are not errors). `--sync` copies repo → live for the two problem buckets, then re-hashes every copied file to prove the copy took. It refuses to sync if the repo working tree has uncommitted changes to any file it would copy, and it *never* copies live → repo — a hand-edit made directly to a live copy would otherwise get laundered into version control as if it were reviewed source. A newer-live drift gets flagged for a human to decide instead.
+
+```
+You:   why isn't my SKILL.md change showing up?
+
+Claude: IDENTICAL: 56
+        DRIFTED: 1
+          qa — repo is newer
+        REPO-ONLY: 0    LIVE-ONLY: 76 (informational)
+
+        Run --sync? Copies repo → live only, then re-verifies by hash.
+```
+
+`/gstack-upgrade` pulls new released versions down from the remote. `/parity` catches the opposite failure: your own local repo edits that never made it out to the copies you run.
+
+---
+
+## `/run-supervisor`
+
+This is my **unattended worker mode**.
+
+Point it at a run directory and it works the queue one item at a time: claim, do the work, get it verified, record the verdict, close or park, repeat until `claim` says the queue is drained. It holds no state of its own — kill it mid-item and the next session resumes from the run's files, continuing from the first pipeline stage not yet closed `PROVEN` rather than starting over.
+
+The loop is built around verification you can't fake. Routine work gets the project's typecheck and tests; elevated work gets re-derived by a *different* agent from primary sources — recording `--tier elevated` without naming a verifier is refused, and a verifier that also claimed the item is refused. `done` is the only way to close an item, and it refuses unless the latest journal verdict is exactly `PROVEN`. Placeholder fields (`x`, `n/a`, `pending` — even padded, punctuated, or spelled with Cyrillic lookalikes) are refused too. `CONTRADICTED` gets exactly one requeue, carrying the contradicting evidence; after that the item is parked with a four-part summary. A failure counter, not judgment, decides when to stop retrying — and when several items in a row trip it, the run stops with `breaker-tripped` instead of masquerading as `queue-drained`.
+
+```
+You:   resume run overnight-04
+
+Claude: Claimed item 7 (kind: feature, next_stage: qa) — running /qa only.
+        Verdict: PROVEN (tier: elevated, verifier: agent-2). Item closed.
+        Claimed item 8...
+        Queue drained. Report: 6 done, 1 parked awaiting your approval.
+```
+
+`/delegate` orchestrates subagents interactively inside one session, with you watching. `/run-supervisor` is what runs when nobody's watching — the queue files, the journal, and the runtime's refusal codes are the supervision.
+
+---
+
+## `/scratch`
+
+This is my **side-question mode**.
+
+Mid-task, you ask something unrelated — "quick question, what does this flag mean?" Answering inline means the answer-generation turn shares every tool the main task has, including Edit and Write. Nothing stops a side answer from becoming a stray edit.
+
+`/scratch` makes "this turn cannot write" a property of the system, not a promise. It arms a sentinel file (`~/.gstack/.scratch-mode`) that the `gstack-generated-guard` PreToolUse hook — already wired on Edit/Write — checks before every edit and unconditionally denies while the sentinel is fresh. The answer comes from the conversation context you already have plus Read, Grep, Glob, and observe-only Bash. The sentinel is deleted on every exit path, success or failure, before control returns; if a session dies mid-scratch, the sentinel self-expires after 30 minutes, so a dead scratch session can never wedge editing on this machine forever. The denial message always includes the clear command, so a stuck user always has a way out.
+
+Honest scope: the structural guarantee covers Edit and Write only. Bash is a discipline (observe-only commands: `git status`, `git log`, `cat`, read-only GETs), not a technical guarantee — the skill says so instead of overclaiming.
+
+```
+You:   quick question — what does "idempotent-skip" mean in that commit?
+
+Claude: [scratch armed — every Edit/Write on this machine is denied]
+        It means the remediation step recognizes work it already did and
+        skips re-applying it instead of erroring — server/remediation/apply.ts:112.
+        [sentinel cleared — the /qa run in flight is untouched]
+```
+
+Just asking gets you the same answer with no isolation. `/scratch` gets you the answer plus a machine-checked guarantee that answering it didn't touch a file.
+
+---
+
+## `/verify-outcome`
+
+This is my **prove-it mode**.
+
+"X now works" is a factual claim about what a user would see if they looked. This skill produces that evidence — or refuses the claim. First it names the outcome in user language ("the landing page renders its headings," not "the bundle returns 200"). Then it picks the evidence class that actually proves it: rendered DOM content for web UI (never a status code), the response body for an HTTP API, command output for a CLI, the produced row/file/artifact for a background job. Then the step that catches half-done fixes: name the falsifier — the single observation that would prove the claim *wrong*, one you have not already checked — and go make that observation.
+
+Verdicts are `PROVEN` (evidence shown inline), `UNPROVEN` (the default — missing evidence never passes), or `CONTRADICTED`. The NEVER-SUFFICIENT list is explicit: HTTP 2xx, "tests pass," "CI green," "deploy succeeded," clean logs, an implementer subagent reporting success — proxy signals, alone or combined, never yield PROVEN. The acceptance fixture is a real outage: `/api/health` returned 200, CI was green, two deploys had succeeded, and a real browser showed `#root` with zero children. Blank page, every signal green. CONTRADICTED.
+
+```
+You:   confirm the CSP fix — PostHog should work now
+
+Claude: Outcome: PostHog scripts load and run in the user's browser.
+        Passed already: header changed, deploy green, page renders.
+        Falsifier not yet run: CSP refusals in the browser console.
+        Ran it: five PostHog scripts still blocked — by script-src, not the
+        connect-src directive that was fixed.
+
+        CONTRADICTED — the fix is half done.
+```
+
+`/qa` sweeps an app for bugs you don't know about yet. `/verify-outcome` proves (or breaks) one specific claim you are about to report as done.
 
 ---
 
