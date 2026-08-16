@@ -1,4 +1,0 @@
-name: jwt
-pattern: 'eyJ[\w-]+\.[\w-]+\.[\w-]+'
-flags: g
-replacement: '<jwt>'

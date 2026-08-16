@@ -48,14 +48,14 @@ describe("/observe e2e (mock GCP, redaction enabled)", () => {
 
     expect(agg.errors[0].message).not.toContain("alice@lezam.sa");
     expect(agg.errors[0].message).not.toContain("1234567890");
-    expect(agg.errors[0].message).toContain("<email>");
+    expect(agg.errors[0].message).toContain("<REDACTED-EMAIL>");
     expect(agg.errors[0].message).toContain("<national_id_ksa>");
 
     const summary = renderObserveSummary(agg, {
       region: "me-central-2", projectName: "lezam-prod-me-central-2",
     });
     expect(summary).toContain("PROD HEALTH");
-    expect(summary).toContain("<email>");
+    expect(summary).toContain("<REDACTED-EMAIL>");
     expect(summary).toContain("p95 410ms");
     expect(summary).not.toContain("alice@lezam.sa");
     expect(summary).not.toContain("1234567890");

@@ -1,31 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import { loadPattern, loadBuiltinPatterns } from "../src/redact/patterns";
+import { loadPattern, availablePatternNames } from "../src/redact/patterns";
 
+// Patterns are sourced from lib/redact-patterns (the repo's single redaction
+// taxonomy) via a name->id map; these tests pin the mapping, not the regexes.
 describe("redact pattern loader", () => {
-  test("loads built-in email pattern", async () => {
+  test("loads email as lib's pii.email", async () => {
     const p = await loadPattern("email");
     expect(p.name).toBe("email");
-    expect(p.regex.test("alice@example.com")).toBe(true);
+    expect(p.lib.id).toBe("pii.email");
+    expect(new RegExp(p.lib.regex.source).test("alice@example.com")).toBe(true);
   });
 
-  test("loads built-in national_id_ksa", async () => {
+  test("national_id_ksa only matches 10 digits starting 1 or 2", async () => {
     const p = await loadPattern("national_id_ksa");
-    // Regex has /g flag — reset lastIndex between independent checks.
-    p.regex.lastIndex = 0;
-    expect(p.regex.test("1234567890")).toBe(true);
-    p.regex.lastIndex = 0;
-    expect(p.regex.test("2345678901")).toBe(true);
-    p.regex.lastIndex = 0;
-    expect(p.regex.test("9234567890")).toBe(false);
+    expect(new RegExp(p.lib.regex.source).test("1234567890")).toBe(true);
+    expect(new RegExp(p.lib.regex.source).test("2345678901")).toBe(true);
+    expect(new RegExp(p.lib.regex.source).test("9234567890")).toBe(false);
   });
 
-  test("loadBuiltinPatterns returns all 6", async () => {
-    const all = await loadBuiltinPatterns();
-    const names = all.map(p => p.name).sort();
+  test("every config-facing name resolves to a lib pattern", async () => {
+    const names = availablePatternNames().sort();
     expect(names).toEqual(["credit_card", "email", "iban_sa", "jwt", "national_id_ksa", "phone_ksa"]);
+    for (const n of names) {
+      const p = await loadPattern(n);
+      expect(p.lib.regex).toBeInstanceOf(RegExp);
+    }
   });
 
   test("loadPattern throws on unknown pattern", async () => {
-    await expect(loadPattern("nonexistent")).rejects.toThrow(/not found/);
+    await expect(loadPattern("nonexistent")).rejects.toThrow(/unknown redact pattern/);
   });
 });

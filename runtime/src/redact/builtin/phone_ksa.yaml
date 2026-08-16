@@ -1,4 +1,0 @@
-name: phone_ksa
-pattern: '(\+966|966|0)5\d{8}'
-flags: g
-replacement: '<phone_ksa>'
