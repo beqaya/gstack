@@ -7,7 +7,9 @@ describe("GCP Monitoring client", () => {
       async listTimeSeries(): Promise<[unknown[]]> {
         return [[
           {
-            metric: { labels: { method: "GET", path: "/tenants" } },
+            // Real request_latencies shape: identity on the resource, class on the metric.
+            metric: { labels: { response_code_class: "2xx" } },
+            resource: { labels: { service_name: "lezam-app" } },
             points: [
               { value: { distributionValue: { mean: 300, count: "1000", bucketCounts: ["100","200","700"] } } },
             ],
@@ -20,7 +22,7 @@ describe("GCP Monitoring client", () => {
       window: { start: "2026-05-16T00:00:00Z", end: "2026-05-16T12:00:00Z" },
     });
     expect(out.per_endpoint.length).toBe(1);
-    expect(out.per_endpoint[0].endpoint).toBe("GET /tenants");
+    expect(out.per_endpoint[0].endpoint).toBe("lezam-app [2xx]");
     expect(out.per_endpoint[0].count).toBe(1000);
     expect(out.region).toBe("me-central-2");
   });

@@ -39,9 +39,12 @@ export function renderObserveSummary(agg: AggregateResult, ctx: RenderContext): 
   }
 
   for (const dist of agg.latency_by_provider) {
-    if (dist.per_endpoint.length === 0) continue;
+    // A bucket with no requests has no endpoint identity either — rendering
+    // it prints "? ? p95 0ms (0 req)", which reads like data. Skip empties.
+    const real = dist.per_endpoint.filter((b) => b.count > 0 && b.endpoint);
+    if (real.length === 0) continue;
     out.push(`LATENCY (${dist.provider} ${dist.region ?? ""})`);
-    for (const b of dist.per_endpoint.slice(0, 10)) {
+    for (const b of real.slice(0, 10)) {
       out.push(`  ${b.endpoint.padEnd(40)} p95 ${b.p95_ms}ms  (${b.count} req)`);
     }
     out.push("");

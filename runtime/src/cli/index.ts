@@ -5,6 +5,7 @@ import { renderObserveSummary } from "../skills/observe";
 import { loadObservabilityConfig } from "../config";
 import { createRealKeychain } from "../auth/keychain";
 import { resolveSecret } from "../auth/resolve";
+import { getAdcToken } from "../auth/adc";
 import { createGcpAdapter } from "../adapters/gcp";
 import { createRedactEngine } from "../redact/engine";
 import { aggregateSignals } from "../aggregate";
@@ -56,7 +57,9 @@ export async function main(argv: string[]): Promise<void> {
       const cfg = await loadObservabilityConfig(repo);
       if (!cfg) { console.error("no observability config found in", repo); process.exit(1); return; }
       const kc = createRealKeychain();
-      const token = await resolveSecret(kc, args.provider, "credentials");
+      let token = await resolveSecret(kc, args.provider, "credentials");
+      // GCP: fall back to a live ADC token — stored tokens expire hourly.
+      if (!token && args.provider === "gcp") token = await getAdcToken();
       const adapter = createGcpAdapter({
         projectId: cfg.project_id, region: cfg.region,
         regionLock: cfg.region_lock, authToken: token,
@@ -72,7 +75,8 @@ export async function main(argv: string[]): Promise<void> {
       if (!cfg) { console.error("no observability config found in", repo); process.exit(1); return; }
       const window: TimeWindow = args.window ?? parseWindowArg("24h");
       const kc = createRealKeychain();
-      const token = await resolveSecret(kc, "gcp", "credentials");
+      let token = await resolveSecret(kc, "gcp", "credentials");
+      if (!token) token = await getAdcToken();
       const gcp = createGcpAdapter({
         projectId: cfg.project_id, region: cfg.region,
         regionLock: cfg.region_lock, authToken: token,

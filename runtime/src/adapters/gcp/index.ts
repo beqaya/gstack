@@ -26,7 +26,7 @@ export function createGcpAdapter(opts: GcpAdapterOpts): RuntimeAdapter {
   if (opts.regionLock) assertRegion(opts.region, `projects/${opts.projectId}/locations/${opts.region}`, true);
 
   const logging = opts.mocks?.logging ?? createLoggingClient({ projectId: opts.projectId });
-  const errors  = opts.mocks?.errors  ?? createErrorsClient({ projectId: opts.projectId });
+  const errors  = opts.mocks?.errors  ?? createErrorsClient({ projectId: opts.projectId, authToken: opts.authToken });
   const monitoring = opts.mocks?.monitoring ?? createMonitoringClient({ projectId: opts.projectId, region: opts.region });
 
   return {

@@ -11,7 +11,12 @@ export interface MonitoringClient {
 }
 
 interface GcpTimeSeries {
-  metric?: { labels?: { method?: string; path?: string } };
+  // run.googleapis.com/request_latencies carries no method/path labels; the
+  // request identity lives on the RESOURCE (service/revision) plus the
+  // metric's response_code_class. The first draft read metric.labels.method/
+  // path, which do not exist on this metric — every row rendered as "? ?".
+  metric?: { labels?: { response_code_class?: string; route?: string } };
+  resource?: { labels?: { service_name?: string; revision_name?: string } };
   points?: { value?: { distributionValue?: { mean?: number; count?: string | number } } }[];
 }
 
@@ -40,13 +45,15 @@ function toSec(iso: string): number {
 }
 
 function normalize(s: GcpTimeSeries): LatencyBucket {
-  const method = s.metric?.labels?.method ?? "?";
-  const path = s.metric?.labels?.path ?? "?";
+  const service = s.resource?.labels?.service_name ?? "(unknown service)";
+  const route = s.metric?.labels?.route;
+  const codeClass = s.metric?.labels?.response_code_class;
+  const endpoint = [service, route, codeClass && `[${codeClass}]`].filter(Boolean).join(" ");
   const dist = s.points?.[0]?.value?.distributionValue;
   const count = Number(dist?.count ?? 0);
   const mean = Number(dist?.mean ?? 0);
   return {
-    endpoint: `${method} ${path}`,
+    endpoint,
     p50_ms: Math.round(mean),
     p95_ms: Math.round(mean * 1.6),
     p99_ms: Math.round(mean * 2.4),

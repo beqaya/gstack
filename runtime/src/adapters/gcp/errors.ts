@@ -2,6 +2,8 @@ import type { RuntimeSignal, TimeWindow } from "../../types";
 
 export interface ErrorsClientOpts {
   projectId: string;
+  /** Bearer token for the REST fallback client (unused when `client` is injected). */
+  authToken?: string | null;
   client?: { listGroupStats(opts: unknown): Promise<[unknown[], unknown?]> };
 }
 
@@ -12,13 +14,14 @@ export interface ErrorsClient {
 interface GcpErrorGroup {
   group?: { groupId?: string };
   count?: string | number;
-  firstSeenTime?: { seconds?: string | number };
+  /** gRPC shape is {seconds}; the REST API returns an RFC3339 string. */
+  firstSeenTime?: { seconds?: string | number } | string;
   representative?: { message?: string };
   affectedServices?: { service?: string }[];
 }
 
 export function createErrorsClient(opts: ErrorsClientOpts): ErrorsClient {
-  const client = opts.client ?? createRealClient();
+  const client = opts.client ?? createRealClient(opts);
   return {
     async fetchErrorGroups({ limit }) {
       const [stats] = await client.listGroupStats({
@@ -32,9 +35,12 @@ export function createErrorsClient(opts: ErrorsClientOpts): ErrorsClient {
 }
 
 function normalize(g: GcpErrorGroup, projectId: string): RuntimeSignal {
-  const ts = g.firstSeenTime?.seconds
-    ? new Date(Number(g.firstSeenTime.seconds) * 1000).toISOString()
-    : new Date().toISOString();
+  const first = g.firstSeenTime;
+  const ts = typeof first === "string"
+    ? new Date(first).toISOString()
+    : first?.seconds
+      ? new Date(Number(first.seconds) * 1000).toISOString()
+      : new Date().toISOString();
   const count = Number(g.count ?? 0);
   return {
     type: "error",
@@ -51,11 +57,28 @@ function normalize(g: GcpErrorGroup, projectId: string): RuntimeSignal {
   };
 }
 
-function createRealClient(): NonNullable<ErrorsClientOpts["client"]> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-  const { ErrorGroupServiceClient } = require("@google-cloud/error-reporting") as { ErrorGroupServiceClient: new () => { listGroupStats(o: unknown): Promise<[unknown[]]> } };
-  const c = new ErrorGroupServiceClient();
+function createRealClient(opts: ErrorsClientOpts): NonNullable<ErrorsClientOpts["client"]> {
+  // @google-cloud/error-reporting is the error-REPORTING agent; it has no
+  // group-stats client at all (the class the first draft required never
+  // existed). The stats API is a small REST surface and we already hold a
+  // bearer token, so call it directly.
   return {
-    async listGroupStats(o) { return c.listGroupStats(o); },
+    async listGroupStats(o) {
+      const { projectName, timeRange, pageSize } = o as {
+        projectName: string; timeRange?: { period?: string }; pageSize?: number;
+      };
+      if (!opts.authToken) throw new Error("gcp errors: no auth token (gcloud ADC missing?)");
+      const url = new URL(
+        `https://clouderrorreporting.googleapis.com/v1beta1/${projectName}/groupStats`,
+      );
+      url.searchParams.set("timeRange.period", timeRange?.period ?? "PERIOD_1_DAY");
+      url.searchParams.set("pageSize", String(pageSize ?? 20));
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${opts.authToken}` } });
+      if (!res.ok) {
+        throw new Error(`gcp errors: groupStats HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      }
+      const body = (await res.json()) as { errorGroupStats?: unknown[] };
+      return [body.errorGroupStats ?? []];
+    },
   };
 }
