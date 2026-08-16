@@ -170,9 +170,28 @@ def skill_files():
     return found
 
 
+def self_name_phrases(name):
+    """The phrases a skill's own name should answer to.
+
+    Two forms: hyphens-as-spaces ("plan ceo review" — how a name is spoken)
+    and the glued normalisation of the raw name ("planceoreview" — what a
+    typed "plan-ceo-review" becomes after normalise strips the hyphens).
+    """
+    return {normalise(name.replace("-", " ")), normalise(name)} - {""}
+
+
 def build_index():
-    """phrase -> sorted list of "suite:skill" owners, plus the unrouted skills."""
+    """phrase -> sorted list of "suite:skill" owners, plus the unrouted skills.
+
+    A skill's own name is an IMPLICIT trigger: 91 of 106 skills never claimed
+    their name, so the most likely thing a user types was a guaranteed miss.
+    Explicit `triggers:` always win — an implicit name never joins a phrase
+    another skill already claims, so it can never create a contest.
+    --unrouted still reports skills with no EXPLICIT triggers: its job is to
+    say where frontmatter work is missing, not whether a name matches itself.
+    """
     index, unrouted = {}, []
+    implicit = []  # (phrase, owner), applied after every explicit claim is in
     for suite, name, sources in skill_files():
         owner = "%s:%s" % (suite, name)
         claimed = False
@@ -194,8 +213,14 @@ def build_index():
                     owners = index.setdefault(phrase, [])
                     if owner not in owners:
                         owners.append(owner)
+        for phrase in self_name_phrases(name):
+            implicit.append((phrase, owner))
         if not claimed:
             unrouted.append(owner)
+    for phrase, owner in implicit:
+        owners = index.setdefault(phrase, [])
+        if not owners:
+            owners.append(owner)
     for owners in index.values():
         owners.sort()
     return index, sorted(unrouted)

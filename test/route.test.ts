@@ -59,6 +59,31 @@ describe('routing coverage', () => {
   }, T);
 });
 
+describe('self-name routing — every skill answers to its own name', () => {
+  test('a bare skill name resolves without an explicit trigger', () => {
+    const r = route(['--intent', 'pentest']);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toBe('cyber:pentest');
+  }, T);
+
+  test('hyphenated names resolve spoken ("plan ceo review") and typed ("plan-ceo-review")', () => {
+    expect(route(['--intent', 'plan ceo review']).stdout).toBe('gstack:plan-ceo-review');
+    expect(route(['--intent', 'plan-ceo-review']).stdout).toBe('gstack:plan-ceo-review');
+  }, T);
+
+  test('implicit names never contest an explicit claim — index stays collision-free', () => {
+    const index = JSON.parse(route(['--index']).stdout);
+    const contested = Object.entries<string[]>(index).filter(([, o]) => o.length > 1);
+    expect(contested).toEqual([]);
+  }, T);
+
+  test('--unrouted still reports skills lacking explicit triggers', () => {
+    const lines = route(['--unrouted']).stdout.split(/\r?\n/).filter(Boolean);
+    expect(lines.length).toBeGreaterThan(0); // the deliberate cyberteam set
+    expect(lines.every(l => l.startsWith('cyber:'))).toBe(true);
+  }, T);
+});
+
 describe('scan mode — trigger phrases inside real sentences', () => {
   test('finds a claimed phrase embedded in a prompt', () => {
     const r = route(['--scan', 'could you check for vulnerabilities in the login flow']);
