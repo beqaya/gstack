@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// bin/gstack-watch
-import("../watch/src/cli/index.ts").then(m => m.main(process.argv.slice(2))).catch(err => {
+// bin/gstack-watch — inbox-file transport CLI (drain | status | install-hooks | uninstall-hooks)
+import("../watch/src/cli.ts").then(m => m.main(process.argv.slice(2))).catch(err => {
   console.error("[gstack-watch]", err);
   process.exit(1);
 });
