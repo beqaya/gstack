@@ -30,8 +30,28 @@ function flag(name: string): string | undefined {
 }
 function id(): string { return randomBytes(4).toString('hex'); }
 
+// `pending` is the Curator's review queue: every proposed-but-unapproved
+// bullet across all skills, in one place, so a founder can triage them.
+if (cmd === 'pending') {
+  const { homedir } = await import('os');
+  const { join } = await import('path');
+  const { readdirSync, existsSync } = await import('fs');
+  const dir = join(process.env.GSTACK_HOME || join(homedir(), '.gstack'), 'playbooks');
+  if (!existsSync(dir)) { console.log('(no playbooks yet)'); process.exit(0); }
+  let found = 0;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.jsonl'))) {
+    const sk = f.replace(/\.jsonl$/, '');
+    for (const b of computeBullets(readEvents(playbookPath(sk))).filter((x) => x.status === 'pending')) {
+      console.log(`/${sk}  ${b.id}  ${b.text}`);
+      found++;
+    }
+  }
+  if (!found) console.log('(no pending bullets — the curation queue is clear)');
+  process.exit(0);
+}
+
 if (!cmd || !skill) {
-  process.stderr.write('usage: gstack-playbook <add|approve|retire|list|render> <skill> [...]\n');
+  process.stderr.write('usage: gstack-playbook <add|approve|retire|list|render|pending> <skill> [...]\n');
   process.exit(5);
 }
 const path = playbookPath(skill);
