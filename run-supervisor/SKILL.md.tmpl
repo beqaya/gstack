@@ -155,6 +155,21 @@ The runtime will not let unverified work be counted as complete, whatever this
 skill says. Recording the verdict is not paperwork after the fact; it IS how
 work gets closed out.
 
+**After `done`, record the machine gate** — the deterministic gate-tier test
+result for what this item changed. `done` proves the worker's claim; the gate
+is the independent test signal that ranks the item in the founder's review
+queue:
+
+```bash
+# run the gate-tier tests for this item's scope, then:
+~/.claude/skills/gstack/bin/gstack-run gate --run "$RUN" --item "$ITEM" \
+  --result pass --evidence "<what ran and its outcome>"
+```
+
+Record `--result fail` honestly if the gate is red — a completed item with a
+failing gate becomes `blocked` in the landing queue (a green claim over red
+tests is exactly what the founder must see), never silently dropped.
+
 `CONTRADICTED` gets exactly one requeue, and the retry brief must carry the
 contradicting evidence — otherwise the second attempt repeats the first's
 reasoning and reaches the same wrong answer. After that, park it.
@@ -236,3 +251,17 @@ answer, which is not an answer.
 ```
 
 A run may end early. It may never report success it did not achieve.
+
+**Hand the founder a ranked review queue, not raw diffs.** When the run
+finishes, print the landing queue so the completed units arrive vetted and
+ordered:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-run landing --run "$RUN"
+```
+
+`ready` items (done AND gate pass) come first — review those. `blocked` items
+(done but gate fail) are a green claim over red tests and need a look before
+anything else. `ungated` items were verified by claim but had no gate run.
+Review is the real bottleneck; this ordering is what keeps it from eating the
+run's gains.
