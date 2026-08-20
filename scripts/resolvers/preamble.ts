@@ -46,6 +46,7 @@ import { generateBrainSyncBlock } from './preamble/generate-brain-sync-block';
 
 // Behavioral / voice
 import { generateVoiceDirective } from './preamble/generate-voice-directive';
+import { generateParallelTools } from './preamble/generate-parallel-tools';
 
 // Tier 2+ context and interaction framework
 import { generateContextRecovery } from './preamble/generate-context-recovery';
@@ -108,6 +109,8 @@ export function generatePreamble(ctx: TemplateContext): string {
     generateBrainSyncBlock(ctx),
     generateModelOverlay(ctx),
     generateVoiceDirective(tier),
+    // Round trips are the census-measured bottleneck; this block amortizes them.
+    generateParallelTools(),
     ...(tier >= 2 ? [
       generateContextRecovery(ctx),
       generateWritingStyle(ctx),
