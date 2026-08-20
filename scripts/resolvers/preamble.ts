@@ -47,6 +47,7 @@ import { generateBrainSyncBlock } from './preamble/generate-brain-sync-block';
 // Behavioral / voice
 import { generateVoiceDirective } from './preamble/generate-voice-directive';
 import { generateParallelTools } from './preamble/generate-parallel-tools';
+import { generateLearnedPlaybook } from './preamble/generate-learned-playbook';
 
 // Tier 2+ context and interaction framework
 import { generateContextRecovery } from './preamble/generate-context-recovery';
@@ -111,6 +112,8 @@ export function generatePreamble(ctx: TemplateContext): string {
     generateVoiceDirective(tier),
     // Round trips are the census-measured bottleneck; this block amortizes them.
     generateParallelTools(),
+    // ACE: inject this skill's curated learned-playbook bullets at runtime.
+    generateLearnedPlaybook(ctx),
     ...(tier >= 2 ? [
       generateContextRecovery(ctx),
       generateWritingStyle(ctx),

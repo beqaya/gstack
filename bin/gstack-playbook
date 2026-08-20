@@ -1,0 +1,73 @@
+#!/usr/bin/env bun
+/**
+ * gstack-playbook — ACE-style learned playbook per skill (delta-append only).
+ *
+ * A skill accumulates lessons as itemized bullets grown by incremental deltas,
+ * never a rewrite (arXiv 2510.04618). Bullets are proposed (pending), approved
+ * by a human/Curator (active), and retired when stale — there is deliberately
+ * no edit and no rewrite command. Active bullets are injected into the skill's
+ * context at runtime by the preamble, so a lesson finally re-enters the skill.
+ *
+ * Usage:
+ *   gstack-playbook add <skill> --text "..." [--source S]   # propose (pending)
+ *   gstack-playbook approve <skill> <id>                     # Curator gate → active
+ *   gstack-playbook retire  <skill> <id>                     # drop a stale bullet
+ *   gstack-playbook list <skill> [--all]                     # active (or all) bullets
+ *   gstack-playbook render <skill>                           # markdown block (runtime injection)
+ *
+ * Exit: 0 ok · 2 duplicate (add) · 4 not found · 5 usage
+ */
+import { randomBytes } from 'crypto';
+import {
+  playbookPath, readEvents, appendEvent, computeBullets, activeBullets,
+  isDuplicate, renderPlaybook,
+} from '../lib/gstack-playbook';
+
+const [cmd, skill, ...rest] = process.argv.slice(2);
+function flag(name: string): string | undefined {
+  const i = rest.indexOf(name);
+  return i >= 0 ? rest[i + 1] : undefined;
+}
+function id(): string { return randomBytes(4).toString('hex'); }
+
+if (!cmd || !skill) {
+  process.stderr.write('usage: gstack-playbook <add|approve|retire|list|render> <skill> [...]\n');
+  process.exit(5);
+}
+const path = playbookPath(skill);
+const date = new Date().toISOString();
+
+if (cmd === 'add') {
+  const text = flag('--text');
+  if (!text || text.trim().length < 8) {
+    process.stderr.write('add: --text is required (>=8 chars of substance)\n');
+    process.exit(5);
+  }
+  const events = readEvents(path);
+  if (isDuplicate(events, text)) {
+    process.stderr.write('add: a near-duplicate bullet already exists — the playbook grows in distinct lessons, not restatements.\n');
+    process.exit(2);
+  }
+  const bid = id();
+  appendEvent(path, { event: 'add', id: bid, skill, text: text.trim(), source: flag('--source') ?? 'session', date });
+  console.log(bid + ' (pending — approve to activate)');
+} else if (cmd === 'approve' || cmd === 'retire') {
+  const bid = rest[0];
+  if (!bid) { process.stderr.write(`${cmd}: needs a bullet id\n`); process.exit(5); }
+  const events = readEvents(path);
+  if (!computeBullets(events).some((b) => b.id === bid)) {
+    process.stderr.write(`${cmd}: no bullet ${bid} in /${skill}\n`); process.exit(4);
+  }
+  appendEvent(path, { event: cmd, id: bid, skill, date });
+  console.log(`${cmd}: ${bid}`);
+} else if (cmd === 'list') {
+  const bullets = rest.includes('--all') ? computeBullets(readEvents(path)) : activeBullets(readEvents(path));
+  if (!bullets.length) { console.log(`(no ${rest.includes('--all') ? '' : 'active '}bullets for /${skill})`); process.exit(0); }
+  for (const b of bullets) console.log(`[${b.status.padEnd(7)}] ${b.id}  ${b.text}`);
+} else if (cmd === 'render') {
+  const out = renderPlaybook(skill, activeBullets(readEvents(path)));
+  if (out) console.log(out);
+} else {
+  process.stderr.write(`unknown command: ${cmd}\n`);
+  process.exit(5);
+}
