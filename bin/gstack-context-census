@@ -22,6 +22,7 @@ Exit codes:
     3  nothing attributable in the file
 """
 import argparse
+import re
 import json
 import os
 import sys
@@ -101,6 +102,83 @@ def census(path, keep_offenders=0):
             calls_by_tool, result_count)
 
 
+def tool_signature(block):
+    """A coarse identity for a tool call, for chain mining.
+
+    Bash is signed by the command's leading token (git, grep, python, ...) so
+    'git status' and 'git log' both read as `Bash:git` — a run of them is the
+    collapsible chain. Other tools sign by name alone.
+    """
+    name = block.get("name") or "(unnamed)"
+    if name == "Bash":
+        cmd = str((block.get("input") or {}).get("command") or "").strip()
+        # Take the LAST segment after a leading cd/export chain, so
+        # `cd "…/TaskMaster" && git status` signs as git, not the cd path.
+        seg = cmd
+        for m in re.split(r"&&|\|\||;", cmd):
+            m = m.strip()
+            if not m:
+                continue
+            first = m.split()[0] if m.split() else ""
+            base = os.path.basename(first.strip("\"'"))
+            if base in ("cd", "export", "set") or "=" in first:
+                continue
+            seg = m
+            break
+        toks = seg.split()
+        head = os.path.basename(toks[0].strip("\"'")) if toks else "?"
+        return "Bash:%s" % (head or "?")
+    return name
+
+
+def mine_chains(path, n=2):
+    """Count repeated adjacent tool-call n-grams within a session.
+
+    A chain that recurs is a candidate for collapse into one script/batch —
+    each repeat is (n-1) round trips at a ~1s floor that a single call removes.
+    Only ADJACENT calls with nothing but more tool calls between them count:
+    an assistant text/thinking block between two calls means a decision was
+    made, so they are not blindly collapsible.
+    """
+    import collections
+    seq = []
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            content = (row.get("message") or {}).get("content")
+            if isinstance(content, str) and content.strip():
+                seq.append(None)  # assistant text = a decision boundary
+                continue
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                k = block.get("type")
+                if k == "tool_use":
+                    seq.append(tool_signature(block))
+                elif k in ("text", "thinking") and (block.get("text") or block.get("thinking")):
+                    seq.append(None)  # boundary
+    grams = collections.Counter()
+    run = []
+    for s in seq:
+        if s is None:
+            run = []
+            continue
+        run.append(s)
+        if len(run) >= n:
+            grams[tuple(run[-n:])] += 1
+    return grams
+
+
 def main():
     ap = argparse.ArgumentParser(prog="gstack-context-census")
     ap.add_argument("--transcript", required=True)
@@ -108,7 +186,27 @@ def main():
                     help="also report the N largest individual tool results")
     ap.add_argument("--top", type=int, default=0,
                     help="limit the by_tool breakdown to the N largest")
+    ap.add_argument("--chains", type=int, default=0, metavar="N",
+                    help="mine repeated adjacent tool-call chains of length N "
+                         "(collapse candidates); prints the most frequent")
     args = ap.parse_args()
+
+    if args.chains:
+        if not os.path.isfile(args.transcript):
+            sys.stderr.write("no such transcript: %s\n" % args.transcript)
+            sys.exit(2)
+        grams = mine_chains(args.transcript, n=args.chains)
+        repeated = [(c, g) for g, c in grams.items() if c >= 2]
+        repeated.sort(reverse=True)
+        if not repeated:
+            print("no chain of length %d recurs — nothing obvious to collapse." % args.chains)
+            sys.exit(0)
+        print("Repeated tool-call chains (length %d) — each is a collapse candidate." % args.chains)
+        print("A chain seen K times costs (K x (%d-1)) round trips a single call would save.\n" % args.chains)
+        for count, gram in repeated[:15]:
+            saved = count * (args.chains - 1)
+            print("  %3dx  %s   (~%d round trips if collapsed)" % (count, " -> ".join(gram), saved))
+        sys.exit(0)
 
     if not os.path.isfile(args.transcript):
         sys.stderr.write("no such transcript: %s\n" % args.transcript)
