@@ -553,7 +553,7 @@ def cmd_init(args):
         "created_at": now_ts(),
     }
     atomic_write_json(os.path.join(d, "manifest.json"), manifest)
-    for name in ("queue.jsonl", "journal.jsonl", "parked.jsonl", "ledger.jsonl", "acceptance.jsonl"):
+    for name in ("queue.jsonl", "journal.jsonl", "parked.jsonl", "ledger.jsonl", "acceptance.jsonl", "gate.jsonl"):
         open(os.path.join(d, name), "a", encoding="utf-8").close()
     print(run_id)
 
@@ -1026,6 +1026,71 @@ def cmd_criterion_verify(args):
     print("%s: %s" % (args.criterion, args.result))
 
 
+def item_titles(run_id):
+    """item_id -> title, from the add events."""
+    titles = {}
+    for rec in read_jsonl(run_id, "queue.jsonl"):
+        if rec.get("event") == "add" and rec.get("item_id"):
+            titles[rec["item_id"]] = rec.get("title", "")
+    return titles
+
+
+def gate_state(run_id):
+    """item_id -> latest machine-gate result (pass|fail). The gate is the
+    deterministic check (gate-tier tests) that must be green before a
+    completed unit reaches the founder — the machine vet ahead of the human
+    review queue that the fleet literature found is the real bottleneck."""
+    latest = {}
+    for rec in read_jsonl(run_id, "gate.jsonl"):
+        if rec.get("event") == "gate" and rec.get("item_id"):
+            latest[rec["item_id"]] = rec.get("result")
+    return latest
+
+
+def cmd_gate(args):
+    """Record a machine-gate (gate-tier test) result for a completed unit."""
+    read_manifest(args.run)
+    append_jsonl(args.run, "gate.jsonl",
+                 {"event": "gate", "item_id": args.item, "result": args.result,
+                  "evidence": args.evidence})
+    print("gate %s: %s" % (args.item, args.result))
+
+
+def cmd_landing(args):
+    """The review-ready queue: completed units ranked for the founder.
+
+    An overnight run should hand the founder a RANKED, machine-vetted queue —
+    not N raw diffs. Every item here is already `done` (so it carries a PROVEN
+    verdict, met acceptance criteria, a clean tree, and an independent verifier
+    for elevated work). This view adds the machine-gate column and ranks:
+      ready   — done AND gate=pass  → review these first
+      blocked — done BUT gate=fail  → a green claim with red tests; look here
+      ungated — done, no gate run   → verified by claim, tests not recorded
+    """
+    read_manifest(args.run)
+    queue_records, _ = read_jsonl_counted(args.run, "queue.jsonl")
+    done_ids = [r.get("item_id") for r in queue_records if r.get("event") == "done"]
+    titles = item_titles(args.run)
+    gates = gate_state(args.run)
+    rank = {"pass": 0, None: 1, "fail": 2}
+    rows = []
+    for iid in dict.fromkeys(done_ids):  # de-dup, preserve order
+        g = gates.get(iid)
+        state = "ready" if g == "pass" else "blocked" if g == "fail" else "ungated"
+        rows.append({"item_id": iid, "title": titles.get(iid, ""),
+                     "gate": g, "state": state})
+    rows.sort(key=lambda r: rank.get(r["gate"], 1))
+    if args.json:
+        print(json.dumps({"landing": rows}, indent=2))
+        return
+    if not rows:
+        print("landing queue empty — no completed units yet.")
+        return
+    print("Landing queue (%d completed, ranked; review 'ready' first):" % len(rows))
+    for r in rows:
+        print("  %-8s %s  %s" % (r["state"], r["item_id"], r["title"]))
+
+
 def cmd_skip(args):
     """Manually step over a poison item (the convoy continues without it).
 
@@ -1149,6 +1214,18 @@ def main():
     pcv.add_argument("--result", required=True, choices=["pass", "fail"])
     pcv.add_argument("--evidence", default="")
     pcv.set_defaults(func=cmd_criterion_verify)
+
+    pg = sub.add_parser("gate")
+    pg.add_argument("--run", required=True)
+    pg.add_argument("--item", required=True)
+    pg.add_argument("--result", required=True, choices=["pass", "fail"])
+    pg.add_argument("--evidence", default="")
+    pg.set_defaults(func=cmd_gate)
+
+    plq = sub.add_parser("landing")
+    plq.add_argument("--run", required=True)
+    plq.add_argument("--json", action="store_true")
+    plq.set_defaults(func=cmd_landing)
 
     pj = sub.add_parser("journal")
     pj.add_argument("--run", required=True)
