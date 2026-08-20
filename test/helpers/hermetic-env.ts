@@ -255,10 +255,17 @@ let cachedSkillsConfigDir: string | null = null;
  *   `~/.claude/skills/gstack/...` preamble references inside each SKILL.md
  *   still resolve to the operator install (same limitation as CI).
  */
-export function hermeticSkillsConfigDir(): string {
-  if (cachedSkillsConfigDir) return cachedSkillsConfigDir;
+export function hermeticSkillsConfigDir(opts: { excludeSkill?: string } = {}): string {
+  // The skill-off variant (ablation's counterfactual) gets its OWN config dir
+  // and bypasses the cache — otherwise a with-skill run would poison it. The
+  // exclusion is by skill DIRECTORY name (the census's skillDir), matched
+  // before the frontmatter-name registry mapping so the caller names the dir
+  // they know (e.g. "office-hours"), not its registry alias.
+  const exclude = opts.excludeSkill;
+  if (!exclude && cachedSkillsConfigDir) return cachedSkillsConfigDir;
   const { runRoot } = getHermeticDirs();
-  const configDir = path.join(runRoot, 'with-skills', '.claude');
+  const variant = exclude ? `without-${exclude.replace(/[^a-z0-9-]/gi, '_')}` : 'with-skills';
+  const configDir = path.join(runRoot, variant, '.claude');
   const skillsDir = path.join(configDir, 'skills');
   fs.mkdirSync(skillsDir, { recursive: true });
   fs.writeFileSync(
@@ -272,6 +279,7 @@ export function hermeticSkillsConfigDir(): string {
   for (const rel of skillCensus(root).physicalSkillFiles) {
     const skillMd = path.join(root, rel);
     const skillDir = path.dirname(rel);
+    if (exclude && skillDir === exclude) continue; // ablation: omit the target skill
     const registryName = rel === 'SKILL.md'
       ? '_gstack-command'
       : frontmatterName(skillMd) || skillDir;
@@ -292,7 +300,7 @@ export function hermeticSkillsConfigDir(): string {
       }
     }
   }
-  cachedSkillsConfigDir = configDir;
+  if (!exclude) cachedSkillsConfigDir = configDir; // never cache a variant dir
   return configDir;
 }
 

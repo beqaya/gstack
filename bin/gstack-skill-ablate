@@ -1,0 +1,91 @@
+#!/usr/bin/env bun
+/**
+ * gstack-skill-ablate — measure whether a skill actually helps (paired ablation).
+ *
+ * PAID: runs a task through `claude -p` N times WITH the target skill installed
+ * and N times WITHOUT it (via a hermetic config dir that omits just that skill),
+ * then scores the pass-rate and cost delta. This is the SkillsBench
+ * counterfactual gstack never had; its output is the fitness signal for ACE
+ * playbooks, GEPA tuning, and gstack-evolve's keep/prune decisions.
+ *
+ * Usage:
+ *   gstack-skill-ablate <skill-dir> --task-file <prompt.txt> --check <substr> [-n 2] [--model M] [--json]
+ *
+ *   <skill-dir>   the skill's directory name, e.g. office-hours
+ *   --task-file   a file whose contents are the prompt sent to the agent
+ *   --check       output MUST contain this substring to count as a pass
+ *                 (the deterministic verifier; keep it specific)
+ *   -n            trials per arm (default 2; each arm runs N times)
+ *
+ * Writes one record to ~/.gstack/analytics/ablation.jsonl and prints the verdict.
+ * Refuses to run without ANTHROPIC_API_KEY (it would score every trial a false fail).
+ */
+import { readFileSync, mkdirSync, appendFileSync, existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+import { runSkillTest } from '../test/helpers/session-runner';
+import { hermeticSkillsConfigDir } from '../test/helpers/hermetic-env';
+import { scoreAblation, formatAblation, type AblationTrial } from '../test/helpers/ablation';
+
+function flag(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+const skill = process.argv[2];
+const taskFile = flag('--task-file');
+const check = flag('--check');
+const n = parseInt(flag('-n') ?? '2', 10);
+const model = flag('--model');
+const asJson = process.argv.includes('--json');
+
+if (!skill || skill.startsWith('--') || !taskFile || !check) {
+  process.stderr.write('usage: gstack-skill-ablate <skill-dir> --task-file <f> --check <substr> [-n 2] [--model M] [--json]\n');
+  process.exit(5);
+}
+if (!process.env.ANTHROPIC_API_KEY && !process.env.GSTACK_ANTHROPIC_API_KEY) {
+  process.stderr.write('gstack-skill-ablate: no ANTHROPIC_API_KEY — every trial would false-fail. Aborting.\n');
+  process.exit(5);
+}
+if (!existsSync(taskFile)) {
+  process.stderr.write(`gstack-skill-ablate: task file not found: ${taskFile}\n`);
+  process.exit(5);
+}
+
+const prompt = readFileSync(taskFile, 'utf-8');
+const withConfig = hermeticSkillsConfigDir();
+const withoutConfig = hermeticSkillsConfigDir({ excludeSkill: skill });
+
+async function arm(configDir: string, label: string): Promise<AblationTrial[]> {
+  const trials: AblationTrial[] = [];
+  for (let i = 0; i < n; i++) {
+    process.stderr.write(`  [${label}] trial ${i + 1}/${n}...\n`);
+    const r = await runSkillTest({
+      prompt,
+      workingDirectory: process.cwd(),
+      model,
+      env: { CLAUDE_CONFIG_DIR: configDir },
+    });
+    trials.push({
+      passed: (r.output || '').includes(check!),
+      costUsd: r.costEstimate.estimatedCost,
+      tokens: r.costEstimate.estimatedTokens,
+      turns: r.costEstimate.turnsUsed,
+      durationMs: r.duration,
+    });
+  }
+  return trials;
+}
+
+const withArm = await arm(withConfig, `with ${skill}`);
+const withoutArm = await arm(withoutConfig, `without ${skill}`);
+const score = scoreAblation(skill, taskFile, withArm, withoutArm, new Date().toISOString());
+
+const dir = join(homedir(), '.gstack', 'analytics');
+mkdirSync(dir, { recursive: true });
+appendFileSync(join(dir, 'ablation.jsonl'), JSON.stringify(score) + '\n');
+
+if (asJson) console.log(JSON.stringify(score, null, 2));
+else console.log('\n' + formatAblation(score));
+// Exit 3 when a skill measurably HURTS — makes it usable as a gate.
+process.exit(score.verdict === 'hurts' ? 3 : 0);
