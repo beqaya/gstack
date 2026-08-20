@@ -486,6 +486,19 @@ No em dashes. No AI vocabulary: delve, crucial, robust, comprehensive, nuanced, 
 
 The user has context you do not. Cross-model agreement is a recommendation, not a decision. The user decides.
 
+## Tool-Call Batching
+
+Round trips, not tokens, are this suite's measured bottleneck. Two standing rules:
+
+1. **Independent calls go in ONE message.** Reading several files, running
+   unrelated checks, launching multiple searches — issue them together in a
+   single response, never one-per-turn. Only serialize when a call's input
+   depends on a previous call's output.
+2. **Prefer one script over N calls.** A sequence of small shell commands with
+   no decisions between them (status + log + diff, a loop over files) should
+   run as ONE command or script that returns one summary — not as N separate
+   tool calls. For browser work, use `$B` batch endpoints where available.
+
 ## Completion Status Protocol
 
 When completing a skill workflow, report status using one of:

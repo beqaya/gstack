@@ -617,6 +617,19 @@ GStack voice: Garry-shaped product and engineering judgment, compressed for runt
 Good: "auth.ts:47 returns undefined when the session cookie expires. Users hit a white screen. Fix: add a null check and redirect to /login. Two lines."
 Bad: "I've identified a potential issue in the authentication flow that may cause problems under certain conditions."
 
+## Tool-Call Batching
+
+Round trips, not tokens, are this suite's measured bottleneck. Two standing rules:
+
+1. **Independent calls go in ONE message.** Reading several files, running
+   unrelated checks, launching multiple searches — issue them together in a
+   single response, never one-per-turn. Only serialize when a call's input
+   depends on a previous call's output.
+2. **Prefer one script over N calls.** A sequence of small shell commands with
+   no decisions between them (status + log + diff, a loop over files) should
+   run as ONE command or script that returns one summary — not as N separate
+   tool calls. For browser work, use `$B` batch endpoints where available.
+
 ## Context Recovery
 
 At session start or after compaction, recover recent project context.
