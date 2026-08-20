@@ -77,6 +77,27 @@ several independent units of work, run this skill against that job.
 
 ---
 
+## Step 0: Agent Teams preflight (do this FIRST)
+
+Check whether Claude Code's experimental Agent Teams is enabled:
+
+```bash
+if [ -n "$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS" ]; then echo TEAMS_ON; else echo TEAMS_OFF; fi
+```
+
+- **TEAMS_OFF** (the common case): proceed normally. Each `Task`/subagent
+  dispatch below returns its result to you when it finishes, and you wait on
+  that result to verify and record it.
+- **TEAMS_ON**: STOP and tell the user before dispatching. With teams enabled,
+  a named subagent silently becomes an independent *teammate* rather than a
+  child that returns to you, so this skill's wait-on-result → verify → record
+  loop stalls: the orchestrator waits for a return that never comes. Either
+  (a) run this job in a session without the flag, or (b) if the user wants the
+  teams substrate, drive the work through the shared task list with a
+  `TaskCompleted` hook running the independent-verification pass (exit 2 to
+  block an unverified completion) instead of this skill's inline dispatch.
+  Do not silently fall through — the failure looks like a hang, not an error.
+
 ## Step 1: DECOMPOSE
 
 List every unit of work. For each unit, name the specific file(s) it will
