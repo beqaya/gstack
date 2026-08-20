@@ -963,6 +963,44 @@ calls (e.g., goto + click "Next" + html), keep all of them in `main()`
 but extract the parsing into pure helpers. The fixture-replay tests in
 step 5 only exercise the pure parts.
 
+### Step 3b — Intent-cache each interactive step (self-healing)
+
+A codified `click`/`fill` on an `@ref` breaks the moment the page changes —
+a renamed button, a reordered row — and the whole replay aborts. Make each
+interactive step heal itself instead: **beside every `@ref` you cache, record
+the element's IDENTITY** (its accessibility role and name from the snapshot),
+and on a click/fill failure re-resolve the ref from a fresh snapshot by that
+identity, retry once, and write the new ref back.
+
+For each interactive step, capture the intent from the snapshot line that
+produced the ref (e.g. `@e7 button "Submit order"` → `{ role: 'button', name:
+'Submit order' }`), and wrap the action:
+
+```ts
+import { resolveByIntent, type StepIntent } from './_lib/heal';
+
+async function clickHealing(ref: string, intent: StepIntent) {
+  try {
+    await browse.click(ref);
+  } catch {
+    // Lazy replanning: re-resolve ONLY this step against a fresh snapshot.
+    const els = await browse.snapshotRefs();          // [{ref, role, name}, ...]
+    const healed = resolveByIntent(intent, els);
+    if (!healed) throw new Error(`heal failed for ${JSON.stringify(intent)}`);
+    await browse.click(healed.ref);
+    return healed.ref; // caller rewrites the cached ref → the heal is paid once
+  }
+  return ref;
+}
+```
+
+`resolveByIntent` (in `browse/src/heal.ts`, copied into `_lib/`) matches on
+role first (a healed button never becomes a link) and name second, with a
+uniqueness fallback for a one-word rename ("Submit" → "Save" when it is the
+sole button). It is deterministic — no model call — so a heal costs one extra
+snapshot, not a re-prototype. Only annotate steps whose ref could plausibly
+drift; a `goto` to a fixed URL needs none.
+
 ## Step 4 — Capture the fixture
 
 ```bash
