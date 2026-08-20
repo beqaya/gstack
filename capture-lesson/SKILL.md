@@ -639,6 +639,19 @@ Round trips, not tokens, are this suite's measured bottleneck. Two standing rule
    run as ONE command or script that returns one summary — not as N separate
    tool calls. For browser work, use `$B` batch endpoints where available.
 
+## Learned playbook (runtime)
+
+This skill may carry lessons curated from past runs. Load them now — they are
+standing rules for this run:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-playbook render capture-lesson 2>/dev/null || true
+```
+
+If that prints a "Learned playbook" block, treat each bullet as a rule unless
+it plainly conflicts with the user's request. If it prints nothing, there are
+no curated lessons yet — proceed normally.
+
 ## Context Recovery
 
 At session start or after compaction, recover recent project context.
@@ -890,6 +903,13 @@ Locality is a SEPARATE question, decided in Step D below, about WHERE a
 durable fact gets filed -- it never changes whether something is a fact or a
 procedure.
 
+- **A standing rule for ONE gstack skill** (an operational lesson that should
+  fire every time that specific skill runs, not a fact to look up and not a
+  new procedure) -> **SKILL PLAYBOOK BULLET**. Example: "when /ship pushes on
+  Windows, hand the user forward-slash paths for `!` commands" is a rule that
+  belongs in /ship's own runtime context, not in a memory file the skill
+  never reads. This is the ACE playbook route (Step F2).
+
 When genuinely unsure between the two, default to DURABLE FACT -- a memory
 file is cheaper to write and cheaper to be wrong about than an unreviewed
 skill draft.
@@ -1057,6 +1077,27 @@ branches split that "yes").
 6. **Never auto-activate.** Do not rename `.draft` away, and do not tell the
    user it is active -- tell them the draft path and that it needs their
    explicit review (same rule as `/gstack-evolve` Step 9).
+
+## Step F2: PROPOSE a SKILL PLAYBOOK BULLET
+
+For a standing rule that belongs to one gstack skill's own runtime context
+(the ACE learned-playbook — a lesson the skill re-reads on every run):
+
+1. **Name the target skill** (e.g. `ship`, `qa`, `review`). If the lesson
+   isn't specific to one skill, it is a DURABLE FACT, not a bullet -- go back.
+2. **Propose the bullet** (it lands PENDING, never active -- same
+   never-auto-activate discipline as a procedure draft):
+
+   ```bash
+   ~/.claude/skills/gstack/bin/gstack-playbook add <skill> --text "<one imperative sentence>" --source capture-lesson
+   ```
+
+   The store rejects a near-duplicate (exit 2) -- if so, the lesson is already
+   captured; report that and stop.
+3. **Tell the user it is pending** and how to activate it after review:
+   `~/.claude/skills/gstack/bin/gstack-playbook approve <skill> <id>`. Do NOT approve it
+   yourself -- approval is the Curator gate, and an unreviewed bullet that
+   auto-activated would poison every future run of that skill.
 
 ---
 

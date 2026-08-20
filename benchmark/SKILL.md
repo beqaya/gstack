@@ -500,6 +500,19 @@ Round trips, not tokens, are this suite's measured bottleneck. Two standing rule
    run as ONE command or script that returns one summary — not as N separate
    tool calls. For browser work, use `$B` batch endpoints where available.
 
+## Learned playbook (runtime)
+
+This skill may carry lessons curated from past runs. Load them now — they are
+standing rules for this run:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-playbook render benchmark 2>/dev/null || true
+```
+
+If that prints a "Learned playbook" block, treat each bullet as a rule unless
+it plainly conflicts with the user's request. If it prints nothing, there are
+no curated lessons yet — proceed normally.
+
 ## Completion Status Protocol
 
 When completing a skill workflow, report status using one of:
