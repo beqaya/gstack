@@ -113,6 +113,75 @@ export async function callJudge<T>(
   return JSON.parse(jsonMatch[0]) as T;
 }
 
+// ── Panel of judges (PoLL) ───────────────────────────────────────────────
+//
+// A panel of 2-3 SMALL judges agrees with humans better than one big judge, at
+// >7x lower cost, and cancels a single model's self-preference bias (Cohere,
+// "Replacing Judges with Juries"). The panel is most honest across model
+// FAMILIES; gstack's harness is Anthropic-only today, so a cross-provider panel
+// (adding the codex/gemini SDKs the host adapters already imply) is the upgrade
+// path — the aggregator below is provider-agnostic and ready for it.
+//
+// JudgeBench caveat, encoded as a rule: small judges hold up on rubric/pass-fail
+// grading but collapse on REASONING-CORRECTNESS. Use a panel for the former;
+// keep one frontier judge for "is the answer actually right".
+
+export interface PanelResult {
+  score: number;        // aggregate (median) on the panel's scale
+  votes: number[];      // each judge's score, in model order
+  models: string[];
+  disagreement: number; // max − min; a wide spread means the item is ambiguous
+  flagged: boolean;     // disagreement exceeds tolerance → escalate to a human/frontier judge
+}
+
+/** Median of a numeric list (mean of the two middles for even counts). */
+export function median(xs: number[]): number {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/**
+ * Aggregate a panel's per-judge scores. Median (not mean) so one outlier judge
+ * can't drag the verdict; `disagreement` surfaces the ambiguous items that a
+ * cheap panel should NOT decide alone — when it exceeds `tolerance`, `flagged`
+ * says "escalate this one to a frontier judge or a human".
+ */
+export function aggregatePanel(votes: number[], models: string[], tolerance = 2): PanelResult {
+  const disagreement = votes.length ? Math.max(...votes) - Math.min(...votes) : 0;
+  return {
+    score: median(votes),
+    votes,
+    models,
+    disagreement,
+    flagged: disagreement > tolerance,
+  };
+}
+
+/**
+ * PAID: run one scalar judgment through a panel of models and aggregate.
+ * `extract` pulls the scored number out of each judge's JSON (e.g. r => r.score).
+ * Judges run in parallel; a judge that throws is dropped (never a fake 0 vote).
+ */
+export async function judgePanel<T>(
+  prompt: string,
+  models: string[],
+  extract: (r: T) => number,
+  opts: { cacheableSystem?: string; tolerance?: number } = {},
+): Promise<PanelResult> {
+  const settled = await Promise.allSettled(
+    models.map((m) => callJudge<T>(prompt, m, { cacheableSystem: opts.cacheableSystem })),
+  );
+  const votes: number[] = [];
+  const used: string[] = [];
+  settled.forEach((s, i) => {
+    if (s.status === 'fulfilled') { votes.push(extract(s.value)); used.push(models[i]); }
+  });
+  if (!votes.length) throw new Error('judgePanel: every judge failed');
+  return aggregatePanel(votes, used, opts.tolerance);
+}
+
 /**
  * Score documentation quality on clarity/completeness/actionability (1-5).
  */
