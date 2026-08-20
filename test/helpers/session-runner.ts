@@ -36,6 +36,26 @@ export interface CostEstimate {
   turnsUsed: number;
 }
 
+/**
+ * Ground-truth usage accumulated from the stream-json assistant events the
+ * runner already parses (each carries the API's own usage block). Replaces
+ * transcript-parsing estimates: per-call counts, cache hit ratio, and a
+ * per-model breakdown come straight from the API's numbers.
+ *
+ * cacheReadTokens === 0 on a multi-turn run is a red flag worth alerting on:
+ * either the prompt prefix is churning per turn, or the model's minimum
+ * cacheable prefix (4,096 tokens on Haiku 4.5) was never reached — both mean
+ * paying full price for repeated context.
+ */
+export interface UsageTruth {
+  apiCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  byModel: Record<string, number>; // model -> api call count
+}
+
 export interface SkillTestResult {
   toolCalls: Array<{ tool: string; input: any; output: string }>;
   browseErrors: string[];
@@ -48,6 +68,8 @@ export interface SkillTestResult {
   model: string;
   /** Time from spawn to first NDJSON line, in ms (added for rate-limit diagnostics) */
   firstResponseMs: number;
+  /** Ground-truth API usage from stream-json events (see UsageTruth). */
+  usage: UsageTruth;
   /** Peak latency between consecutive tool calls, in ms */
   maxInterTurnMs: number;
 }
@@ -210,6 +232,7 @@ export async function runSkillTest(options: {
   // Stream NDJSON from stdout for real-time progress
   const collectedLines: string[] = [];
   let liveTurnCount = 0;
+  const usageTruth: UsageTruth = { apiCalls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, byModel: {} };
   let liveToolCount = 0;
   let firstResponseMs = 0;
   let lastToolTime = 0;
@@ -241,6 +264,16 @@ export async function runSkillTest(options: {
           const event = JSON.parse(line);
           if (event.type === 'assistant') {
             liveTurnCount++;
+            const u = event.message?.usage;
+            if (u) {
+              usageTruth.apiCalls++;
+              usageTruth.inputTokens += u.input_tokens || 0;
+              usageTruth.outputTokens += u.output_tokens || 0;
+              usageTruth.cacheReadTokens += u.cache_read_input_tokens || 0;
+              usageTruth.cacheWriteTokens += u.cache_creation_input_tokens || 0;
+              const m = event.message?.model || 'unknown';
+              usageTruth.byModel[m] = (usageTruth.byModel[m] || 0) + 1;
+            }
             const content = event.message?.content || [];
             for (const item of content) {
               if (item.type === 'tool_use') {
@@ -391,5 +424,9 @@ export async function runSkillTest(options: {
     turnsUsed,
   };
 
-  return { toolCalls, browseErrors, exitReason, duration, output: resultLine?.result || '', costEstimate, transcript, model, firstResponseMs, maxInterTurnMs };
+  if (usageTruth.apiCalls >= 3 && usageTruth.cacheReadTokens === 0) {
+    process.stderr.write('  [cache] WARNING: 0 cache-read tokens across ' + usageTruth.apiCalls + ' API calls — prompt prefix is churning or below the model cache floor; paying full price.
+');
+  }
+  return { toolCalls, browseErrors, exitReason, duration, output: resultLine?.result || '', costEstimate, transcript, model, firstResponseMs, maxInterTurnMs, usage: usageTruth };
 }

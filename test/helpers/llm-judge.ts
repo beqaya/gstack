@@ -56,12 +56,25 @@ export interface RecommendationScore {
  * existing callers; pass a model id (e.g. claude-haiku-4-5-20251001)
  * for cheaper bounded judgments like judgeRecommendation.
  */
-export async function callJudge<T>(prompt: string, model: string = 'claude-sonnet-4-6'): Promise<T> {
+export async function callJudge<T>(
+  prompt: string,
+  model: string = 'claude-sonnet-4-6',
+  opts: { cacheableSystem?: string } = {},
+): Promise<T> {
   const client = new Anthropic();
 
+  // Cache-aware layout: the stable rubric goes into a system block marked
+  // with cache_control so repeated judge calls in one eval run pay 0.1x for
+  // it; only the per-test content rides in the user message. Floor caveat:
+  // a prefix below the model's minimum cacheable size (1,024 tokens on
+  // Sonnet 4.6, 4,096 on Haiku 4.5) silently caches NOTHING — which is why
+  // every call's usage is logged below instead of assumed.
   const makeRequest = () => client.messages.create({
     model,
     max_tokens: 1024,
+    ...(opts.cacheableSystem
+      ? { system: [{ type: 'text' as const, text: opts.cacheableSystem, cache_control: { type: 'ephemeral' as const } }] }
+      : {}),
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -76,6 +89,23 @@ export async function callJudge<T>(prompt: string, model: string = 'claude-sonne
       throw err;
     }
   }
+
+  // Ground-truth usage per judge call — cache behavior must be observed,
+  // never assumed (a below-floor prefix caches nothing with no error).
+  try {
+    const os = await import('os');
+    const path = await import('path');
+    const fs = await import('fs');
+    const u = (response as any).usage || {};
+    const rec = {
+      ts: new Date().toISOString(), model,
+      in: u.input_tokens ?? 0, out: u.output_tokens ?? 0,
+      cache_read: u.cache_read_input_tokens ?? 0, cache_write: u.cache_creation_input_tokens ?? 0,
+    };
+    const dir = path.join(os.homedir(), '.gstack-dev', 'evals');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, 'judge-usage.jsonl'), JSON.stringify(rec) + '\n');
+  } catch { /* telemetry is best-effort, never fails a judgment */ }
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const jsonMatch = text.match(/\{[\s\S]*\}/);
