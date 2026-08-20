@@ -425,8 +425,7 @@ export async function runSkillTest(options: {
   };
 
   if (usageTruth.apiCalls >= 3 && usageTruth.cacheReadTokens === 0) {
-    process.stderr.write('  [cache] WARNING: 0 cache-read tokens across ' + usageTruth.apiCalls + ' API calls — prompt prefix is churning or below the model cache floor; paying full price.
-');
+    process.stderr.write(`  [cache] WARNING: 0 cache-read tokens across ${usageTruth.apiCalls} API calls — prompt prefix is churning or below the model cache floor; paying full price.\n`);
   }
   return { toolCalls, browseErrors, exitReason, duration, output: resultLine?.result || '', costEstimate, transcript, model, firstResponseMs, maxInterTurnMs, usage: usageTruth };
 }
