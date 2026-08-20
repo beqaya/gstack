@@ -10,6 +10,8 @@ import {
   validateDecide,
   makeRefEvent,
   computeActive,
+  computeActiveAsOf,
+  computeInvalidations,
   filterByScope,
   decisionPaths,
   appendEvent,
@@ -64,6 +66,31 @@ describe("validateDecide", () => {
     const r = validateDecide({ decision: "store the key", rationale: PEM_SECRET });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain("HIGH");
+  });
+});
+
+describe("computeActiveAsOf (bi-temporal)", () => {
+  it("a superseded decision is still active AS OF a date before the supersede", () => {
+    const events: DecisionEvent[] = [
+      decide("old", { date: "2026-03-01T00:00:00Z" }),
+      { id: "s1", kind: "supersede", supersedes: "old", scope: "repo",
+        date: "2026-06-01T00:00:00Z", source: "agent" },
+      decide("new", { date: "2026-06-01T00:00:01Z" }),
+    ];
+    expect(computeActiveAsOf(events, "2026-04-15T00:00:00Z").map((d) => d.id)).toEqual(["old"]);
+    expect(computeActiveAsOf(events, "2026-07-01T00:00:00Z").map((d) => d.id)).toEqual(["new"]);
+  });
+  it("a decision does not exist before its own date", () => {
+    const events: DecisionEvent[] = [decide("d", { date: "2026-05-01T00:00:00Z" })];
+    expect(computeActiveAsOf(events, "2026-04-30T00:00:00Z")).toEqual([]);
+  });
+  it("computeInvalidations maps each retired id to its retirement date", () => {
+    const events: DecisionEvent[] = [
+      decide("a", { date: "2026-01-01T00:00:00Z" }),
+      { id: "s", kind: "supersede", supersedes: "a", scope: "repo",
+        date: "2026-02-02T00:00:00Z", source: "agent" },
+    ];
+    expect(computeInvalidations(events).get("a")).toBe("2026-02-02T00:00:00Z");
   });
 });
 

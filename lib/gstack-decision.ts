@@ -195,6 +195,29 @@ export function computeActive(events: DecisionEvent[]): ActiveDecision[] {
 }
 
 /**
+ * Bi-temporal query (Graphiti's validity-window pattern, no graph DB needed):
+ * the event log already carries both time axes — a decide event's `date` is its
+ * valid-from, and the retiring supersede/redact event's `date` is its
+ * invalidated-at. "What was the active set when v1.64 shipped?" is therefore
+ * computable forever from the log alone; only the log (never the compacted
+ * snapshot) can answer it, since compaction drops retired events.
+ */
+export function computeActiveAsOf(events: DecisionEvent[], asOf: string): ActiveDecision[] {
+  return computeActive(events.filter((e) => e.date <= asOf));
+}
+
+/** id -> date of the event that retired it (for annotating history output). */
+export function computeInvalidations(events: DecisionEvent[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const e of events) {
+    if ((e.kind === "supersede" || e.kind === "redact") && e.supersedes && !out.has(e.supersedes)) {
+      out.set(e.supersedes, e.date);
+    }
+  }
+  return out;
+}
+
+/**
  * Scope filter for resurfacing: repo-scoped decisions always apply; branch-scoped
  * only when the branch matches the current context; issue-scoped only when the
  * issue matches. (Recency != relevance — callers filter by scope, not just date.)

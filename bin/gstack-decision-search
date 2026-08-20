@@ -5,7 +5,10 @@
  * Usage:
  *   gstack-decision-search [--query KW] [--scope repo|branch|issue]
  *                          [--branch B] [--issue I] [--recent N] [--all] [--json]
- *                          [--semantic]
+ *                          [--semantic] [--as-of ISO_DATE]
+ *
+ * `--as-of 2026-08-15` answers "what was the active set THEN": decide events
+ * are valid from their own date; a supersede/redact invalidates from ITS date.
  *
  * Reads the BOUNDED active snapshot (decisions.active.json) — O(active), not a full
  * history scan — and rebuilds it from the event log if missing. Scope-filtered to the
@@ -24,6 +27,7 @@ import {
   readSnapshot,
   rebuildSnapshot,
   readEvents,
+  computeActiveAsOf,
   filterByScope,
   datamark,
   type ActiveDecision,
@@ -45,9 +49,16 @@ const recent = recentRaw ? parseInt(recentRaw, 10) : undefined;
 const showAll = args.includes("--all");
 const asJson = args.includes("--json");
 const semantic = args.includes("--semantic");
+const asOf = flagValue(args, "--as-of");
 
 let rows: ActiveDecision[];
-if (showAll) {
+if (asOf) {
+  // Bi-temporal: reconstruct the active set as it stood at a past instant.
+  // Must read the LOG (the snapshot only knows "now"; compaction may have
+  // dropped since-retired events — the log keeps them until --compact, so
+  // as-of answers are exact back to the last compaction, approximate before).
+  rows = computeActiveAsOf(readEvents(paths), asOf);
+} else if (showAll) {
   // --all includes SUPERSEDED decisions (history), but NEVER redacted ones — a redact
   // is an expunge, so it must remove the text from every read path, not just active.
   const events = readEvents(paths);
