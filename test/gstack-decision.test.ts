@@ -139,9 +139,11 @@ describe("filterByScope", () => {
 describe("decisionPaths", () => {
   it("derives log/snapshot/archive under the project slug", () => {
     const p = decisionPaths("garrytan-gstack", "/tmp/gs");
-    expect(p.log).toBe("/tmp/gs/projects/garrytan-gstack/decisions.jsonl");
-    expect(p.snapshot).toBe("/tmp/gs/projects/garrytan-gstack/decisions.active.json");
-    expect(p.archive).toBe("/tmp/gs/projects/garrytan-gstack/decisions.archive.jsonl");
+    // path.join emits the platform separator — normalize before asserting.
+    const posix = (s: string) => s.replace(/\\/g, "/");
+    expect(posix(p.log)).toBe("/tmp/gs/projects/garrytan-gstack/decisions.jsonl");
+    expect(posix(p.snapshot)).toBe("/tmp/gs/projects/garrytan-gstack/decisions.active.json");
+    expect(posix(p.archive)).toBe("/tmp/gs/projects/garrytan-gstack/decisions.archive.jsonl");
   });
 });
 
