@@ -487,6 +487,22 @@ def cmd_done(args):
             "verification refuted it.\n" % (args.item, verdicts[-1])
         )
         sys.exit(13)
+    # Immutable acceptance ledger: an item that declared acceptance criteria
+    # cannot be closed until EVERY criterion is verified pass. A PROVEN verdict
+    # is the worker's own claim; the criteria are the checklist it may not
+    # silently narrow. This is what stops the 3am "declared done on 11 of 12".
+    accept = acceptance_state(args.run, args.item)
+    unmet = {cid: (txt, res) for cid, (txt, res) in accept.items() if res != "pass"}
+    if unmet:
+        lines = "\n  ".join("[%s] %s (%s)" % (cid, txt, res or "unverified")
+                            for cid, (txt, res) in unmet.items())
+        sys.stderr.write(
+            "refusing to mark %s done — %d of %d acceptance criteria are not "
+            "verified pass:\n  %s\nThe acceptance ledger is append-only; meet or "
+            "honestly fail each criterion, never drop one to declare done.\n"
+            % (args.item, len(unmet), len(accept), lines)
+        )
+        sys.exit(18)
     if args.touched:
         dirty = uncommitted(args.touched)
         if dirty:
@@ -537,7 +553,7 @@ def cmd_init(args):
         "created_at": now_ts(),
     }
     atomic_write_json(os.path.join(d, "manifest.json"), manifest)
-    for name in ("queue.jsonl", "journal.jsonl", "parked.jsonl", "ledger.jsonl"):
+    for name in ("queue.jsonl", "journal.jsonl", "parked.jsonl", "ledger.jsonl", "acceptance.jsonl"):
         open(os.path.join(d, name), "a", encoding="utf-8").close()
     print(run_id)
 
@@ -965,6 +981,51 @@ def cmd_budget_check(args):
     sys.exit(6 if state["exhausted"] else 0)
 
 
+def acceptance_state(run_id, item_id):
+    """Latest result per acceptance criterion for an item.
+
+    Returns {criterion_id: (text, latest_result_or_None)}. Criteria are
+    append-only: `criterion` adds one, `criterion-verify` records pass/fail,
+    and there is deliberately no delete — a worker cannot prune an unmet
+    criterion to declare the item done. This is the immutable requirements
+    ledger from Anthropic's long-horizon-harness recipe: the acceptance list
+    the agent may extend and verify but never shrink.
+    """
+    text = {}
+    result = {}
+    for rec in read_jsonl(run_id, "acceptance.jsonl"):
+        if rec.get("item_id") != item_id:
+            continue
+        cid = rec.get("criterion_id")
+        if rec.get("event") == "criterion":
+            text[cid] = rec.get("text", "")
+        elif rec.get("event") == "verify":
+            result[cid] = rec.get("result")
+    return {cid: (text[cid], result.get(cid)) for cid in text}
+
+
+def cmd_criterion(args):
+    """Add an acceptance criterion to an item (append-only, never removable)."""
+    read_manifest(args.run)
+    cid = uuid.uuid4().hex[:8]
+    append_jsonl(args.run, "acceptance.jsonl",
+                 {"event": "criterion", "item_id": args.item, "criterion_id": cid,
+                  "text": args.text})
+    print(cid)
+
+
+def cmd_criterion_verify(args):
+    """Record pass/fail for one acceptance criterion, with evidence."""
+    read_manifest(args.run)
+    if args.result not in ("pass", "fail"):
+        sys.stderr.write("result must be pass or fail\n")
+        sys.exit(5)
+    append_jsonl(args.run, "acceptance.jsonl",
+                 {"event": "verify", "item_id": args.item, "criterion_id": args.criterion,
+                  "result": args.result, "evidence": args.evidence})
+    print("%s: %s" % (args.criterion, args.result))
+
+
 def cmd_skip(args):
     """Manually step over a poison item (the convoy continues without it).
 
@@ -1074,6 +1135,20 @@ def main():
     pk.add_argument("--item", required=True)
     pk.add_argument("--reason", required=True)
     pk.set_defaults(func=cmd_skip)
+
+    pcr = sub.add_parser("criterion")
+    pcr.add_argument("--run", required=True)
+    pcr.add_argument("--item", required=True)
+    pcr.add_argument("--text", required=True)
+    pcr.set_defaults(func=cmd_criterion)
+
+    pcv = sub.add_parser("criterion-verify")
+    pcv.add_argument("--run", required=True)
+    pcv.add_argument("--item", required=True)
+    pcv.add_argument("--criterion", required=True)
+    pcv.add_argument("--result", required=True, choices=["pass", "fail"])
+    pcv.add_argument("--evidence", default="")
+    pcv.set_defaults(func=cmd_criterion_verify)
 
     pj = sub.add_parser("journal")
     pj.add_argument("--run", required=True)
