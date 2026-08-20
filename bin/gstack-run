@@ -245,7 +245,26 @@ def open_items(run_id):
         if rec["event"] == "add":
             titles[iid] = rec["title"]
         status[iid] = rec["event"]
-    return [(i, titles.get(i, "")) for i, s in status.items() if s != "done"]
+    # `done` and `skip` are both terminal: a skipped item is a poison unit the
+    # convoy stepped over so the rest could finish (Gastown's stall-skip), and
+    # must never be handed out again.
+    return [(i, titles.get(i, "")) for i, s in status.items() if s not in ("done", "skip")]
+
+
+# A unit claimed this many times without reaching `done` is treated as poison:
+# it stalls the convoy, so the supervisor skips it and moves on rather than
+# reclaiming it forever. Each stale-lock reap re-opens the item, so without a
+# ceiling one hung unit blocks an overnight run indefinitely.
+SKIP_AFTER_CLAIMS = 3
+
+
+def claim_count(run_id, item_id):
+    """How many times this item has been claimed (proxy for failed attempts)."""
+    n = 0
+    for rec in read_jsonl(run_id, "queue.jsonl"):
+        if rec.get("item_id") == item_id and rec.get("event") == "claim":
+            n += 1
+    return n
 
 
 def pipeline_stages(kind):
@@ -321,6 +340,19 @@ def cmd_claim(args):
         sys.exit(11)
     reap_stale_locks(args.run)
     for item_id, title in open_items(args.run):
+        # Stall-skip: a unit re-claimed too many times without finishing is
+        # poison. Step over it (record the skip so it's visible) and keep the
+        # convoy moving rather than handing it out a fourth time.
+        if claim_count(args.run, item_id) >= SKIP_AFTER_CLAIMS:
+            append_jsonl(args.run, "queue.jsonl",
+                         {"event": "skip", "item_id": item_id,
+                          "reason": "claimed %d times without done" % SKIP_AFTER_CLAIMS})
+            append_jsonl(args.run, "journal.jsonl",
+                         {"event": "skip", "item_id": item_id, "title": title,
+                          "reason": "stall-skip after %d claims" % SKIP_AFTER_CLAIMS})
+            sys.stderr.write("skipped poison item %s (%s): claimed %d times without done\n"
+                             % (item_id, title, SKIP_AFTER_CLAIMS))
+            continue
         if try_lock(args.run, item_id, args.worker):
             append_jsonl(args.run, "queue.jsonl",
                          {"event": "claim", "item_id": item_id, "worker": args.worker})
@@ -933,6 +965,21 @@ def cmd_budget_check(args):
     sys.exit(6 if state["exhausted"] else 0)
 
 
+def cmd_skip(args):
+    """Manually step over a poison item (the convoy continues without it).
+
+    A terminal event like `done`, but it records that the item was NOT
+    completed and why — so a skipped unit is visible in the report, never
+    silently dropped or silently retried.
+    """
+    read_manifest(args.run)
+    append_jsonl(args.run, "queue.jsonl",
+                 {"event": "skip", "item_id": args.item, "reason": args.reason})
+    append_jsonl(args.run, "journal.jsonl",
+                 {"event": "skip", "item_id": args.item, "reason": args.reason})
+    print("skipped %s: %s" % (args.item, args.reason))
+
+
 def cmd_stop(args):
     m = read_manifest(args.run)
     remaining = [{"item_id": i, "title": t} for i, t in open_items(args.run)]
@@ -952,6 +999,7 @@ def cmd_report(args):
     m = read_manifest(args.run)
     queue_records, bad_queue = read_jsonl_counted(args.run, "queue.jsonl")
     done_ids = {r.get("item_id") for r in queue_records if r.get("event") == "done"}
+    skipped_ids = {r.get("item_id") for r in queue_records if r.get("event") == "skip"}
     awaiting_recs, decisions, bad_parked = parked_state(args.run)
     # Every item that was ever parked stays out of `completed` — parking wrote a
     # queue `done` event, and a resolved approval is still not work this run did.
@@ -965,6 +1013,7 @@ def cmd_report(args):
         "completed": len(done_ids - parked_ids),
         "parked": len(awaiting_ids),
         "parked_resolved": len(decisions),
+        "skipped": len(skipped_ids),
         "open": len(open_items(args.run)),
         "spent": b["spent"],
         "budget": b["budget"],
@@ -1019,6 +1068,12 @@ def main():
                     help="a file this item changed; repeatable. done refuses "
                          "if any still has uncommitted changes")
     pd.set_defaults(func=cmd_done)
+
+    pk = sub.add_parser("skip")
+    pk.add_argument("--run", required=True)
+    pk.add_argument("--item", required=True)
+    pk.add_argument("--reason", required=True)
+    pk.set_defaults(func=cmd_skip)
 
     pj = sub.add_parser("journal")
     pj.add_argument("--run", required=True)
