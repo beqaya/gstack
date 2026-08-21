@@ -1,0 +1,67 @@
+#!/usr/bin/env bun
+/**
+ * gstack-skill-emit — agentskills.io conformance check + canonical emission.
+ *
+ * The Agent Skills standard is the interop layer ~45 hosts read. This proves a
+ * gstack SKILL.md is spec-compliant (the prerequisite for collapsing the
+ * per-host adapter pipeline) and can emit the canonical single artifact.
+ *
+ * Usage:
+ *   gstack-skill-emit --check <SKILL.md> [--json]      # conformance report
+ *   gstack-skill-emit --check-all                      # every gstack SKILL.md
+ *   gstack-skill-emit --emit --name N --desc D --body-file F   # canonical SKILL.md
+ *
+ * Exit: 0 conformant · 2 non-conformant · 5 usage
+ */
+import { readFileSync, readdirSync, existsSync } from 'fs';
+import { join, resolve } from 'path';
+import { checkConformance, emitSkill } from '../lib/gstack-skill-emit';
+
+const argv = process.argv.slice(2);
+function flag(name: string): string | undefined {
+  const i = argv.indexOf(name);
+  return i >= 0 ? argv[i + 1] : undefined;
+}
+
+if (argv.includes('--emit')) {
+  const name = flag('--name');
+  const desc = flag('--desc');
+  const bodyFile = flag('--body-file');
+  if (!name || !desc || !bodyFile) {
+    process.stderr.write('emit: --name, --desc, and --body-file are required\n');
+    process.exit(5);
+  }
+  process.stdout.write(emitSkill({ name, description: desc, body: readFileSync(bodyFile, 'utf-8') }));
+  process.exit(0);
+}
+
+if (argv.includes('--check-all')) {
+  const root = resolve(import.meta.dir, '..');
+  let bad = 0, checked = 0;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const p = join(root, entry.name, 'SKILL.md');
+    if (!existsSync(p)) continue;
+    checked++;
+    const r = checkConformance(readFileSync(p, 'utf-8'));
+    if (!r.ok) { bad++; console.log(`✗ ${entry.name}: ${r.errors.join('; ')}`); }
+  }
+  console.log(`\n${checked - bad}/${checked} SKILL.md files are agentskills.io-conformant`);
+  process.exit(bad ? 2 : 0);
+}
+
+const file = flag('--check');
+if (!file) {
+  process.stderr.write('usage: gstack-skill-emit --check <SKILL.md> | --check-all | --emit ...\n');
+  process.exit(5);
+}
+const r = checkConformance(readFileSync(file, 'utf-8'));
+if (argv.includes('--json')) {
+  console.log(JSON.stringify(r, null, 2));
+} else {
+  console.log(`${r.ok ? '✓ CONFORMANT' : '✗ NOT CONFORMANT'}  ${file}`);
+  if (r.name) console.log(`  name: ${r.name}`);
+  for (const e of r.errors) console.log(`  ERROR: ${e}`);
+  for (const w of r.warnings) console.log(`  warn:  ${w}`);
+}
+process.exit(r.ok ? 0 : 2);

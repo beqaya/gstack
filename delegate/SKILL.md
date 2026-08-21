@@ -8,14 +8,13 @@ description: |
   subagent per unit, has a DIFFERENT agent independently verify each completed
   unit per references/independent-verification.md, then reports what shipped,
   what failed, and what is still unverified. The controller's own tool access
-  omits Edit and Write as a loud reminder, not a hard gate -- this harness's
-  actual enforcement mechanism is a PreToolUse hook (see references/thin-orchestrator.md
-  and freeze/SKILL.md), which /delegate does not ship by default. Not for everything:
-  skip this for single-file edits, conversational answers, or any job where
-  dispatch overhead would exceed the work itself -- see
-  references/thin-orchestrator.md "When NOT to use this pattern". Use when
-  asked to "delegate this", "run this as an orchestrator", "fan this out", or
-  for any job with 3+ independent units of work. (gstack)
+  omits Edit and Write as a loud reminder, not a hard gate -- the actual
+  enforcement is a PreToolUse hook (see references/thin-orchestrator.md and
+  freeze/SKILL.md), which /delegate does not ship by default. Not for
+  everything: skip this for single-file edits, conversational answers, or any
+  job where dispatch overhead would exceed the work itself. Use when asked to
+  "delegate this", "run this as an orchestrator", "fan this out", or for any
+  job with 3+ independent units of work. (gstack)
 triggers:
   - delegate this
   - run this as an orchestrator
