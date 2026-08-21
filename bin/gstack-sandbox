@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""gstack-sandbox — run a command inside an OS/kernel sandbox when one is available.
+
+The 2026 consensus defense architecture is three layers: deterministic policy
+over tool calls (gstack's hooks), OS-level containment of what a command can
+touch (Anthropic's srt — restricted account + network filter), and a kernel
+boundary for unattended/untrusted work (Docker Sandboxes' microVM). gstack owns
+layer 1; this wraps a command in layer 2 or 3 when the backend is installed.
+
+Deliberately OPT-IN and never the default: sandboxing changes how a command
+runs, so an interactive session where the founder is watching does not need it,
+and silently wrapping every command would be a surprise. Reach for it on
+unattended flows (overnight run-supervisor, /delegate waves, untrusted-branch
+checkout) via `--strict`, which FAILS CLOSED if no sandbox is present rather
+than running the command unprotected.
+
+Backends, best kernel-isolation first (both Windows-native, no WSL2):
+    sbx  — Docker Sandboxes: per-command microVM (own kernel). `sbx run -- CMD`
+    srt  — Anthropic sandbox-runtime: restricted account + WFP network filter.
+
+Usage:
+    gstack-sandbox --detect                       # which backends are installed
+    gstack-sandbox [--tier auto|sbx|srt] [--strict] -- CMD [ARGS...]
+
+Exit:
+    (passthrough of CMD's exit code when run)
+    3  --strict and no backend available (fail closed)
+    5  usage error
+"""
+import os
+import shutil
+import subprocess
+import sys
+
+
+def available():
+    """Installed backends, strongest isolation first."""
+    order = []
+    if shutil.which("sbx"):
+        order.append("sbx")
+    if shutil.which("srt"):
+        order.append("srt")
+    return order
+
+
+def wrap(tier, cmd):
+    """Build the argv that runs `cmd` under `tier`. Pure — no execution."""
+    if tier == "sbx":
+        return ["sbx", "run", "--", *cmd]
+    if tier == "srt":
+        # srt wraps a command in the sandboxed account; `run` is its exec verb.
+        return ["srt", "run", "--", *cmd]
+    raise ValueError("unknown tier: %s" % tier)
+
+
+def parse(argv):
+    tier = "auto"
+    strict = False
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--detect":
+            return {"detect": True}
+        if a == "--tier":
+            tier = argv[i + 1] if i + 1 < len(argv) else ""
+            i += 2
+            continue
+        if a == "--strict":
+            strict = True
+            i += 1
+            continue
+        if a == "--":
+            return {"tier": tier, "strict": strict, "cmd": argv[i + 1:]}
+        # A bare token before `--` is a usage error (avoid swallowing the command).
+        return {"error": "unexpected argument %r (put the command after --)" % a}
+    return {"error": "no command given (use -- CMD ...)"}
+
+
+def main():
+    argv = sys.argv[1:]
+    if not argv:
+        sys.stderr.write(__doc__.split("Usage:", 1)[1])
+        sys.exit(5)
+    args = parse(argv)
+
+    if args.get("detect"):
+        av = available()
+        print("available sandbox backends: %s" % (", ".join(av) if av else "none"))
+        print("recommended tier: %s" % (av[0] if av else "none (install Docker Sandboxes 'sbx' or Anthropic 'srt')"))
+        sys.exit(0)
+
+    if args.get("error"):
+        sys.stderr.write("gstack-sandbox: %s\n" % args["error"])
+        sys.exit(5)
+
+    cmd = args["cmd"]
+    if not cmd:
+        sys.stderr.write("gstack-sandbox: empty command after --\n")
+        sys.exit(5)
+
+    tier = args["tier"]
+    av = available()
+    chosen = None
+    if tier == "auto":
+        chosen = av[0] if av else None
+    elif tier in ("sbx", "srt"):
+        chosen = tier if tier in av else None
+    else:
+        sys.stderr.write("gstack-sandbox: unknown tier %r (auto|sbx|srt)\n" % tier)
+        sys.exit(5)
+
+    if not chosen:
+        if args["strict"]:
+            sys.stderr.write(
+                "gstack-sandbox: --strict and no %s backend available — refusing to run "
+                "unprotected. Install Docker Sandboxes ('sbx') or Anthropic sandbox-runtime "
+                "('srt'), or drop --strict to run without a sandbox.\n"
+                % (tier if tier != "auto" else "sandbox"))
+            sys.exit(3)
+        sys.stderr.write(
+            "gstack-sandbox: no sandbox backend available — running UNPROTECTED "
+            "(pass --strict to fail closed instead).\n")
+        os.execvp(cmd[0], cmd)  # replace self; passthrough exit code
+
+    wrapped = wrap(chosen, cmd)
+    sys.stderr.write("gstack-sandbox: running under %s\n" % chosen)
+    os.execvp(wrapped[0], wrapped)
+
+
+if __name__ == "__main__":
+    main()
