@@ -120,11 +120,16 @@ def main():
         sys.stderr.write(
             "gstack-sandbox: no sandbox backend available — running UNPROTECTED "
             "(pass --strict to fail closed instead).\n")
-        os.execvp(cmd[0], cmd)  # replace self; passthrough exit code
+        # subprocess, not os.exec*: Windows has no real exec (os.execvp returns
+        # 0 to the parent instead of replacing it), which drops the command's
+        # exit code. subprocess.run passes it through on every platform.
+        sys.stderr.flush()
+        sys.exit(subprocess.run(cmd).returncode)
 
     wrapped = wrap(chosen, cmd)
     sys.stderr.write("gstack-sandbox: running under %s\n" % chosen)
-    os.execvp(wrapped[0], wrapped)
+    sys.stderr.flush()
+    sys.exit(subprocess.run(wrapped).returncode)
 
 
 if __name__ == "__main__":
