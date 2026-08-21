@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.65.0.0] - 2026-08-21
+
+**Your skills now measure their own worth, learn from every run, and vet themselves before you look. Sixteen research-backed upgrades, all live.**
+
+This release lands three phases of work driven by a deep survey of the 2026 agent-tooling landscape, filtered to what actually moves the needle for a solo, local-first, Windows workflow. The through-line: the field independently reinvented gstack's own designs (compile-then-replay browsing, file-based memory, hook-based guards), so the value was never in adopting a framework, it was in absorbing sixteen specific, proven refinements. Every one is built, tested, and running.
+
+### The numbers that matter
+
+Source: this branch's own test suites and the shipped tooling (`bun test`, `~/.claude/skills/gstack/bin/`).
+
+| Metric | Before | After | Δ |
+|---|---|---|---|
+| Skills that can measure their own causal lift | 0 | all (paired ablation) | new capability |
+| Skills that re-load curated lessons at runtime | 0 | all (ACE playbooks) | new capability |
+| SKILL.md supply-chain lint | none | every install/PR gated | new capability |
+| agentskills.io conformance | unmeasured | 61/61 conformant | verified |
+| New/upgraded tools | — | 5 new bins + 6 subcommands | ~150 new tests |
+
+The single most consequential number is the first: SkillsBench found ~19% of published skills *hurt* the agent, and gstack could never tell which of its own did. Now `gstack-skill-ablate` runs a task with a skill installed versus stripped and reports HELPS / NEUTRAL / HURTS, the fitness function everything else optimizes against.
+
+### What this means for you
+
+The compounding self-improvement loop is closed. A lesson you hit today becomes an approved playbook bullet that `/ship` re-reads tomorrow (`gstack-playbook`); a codified `/skillify` flow heals itself when Lezam renames a button instead of aborting; an overnight `run-supervisor` batch hands you a ranked, machine-gated review queue instead of raw diffs, and steps over a poison unit instead of hanging on it; a malicious ClawHub skill is blocked before it loads (`gstack-skill-lint`); and round trips, the real cost your own census found, get named for collapse (`gstack-context-census --chains`). To see it, run any of those commands, or open the enhancement-research document whose every green item is one of these.
+
+### Itemized changes
+
+#### Added
+- **Paired skill-ablation** (`gstack-skill-ablate`): measure a skill's causal lift (SkillsBench method); exit 3 on HURTS.
+- **ACE learned playbooks** (`gstack-playbook`): per-skill lessons grown by delta-append, human-approved, injected at runtime; fed by `/capture-lesson`.
+- **Skill supply-chain lint** (`gstack-skill-lint`): blocks instruction-body injection / exfil / invisible-unicode in SKILL.md bodies.
+- **agentskills.io conformance + emission** (`gstack-skill-emit`): validates and emits the standard artifact ~45 hosts read.
+- **Opt-in sandbox tiers** (`gstack-sandbox`): wraps a command in Docker Sandboxes or Anthropic srt; `--strict` fails closed for unattended runs.
+- **Landing queue + machine gates + stall-skip + immutable acceptance ledger** (`gstack-run gate|landing|skip|criterion`): a ranked, vetted review queue; `done` refuses until every acceptance criterion is met.
+- **Chain mining** (`gstack-context-census --chains`): finds repeated tool-call sequences worth collapsing into scripts.
+- **Bi-temporal decisions** (`gstack-decision-search --as-of`): what was active at a past instant.
+- **Panel-of-judges** (`llm-judge` `judgePanel`/`aggregatePanel`): median of cheap judges, flags disagreement for escalation.
+- **Intent-cache self-healing** (`browse/src/heal.ts`): re-resolves a stale `@ref` by captured role+name so codified steps survive page changes.
+- **Ground-truth eval usage + cache-aware judging**: per-call API usage from stream-json, a warning when a multi-turn run reads zero cache.
+- **Tool-call batching directive** injected into every skill; **router self-name triggers** so a bare skill name routes.
+
+#### Changed
+- Absorbed upstream v1.64.0.0; restored the fork's onboarding-deferral sentinel and "Boil the Lake" wording that an earlier upstream merge had dropped.
+- Fixed the generated-file guard (silent allow), unguarded jq call sites in /review and /ship, and `.exe`-first binary resolution on Windows (the prior fix was dead code).
+
 ## [1.64.0.0] - 2026-08-14
 
 **Ninety fixes in one wave. Every guard that said it was protecting you now actually does.**
