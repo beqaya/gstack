@@ -47,4 +47,20 @@ describe('gstack-sandbox', () => {
     const r = run(['--tier', 'firecracker', '--', 'echo', 'x']);
     expect(r.code).toBe(5);
   }, T);
+
+  test('the srt wrap form is a direct command, never a nonexistent `run` subcommand', () => {
+    // Regression: srt takes the command directly (`srt -- cmd`); it has no
+    // `run` verb, so `srt run -- cmd` would try to run a command named "run".
+    // Introspect wrap() via the python module to assert the argv shape.
+    const o = spawnSync(['python', '-c',
+      `import importlib.util,sys
+spec=importlib.util.spec_from_file_location('sb', r'${BIN.replace(/\\/g, '\\\\')}')
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+w=m.wrap('srt',['echo','hi'])
+print('run' if 'run' in w else 'norun', w[-2], w[-1])`],
+      { env: { ...process.env } });
+    const out = o.stdout.toString().trim();
+    expect(out.startsWith('norun')).toBe(true);   // no `run` subcommand
+    expect(out.endsWith('echo hi')).toBe(true);    // command passes through intact
+  }, T);
 });

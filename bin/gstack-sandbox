@@ -43,13 +43,27 @@ def available():
     return order
 
 
+def backend_bin(tier):
+    """Full path to the backend executable.
+
+    On Windows an npm-global bin is `srt.cmd`, and subprocess.run(["srt", ...])
+    does NOT apply PATHEXT (unlike a shell), so the bare name raises
+    FileNotFoundError. shutil.which resolves the real, launchable path
+    (srt.cmd on Windows) — use that, not the bare name.
+    """
+    return shutil.which(tier) or tier
+
+
 def wrap(tier, cmd):
     """Build the argv that runs `cmd` under `tier`. Pure — no execution."""
+    exe = backend_bin(tier)
     if tier == "sbx":
-        return ["sbx", "run", "--", *cmd]
+        return [exe, "run", "--", *cmd]
     if tier == "srt":
-        # srt wraps a command in the sandboxed account; `run` is its exec verb.
-        return ["srt", "run", "--", *cmd]
+        # srt takes the command DIRECTLY (`srt [options] command...`), not a
+        # `run` subcommand — its only subcommands are windows-install/uninstall.
+        # `--` stops srt's own option parsing so the command's flags pass through.
+        return [exe, "--", *cmd]
     raise ValueError("unknown tier: %s" % tier)
 
 
