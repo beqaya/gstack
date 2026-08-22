@@ -34,7 +34,14 @@ import sys
 
 
 def available():
-    """Installed backends, strongest isolation first."""
+    """Installed backends, strongest isolation first.
+
+    GSTACK_SANDBOX_OFF=1 reports none — a kill switch so a caller can force the
+    unprotected/fail-closed path regardless of what is installed (matches the
+    GSTACK_SECURITY_OFF convention).
+    """
+    if os.environ.get("GSTACK_SANDBOX_OFF") == "1":
+        return []
     order = []
     if shutil.which("sbx"):
         order.append("sbx")

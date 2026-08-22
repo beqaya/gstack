@@ -9,10 +9,12 @@ import path from 'path';
 const BIN = path.resolve(__dirname, '..', 'bin', 'gstack-sandbox');
 const T = 30000;
 
-function run(args: string[]) {
-  const o = spawnSync(['python', BIN, ...args], { env: { ...process.env } });
+function run(args: string[], extraEnv: Record<string,string> = {}) {
+  const o = spawnSync(['python', BIN, ...args], { env: { ...process.env, ...extraEnv } });
   return { code: o.exitCode ?? -1, out: o.stdout.toString(), err: o.stderr.toString() };
 }
+// Force the "no backend installed" condition deterministically, whatever the box has.
+const NONE = { GSTACK_SANDBOX_OFF: '1' };
 
 describe('gstack-sandbox', () => {
   test('--detect reports availability without running anything', () => {
@@ -22,8 +24,7 @@ describe('gstack-sandbox', () => {
   }, T);
 
   test('--strict fails closed (exit 3) when no backend is installed', () => {
-    // On this dev box neither srt nor sbx is installed, so strict must refuse.
-    const r = run(['--strict', '--', 'echo', 'x']);
+    const r = run(['--strict', '--', 'echo', 'x'], NONE);
     expect(r.code).toBe(3);
     expect(r.err).toContain('refusing to run unprotected');
   }, T);
@@ -33,7 +34,7 @@ describe('gstack-sandbox', () => {
     // warning. (Grandchild stdout capture through bun→python→python is flaky on
     // Windows, so assert the exit code and the wrapper's own stderr, not the
     // inner stdout — the wrapper is proven to passthrough stdout when run directly.)
-    const r = run(['--', 'python', '-c', 'import sys; sys.exit(7)']);
+    const r = run(['--', 'python', '-c', 'import sys; sys.exit(7)'], NONE);
     expect(r.code).toBe(7);
     expect(r.err).toContain('UNPROTECTED');
   }, T);
@@ -53,9 +54,8 @@ describe('gstack-sandbox', () => {
     // `run` verb, so `srt run -- cmd` would try to run a command named "run".
     // Introspect wrap() via the python module to assert the argv shape.
     const o = spawnSync(['python', '-c',
-      `import importlib.util,sys
-spec=importlib.util.spec_from_file_location('sb', r'${BIN.replace(/\\/g, '\\\\')}')
-m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+      `from importlib.machinery import SourceFileLoader
+m=SourceFileLoader('sb', r'${BIN.replace(/\\/g, '\\\\')}').load_module()
 w=m.wrap('srt',['echo','hi'])
 print('run' if 'run' in w else 'norun', w[-2], w[-1])`],
       { env: { ...process.env } });
