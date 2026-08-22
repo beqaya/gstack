@@ -937,11 +937,15 @@ sections. Read a section in full before doing its step; do not work from memory.
 
 1. Check the current branch. If on the base branch or the repo's default branch, **abort**: "You're on the base branch. Ship from a feature branch."
 
-2. Run `git status` (never use `-uall`). Uncommitted changes are always included — no need to ask.
+2. Understand what's being shipped in ONE command — status, changed-file stat, and the commit list are three read-only inspections with no decision between them, so run them together, not as three separate calls (a round-trip the census flagged as collapsible):
 
-3. Run `git diff <base>...HEAD --stat` and `git log <base>..HEAD --oneline` to understand what's being shipped.
+```bash
+git status; echo "--- stat:"; git diff <base>...HEAD --stat; echo "--- commits:"; git log <base>..HEAD --oneline
+```
 
-4. Check review readiness:
+Never use `git status -uall`. Uncommitted changes are always included — no need to ask.
+
+3. Check review readiness:
 
 ## Review Readiness Dashboard
 
