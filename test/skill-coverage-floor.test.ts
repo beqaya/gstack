@@ -129,6 +129,12 @@ describe('skill-coverage-floor: every skill passes structural compliance', () =>
 
       test('generated header present (only edit .tmpl, not .md)', () => {
         const content = readSkillMd(skill)!;
+        // The header only applies to template-generated skills. Hand-authored
+        // skills (delegate, session-lock) have no co-located SKILL.md.tmpl and
+        // legitimately carry no generated header — .tmpl presence is the exact
+        // invariant, so this stays self-maintaining for any future hand-authored
+        // skill. Every other structural check below still applies to them.
+        if (!fs.existsSync(path.join(REPO_ROOT, skill, 'SKILL.md.tmpl'))) return;
         expect(content).toContain('AUTO-GENERATED from SKILL.md.tmpl');
       });
 

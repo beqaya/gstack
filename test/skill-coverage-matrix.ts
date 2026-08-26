@@ -172,14 +172,24 @@ export const SKILL_COVERAGE: Record<string, SkillCoverage> = {
     gate: ['test/skill-coverage-floor.test.ts'],
     periodic: ['test/regression-1611-gbrain-sync-resume.test.ts'],
   },
-  'open-gstack-browser': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  'connect-chrome': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
   'pair-agent': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
   scrape: { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
   skillify: { gate: ['test/skill-e2e-skillify.test.ts', 'test/skill-coverage-floor.test.ts'], periodic: [] },
   learn: { gate: ['test/skill-e2e-learnings.test.ts', 'test/skill-coverage-floor.test.ts'], periodic: [] },
   'plan-tune': { gate: ['test/skill-e2e-plan-tune.test.ts', 'test/skill-coverage-floor.test.ts'], periodic: [] },
 
-  // ─── iOS family ─────────────────────────────────────────────
+  // ─── Orchestration + session infra ──────────────────────────
+  // Hand-authored (delegate, session-lock) and template-generated infra
+  // skills. Floor-only is the eval-first minimum; behavioral E2E can layer on.
+  delegate: { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  'run-supervisor': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  'session-lock': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  observe: { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  scratch: { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  parity: { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  'capture-lesson': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
+  'verify-outcome': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
 
   // ─── Safety / housekeeping ──────────────────────────────────
   careful: { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
