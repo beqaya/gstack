@@ -8,17 +8,14 @@
 import type { HostConfig } from '../scripts/host-config';
 import claude from './claude';
 import codex from './codex';
-import factory from './factory';
-import kiro from './kiro';
-import opencode from './opencode';
-import slate from './slate';
 import cursor from './cursor';
-import openclaw from './openclaw';
-import hermes from './hermes';
 import gbrain from './gbrain';
 
-/** All registered host configs. Add new hosts here. */
-export const ALL_HOST_CONFIGS: HostConfig[] = [claude, codex, factory, kiro, opencode, slate, cursor, openclaw, hermes, gbrain];
+/** All registered host configs. Add new hosts here.
+ *  Trimmed 2026-08 to the hosts actually in use here (claude + the installed
+ *  codex/cursor CLIs + the gbrain search host); factory/kiro/opencode/slate/
+ *  openclaw/hermes adapters were removed as dead maintenance weight. */
+export const ALL_HOST_CONFIGS: HostConfig[] = [claude, codex, cursor, gbrain];
 
 /** Map from host name to config. */
 export const HOST_CONFIG_MAP: Record<string, HostConfig> = Object.fromEntries(
@@ -65,4 +62,4 @@ export function getExternalHosts(): HostConfig[] {
 }
 
 // Re-export individual configs for direct import
-export { claude, codex, factory, kiro, opencode, slate, cursor, openclaw, hermes, gbrain };
+export { claude, codex, cursor, gbrain };

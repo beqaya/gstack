@@ -5,8 +5,7 @@
  * The override mechanism lives in scripts/gen-skill-docs.ts: when invoked
  * with --respect-detection, it reads ~/.gstack/gbrain-detection.json and
  * un-suppresses GBRAIN_CONTEXT_LOAD + GBRAIN_SAVE_RESULTS for hosts that
- * statically list them in suppressedResolvers (claude, codex, slate,
- * factory, opencode, openclaw, cursor, kiro).
+ * statically list them in suppressedResolvers (claude, codex, cursor).
  *
  * Tests drive gen-skill-docs as a subprocess against a temp GSTACK_HOME
  * with each detection state, then assert what landed in the generated

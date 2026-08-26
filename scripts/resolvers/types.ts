@@ -19,7 +19,7 @@ export interface HostPaths {
 /**
  * Make a host path safe to interpolate INSIDE DOUBLE QUOTES in generated bash.
  *
- * Tilde-based hosts (Claude, factory) resolve to paths like
+ * Tilde-based hosts (Claude) resolve to paths like
  * `~/.claude/skills/gstack/bin`. Bash only performs tilde expansion when the
  * `~` is UNQUOTED, so `"~/.claude/..."` is a literal relative path that never
  * resolves. A `[ -x "~/..." ]` test is therefore always false and a

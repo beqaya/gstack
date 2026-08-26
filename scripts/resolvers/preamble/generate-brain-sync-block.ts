@@ -31,7 +31,7 @@ import type { TemplateContext } from '../types';
 import { quoteSafePath } from '../types';
 
 export function generateBrainSyncBlock(ctx: TemplateContext): string {
-  const isBrainHost = ctx.host === 'gbrain' || ctx.host === 'hermes';
+  const isBrainHost = ctx.host === 'gbrain';
   return `## Artifacts Sync (skill start)
 
 \`\`\`bash

@@ -1,8 +1,8 @@
 /**
- * Static invariant: the two install targets that cherry-pick SKILL.md (Claude
- * prefixed dirs + Kiro) must ALSO install the sections/ subdir, or a carved
- * skill's runtime "Read sections/<name>.md" 404s. codex/factory/opencode link
- * the whole generated dir, so sections ride along for free there.
+ * Static invariant: the install target that cherry-picks SKILL.md (Claude
+ * prefixed dirs) must ALSO install the sections/ subdir, or a carved skill's
+ * runtime "Read sections/<name>.md" 404s. codex links the whole generated dir,
+ * so sections ride along for free there.
  *
  * Matches the repo's static-tripwire style (setup-windows-fallback,
  * cdp-session-cleanup). End-to-end "sections resolve in a temp install" runs in
@@ -30,14 +30,6 @@ describe('setup links sections/ for cherry-pick install targets', () => {
     // sections install must route through the windows-safe helper, not raw ln.
     expect(body).toMatch(/_link_or_copy\s+"\$gstack_dir\/\$dir_name\/sections"\s+"\$target\/sections"/);
     expect(body).toMatch(/if \[ -d "\$gstack_dir\/\$dir_name\/sections" \]/);
-  });
-
-  test('kiro per-skill loop rewrites + copies sections/*', () => {
-    // Kiro builds from the codex output and sed-rewrites paths; sections must get
-    // the same rewrite so they resolve under ~/.kiro, not ~/.codex or ~/.claude.
-    expect(SETUP).toMatch(/if \[ -d "\$skill_dir\/sections" \]/);
-    expect(SETUP).toMatch(/mkdir -p "\$target_dir\/sections"/);
-    expect(SETUP).toContain('$target_dir/sections/$(basename "$section_file")');
   });
 
   test('no raw ln introduced (windows-fallback invariant still holds)', () => {

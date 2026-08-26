@@ -15,13 +15,13 @@
  */
 
 export interface HostConfig {
-  /** Unique host identifier (e.g., 'opencode'). Must match filename in hosts/. */
+  /** Unique host identifier (e.g., 'codex'). Must match filename in hosts/. */
   name: string;
-  /** Human-readable name for UI/logs (e.g., 'OpenCode'). */
+  /** Human-readable name for UI/logs (e.g., 'OpenAI Codex CLI'). */
   displayName: string;
-  /** Binary name for `command -v` detection (e.g., 'opencode'). */
+  /** Binary name for `command -v` detection (e.g., 'codex'). */
   cliCommand: string;
-  /** Alternative binary names (e.g., ['droid'] for factory). */
+  /** Alternative binary names (e.g., ['agents'] for codex). */
   cliAliases?: string[];
 
   // --- Path Configuration ---
