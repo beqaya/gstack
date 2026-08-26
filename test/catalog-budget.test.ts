@@ -24,13 +24,23 @@ import { skillCensus } from './helpers/skill-census';
  *           line item, run parseFrontmatter() below and sum
  *           Buffer.byteLength(name) + Buffer.byteLength(description);
  *           token-equivalents = ceil(bytes / 4).
- *   result  53 authored skills = 4,371 bytes (1,093 token-equivalents);
- *           + root router alias 49 bytes = 4,420 bytes total
- *           = 1,105 token-equivalents (measured 2026-08-12)
- * Ceiling is 1,150 token-equivalents (4,600 bytes), so headroom is 180 bytes
+ *   result  57 authored skills incl. the root router alias = 4,872 bytes
+ *           = 1,218 token-equivalents (measured 2026-08-27)
+ * Ceiling is 1,270 token-equivalents (5,080 bytes), so headroom is 208 bytes
  * (~4%). Dominant skill: design-consultation at 229 bytes name+description.
+ *
+ * Ratcheted 1,150 → 1,270 on 2026-08-27: the authored-skill tree grew 53 → 57
+ * since the 1,105 baseline (measured at commit d078622b, v1.62.0.0, 2026-08-12).
+ * Tree diff of that baseline against HEAD: added capture-lesson, connect-chrome,
+ * delegate, observe, parity, run-supervisor, scratch, session-lock,
+ * verify-outcome (the enforcement / guards / observability skills, authored on
+ * branches Aug 4–16 and landed on main after the baseline); removed the 5 iOS
+ * skills plus open-gstack-browser (retired; connect-chrome is its replacement,
+ * so that pair is a rename, not net growth). Every entry is under the 260-byte
+ * per-skill cap; the growth is more skills, not fatter blurbs, so the honest
+ * fix is a ceiling ratchet, not trimming legitimate descriptions.
  */
-const CATALOG_BUDGET_TOKEN_EQUIVALENTS = 1_150;
+const CATALOG_BUDGET_TOKEN_EQUIVALENTS = 1_270;
 
 // Largest today: design-consultation at 229 bytes. A description that needs
 // more than 260 bytes is a body paragraph, not a catalog entry.
