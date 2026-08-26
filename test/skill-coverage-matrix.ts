@@ -180,11 +180,6 @@ export const SKILL_COVERAGE: Record<string, SkillCoverage> = {
   'plan-tune': { gate: ['test/skill-e2e-plan-tune.test.ts', 'test/skill-coverage-floor.test.ts'], periodic: [] },
 
   // ─── iOS family ─────────────────────────────────────────────
-  'ios-qa': { gate: ['test/skill-e2e-ios.test.ts', 'test/skill-coverage-floor.test.ts'], periodic: ['test/skill-e2e-ios-device.test.ts', 'test/skill-e2e-ios-swift-build.test.ts'] },
-  'ios-fix': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
-  'ios-clean': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
-  'ios-sync': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
-  'ios-design-review': { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
 
   // ─── Safety / housekeeping ──────────────────────────────────
   careful: { gate: ['test/skill-coverage-floor.test.ts'], periodic: [] },
