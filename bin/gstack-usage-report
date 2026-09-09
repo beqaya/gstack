@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""gstack-usage-report — one honest picture of which skills actually run.
+
+Five recorders write skill activity and none of them sees the whole picture, so
+reading any one of them produces a confident wrong answer. Two concrete ways
+that has already happened:
+
+  * `analytics/skill-usage.jsonl` mixes two unrelated record shapes. The
+    PostToolUse observer writes {skill, ts, session}. The careful/freeze guards
+    write {event: hook_fire, skill, pattern, repo} — a guard catching a
+    dangerous command, not a skill being invoked. Counting lines conflates them
+    and `careful` looks like the most-used skill in the suite.
+
+  * The PostToolUse observer only fires on the `Skill` tool. A skill that is
+    followed by reading its SKILL.md — which the routing rules in CLAUDE.md ask
+    for — never touches that tool and is never recorded. `browse`,
+    `plan-design-review` and `autoplan` appear in the project timelines and in
+    no line of skill-usage.jsonl.
+
+This merges every recorder, keeps provenance so a count can be traced back, and
+prints what none of them can see. It reads only; it writes nothing.
+"""
+import argparse
+import collections
+import glob
+import io
+import json
+import os
+import sys
+
+STATE = os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+    os.path.expanduser("~"), ".gstack")
+
+TIME_KEYS = ("ts", "timestamp", "date")
+
+BLIND_SPOTS = [
+    "a skill followed by reading SKILL.md, with no Skill tool call",
+    "any run before 2026-08-11, when the PostToolUse observer was wired",
+    "skills used in repos with no ~/.gstack/projects/<repo> directory",
+]
+
+
+def rows(path):
+    try:
+        for line in io.open(path, encoding="utf-8"):
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+    except (OSError, ValueError):
+        return
+
+
+def when(record):
+    for k in TIME_KEYS:
+        v = record.get(k)
+        if isinstance(v, str) and v:
+            return v[:19]
+    return ""
+
+
+def collect():
+    seen = collections.defaultdict(list)
+    guards = collections.Counter()
+
+    for record in rows(os.path.join(STATE, "analytics", "skill-usage.jsonl")):
+        skill = record.get("skill")
+        if not skill:
+            continue
+        if record.get("event") == "hook_fire":
+            guards[(skill, record.get("pattern") or "?")] += 1
+        else:
+            seen[skill].append(("skill-tool", when(record)))
+
+    for path in glob.glob(os.path.join(STATE, "projects", "*", "timeline.jsonl")):
+        for record in rows(path):
+            if record.get("skill") and record.get("event") != "started":
+                seen[record["skill"]].append(("timeline", when(record)))
+
+    for path in glob.glob(os.path.join(STATE, "projects", "*", "main-reviews.jsonl")):
+        for record in rows(path):
+            if record.get("skill"):
+                seen[record["skill"]].append(("review-log", when(record)))
+
+    for path in glob.glob(os.path.join(STATE, "projects", "*", "learnings.jsonl")):
+        for record in rows(path):
+            if record.get("skill"):
+                seen[record["skill"]].append(("learning", when(record)))
+
+    for path in glob.glob(os.path.join(STATE, "playbooks", "*.jsonl")):
+        for record in rows(path):
+            if record.get("skill"):
+                seen[record["skill"]].append(("playbook", when(record)))
+
+    return seen, guards
+
+
+def installed():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    names = set()
+    for entry in glob.glob(os.path.join(root, "*", "SKILL.md")):
+        names.add(os.path.basename(os.path.dirname(entry)))
+    return names
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    seen, guards = collect()
+    skills = installed()
+
+    table = []
+    for skill, hits in seen.items():
+        stamps = sorted(s for _, s in hits if s)
+        table.append({
+            "skill": skill,
+            "observations": len(hits),
+            "recorders": sorted({r for r, _ in hits}),
+            "first": stamps[0] if stamps else None,
+            "last": stamps[-1] if stamps else None,
+        })
+    table.sort(key=lambda r: (-r["observations"], r["skill"]))
+
+    unobserved = sorted(skills - set(seen))
+
+    if args.json:
+        print(json.dumps({
+            "observed": table,
+            "gstack_observed": [r["skill"] for r in table if r["skill"] in skills],
+            "installed": len(skills),
+            "unobserved": unobserved,
+            "guard_fires": [{"skill": s, "pattern": p, "count": n}
+                            for (s, p), n in guards.most_common()],
+            "blind_spots": BLIND_SPOTS,
+        }, indent=2))
+        return 0
+
+    mine = [r for r in table if r["skill"] in skills]
+    other = [r for r in table if r["skill"] not in skills]
+
+    print("gstack skills observed running: %d of %d installed" % (len(mine), len(skills)))
+    print()
+    print("  %-38s %5s  %s" % ("skill", "obs", "seen by"))
+    for r in mine:
+        print("  %-38s %5d  %s" % (r["skill"], r["observations"], ", ".join(r["recorders"])))
+
+    if other:
+        print()
+        print("Non-gstack skills seen by the same recorders (plugins, cyberteam):")
+        for r in other:
+            print("  %-38s %5d  %s" % (r["skill"], r["observations"], ", ".join(r["recorders"])))
+
+    if guards:
+        print()
+        print("Guard fires (a command was caught, NOT a skill invocation):")
+        for (skill, pattern), n in guards.most_common():
+            print("  %-38s %5d  pattern=%s" % (skill, n, pattern))
+
+    print()
+    print("Never observed: %d skills" % len(unobserved))
+    print("  " + ", ".join(unobserved[:12]) + (", ..." if len(unobserved) > 12 else ""))
+
+    print()
+    print("What no recorder can see:")
+    for line in BLIND_SPOTS:
+        print("  - " + line)
+    print()
+    print("So 'never observed' means unrecorded, not unused.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
