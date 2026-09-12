@@ -1,9 +1,9 @@
 # Item 1 — absorbing upstream's skill-start runtime: measured before starting
 
 Date: 2026-09-12
-Status: measured, not started. The numbers say it is a focused day, not a
-merge session, and that it should be done as a cherry-pick of one release
-rather than inside the full upstream merge.
+Status: landed on `feat/skill-start-absorb` (2026-09-12) as a cherry-pick of
+394db326 with the fork's onboarding sentinel, Lake wording and Windows test
+spawning ported. Measured result and what was left out are at the bottom.
 
 ## What upstream built (v1.71.0.0, #2691)
 
@@ -61,3 +61,36 @@ browsers.
   timeline entries on every Stop. Worth taking in the same pass.
 - Verify with the eval suite, not by reading: the four plan-review cases
   must still score 4/4 after the preamble change.
+
+## Outcome (2026-09-12)
+
+`gstack-context-bill --diff` of main vs the branch, eager per-invocation
+ledger (the always-on catalog moved by under 200 tokens):
+
+| Skill | Before | After |
+|---|---|---|
+| /review | 108.6 KB | 55.0 KB |
+| /land-and-deploy | 107.0 KB | 55.8 KB |
+| /codex | 98.3 KB | 53.3 KB |
+| /autoplan | 102.6 KB | 58.0 KB |
+| every other tier-2+ skill | | about -20 KB each |
+
+The conflict census held: 0 `bin/` conflicts, 52 regenerated SKILL.md files,
+7 templates and 8 resolvers by hand. Runtime cost is unchanged: on this
+Windows box the new script takes about 18 s in a cold home and the old inline
+fences took about 16 s, both dominated by Git Bash process spawn.
+
+What was NOT absorbed (needs the intermediate releases v1.65-v1.70):
+`touchfiles-data.ts` split, the ship `apple-release` section, #2700
+document-release anchors, `UNDER_CODEX`, `gstack-issue-guard`, the
+`skill-e2e-retro` test, the cso catalog trim, and #2521 `GBRAIN_HOME` semantics.
+The four onboarding gates in `bin/gstack-skill-start` carry the fork's
+`~/.gstack/.onboarding-deferred` sentinel; port it again if upstream rewrites
+that block.
+
+Correction to the "What to watch" list: the skill-end record shape is not new.
+The old inline "Telemetry (run last)" fence already wrote the same line, so
+`gstack-reflect-collect` (matches on `session`) was fine; `gstack-usage-report`
+now labels start lines as `skill-start` and no longer counts the end line as a
+second observation.
+

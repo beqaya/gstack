@@ -37,6 +37,29 @@ the auto-memory note `gstack-fork-upgrade` and the /gstack-safe-upgrade skill.
   onboarding/telemetry prompts ("Boil the Lake" wording is intentional; keep it
   on merge conflicts).
 
+## Absorbed ahead of the full upstream merge
+
+- **skill-start runtime (upstream v1.71.0.0, #2691; cherry-picked 2026-09-12).**
+  The ~18 KB of preamble bash every tier-2+ skill inlined now lives in
+  `bin/gstack-skill-start` / `bin/gstack-skill-end`; generated skills carry a
+  six-line invocation fence. Onboarding prompts are emitted as runtime-gated
+  `GSTACK_INSTRUCTION` blocks, so the onboarding-deferral sentinel above is
+  honored inside the script (`ONBOARDING_DEFERRED:` STATUS line; lake intro,
+  telemetry, proactive and routing gates all check it) and the lake intro
+  still says "Boil the Lake". Also brought in: the 20 section carves
+  (`<skill>/sections/*.md.tmpl`), `bin/gstack-retro-metrics` behind /retro,
+  the `{{CODEX_WEB_SEARCH_FLAG}}` resolver (#2525, every codex invocation now
+  uses `-c 'web_search="cached"'`), the context-budget ratchet, and the
+  `preamble-tier` requirement (every template that resolves `{{PREAMBLE}}`
+  declares one; fork-only skills were assigned by analogy).
+  VERSION/CHANGELOG stay at the last merged upstream release; the v1.71.0.0
+  entry arrives with the full merge. Fork-side adaptations to remember when
+  that merge happens: `gbrainConfigDir` keeps the fork's `GBRAIN_HOME`
+  convention (upstream #2521 differs), the retro "features shipped" inputs
+  live in a separate Step 1.5 fence (the metrics script is local-reads-only),
+  `bin/gstack-usage-report` knows the skill-start / skill-end record shapes,
+  and the script contract tests spawn through `bash` on Windows.
+
 ## Branch map
 
 - `custom/frontmatter-routing` — the live line; contains everything above,
