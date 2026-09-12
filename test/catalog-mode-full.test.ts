@@ -23,6 +23,7 @@
 import { describe, test, expect } from 'bun:test';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 const REPO_ROOT = path.resolve(import.meta.dir, '..');
@@ -59,40 +60,43 @@ describe('--catalog-mode=full opt-out wiring (static)', () => {
 
 describe('--catalog-mode=full opt-out behavior (smoke)', () => {
   test('--catalog-mode=full produces multi-line description in frontmatter', () => {
-    // This fork's canonical resting state is --catalog-mode=full, so generate
-    // each mode explicitly rather than assuming whatever is checked in, and
-    // restore to full in the finally block. Restoring bare (the upstream
-    // default) silently collapses ~40 skill descriptions to one line — that
-    // has now cost a full regeneration twice.
-    // The trim run below populates proactive-suggestions.json (a trim-only
-    // artifact that stays empty in full mode, and which the full run does not
-    // reset). Snapshot it so the test leaves no residue.
+    // Both renders go to a scratch --out-dir, never the working tree. This
+    // test used to regenerate in place and "restore full in finally" — and
+    // several other suites regenerate in place too, so the mode left on disk
+    // was whichever test ran last. A commit taken after a green suite then
+    // shipped the other mode. That is how two plan-review skills came to be
+    // unroutable on main (2026-09-12). Rendering off-tree removes the whole
+    // class: nothing here can dirty a tracked file, so there is nothing to
+    // restore and nothing to get wrong.
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-catalog-mode-'));
+    const trimDir = path.join(scratch, 'trim');
+    const fullDir = path.join(scratch, 'full');
     const suggestionsBefore = fs.readFileSync(PROACTIVE_SUGGESTIONS, 'utf-8');
 
     try {
       // Generate the default (trim) mode explicitly, then assert its shape.
-      const trimRun = spawnSync('bun', ['run', 'gen:skill-docs'], {
+      const trimRun = spawnSync('bun', ['run', 'gen:skill-docs', `--out-dir=${trimDir}`], {
         cwd: REPO_ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 60_000,
       });
       expect(trimRun.status).toBe(0);
-      const trimmedShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
+      const trimmedShip = fs.readFileSync(path.join(trimDir, 'ship', 'SKILL.md'), 'utf-8');
       // #1778: the trimmed ship description has an interior colon ("Ship workflow:")
       // and is now YAML-quoted — tolerate the optional surrounding quotes.
       expect(trimmedShip).toMatch(/^description: "?Ship workflow:[^\n]*\(gstack\)"?\n/m);
 
-      // Run with --catalog-mode=full. Mutates working tree.
-      const result = spawnSync('bun', ['run', 'gen:skill-docs', '--catalog-mode=full'], {
-        cwd: REPO_ROOT,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 60_000,
-      });
+      // Run with --catalog-mode=full, also off-tree.
+      const result = spawnSync(
+        'bun',
+        ['run', 'gen:skill-docs', '--catalog-mode=full', `--out-dir=${fullDir}`],
+        { cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 },
+      );
       expect(result.status).toBe(0);
 
       // After --catalog-mode=full, frontmatter description is the legacy
       // multi-line block, not the trim'd one-line form.
-      const fullShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
+      const fullShip = fs.readFileSync(path.join(fullDir, 'ship', 'SKILL.md'), 'utf-8');
       expect(fullShip).toMatch(/^description: \|\s*$/m); // YAML block scalar
       // Legacy multi-line content includes "Use when asked to..." in the
       // frontmatter (in trim mode this lives in the body section).
@@ -104,28 +108,15 @@ describe('--catalog-mode=full opt-out behavior (smoke)', () => {
       // (because the routing prose stayed in frontmatter).
       const body = fullShip.slice(fmEnd);
       expect(body).not.toContain('## When to invoke this skill');
+      // The tracked tree must be untouched by either render. This is the
+      // assertion that makes the off-tree contract load-bearing rather than
+      // a convention: if the generator ever writes a tracked file in
+      // --out-dir mode again, this fails here instead of in someone's commit.
+      const checkedInShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
+      expect(checkedInShip).toMatch(/^description: \|\s*$/m);
+      expect(fs.readFileSync(PROACTIVE_SUGGESTIONS, 'utf-8')).toBe(suggestionsBefore);
     } finally {
-      // Restore this fork's canonical --catalog-mode=full state, NOT the
-      // upstream trim default. A bare regeneration here leaves every skill
-      // description collapsed to one line, and the damage is invisible until
-      // someone reads a SKILL.md.
-      const restore = spawnSync('bun', ['run', 'gen:skill-docs', '--catalog-mode=full'], {
-        cwd: REPO_ROOT,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 60_000,
-      });
-      if (restore.status !== 0) {
-        // eslint-disable-next-line no-console
-        console.error(
-          'CRITICAL: failed to restore full-catalog state. Run `bun run scripts/gen-skill-docs.ts --catalog-mode=full` to clean up.',
-        );
-      }
-      // Sanity-check the restored state is the full block scalar, not trimmed.
-      const restoredShip = fs.readFileSync(SHIP_SKILL, 'utf-8');
-      expect(restoredShip).toMatch(/^description: \|\s*$/m);
-
-      // Put the trim-only artifact back the way we found it.
-      fs.writeFileSync(PROACTIVE_SUGGESTIONS, suggestionsBefore);
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
   }, 180_000);
 
