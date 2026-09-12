@@ -75,6 +75,18 @@ export function isTransactionModePooler(url: string): boolean {
 }
 
 /**
+ * The directory holding gbrain's config.json: `${GBRAIN_HOME:-$HOME/.gbrain}`.
+ * Same resolution as buildGbrainEnv, bin/gstack-gbrain-detect and
+ * bin/gstack-gbrain-install, so every gstack-side read agrees. (Upstream
+ * #2521 treats GBRAIN_HOME as a PARENT dir and appends `.gbrain`; adopting
+ * that here means changing all four readers together, so it is deferred to
+ * the full upstream merge.)
+ */
+export function gbrainConfigDir(env: NodeJS.ProcessEnv = process.env): string {
+  return env.GBRAIN_HOME || join(env.HOME || homedir(), ".gbrain");
+}
+
+/**
  * Build an env dict with DATABASE_URL seeded from
  * `${GBRAIN_HOME:-$HOME/.gbrain}/config.json`. Returns the base env
  * unchanged when:

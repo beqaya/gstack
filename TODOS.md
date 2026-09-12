@@ -303,35 +303,122 @@ output, then retire or simplify the guard. Effort: human ~half day / CC ~20 min.
 
 ## Token-reduction follow-ups (Phase B, filed via /plan-eng-review on the plan-ceo-review carve)
 
-### P3: Carve the always-loaded `{{PREAMBLE}}` reference blocks into an on-demand doc
+### P2: v1.70 ship-review deferrals (specialist + adversarial findings, each verified)
 
-**What:** The per-skill section carves (`/ship` v1.54, `/plan-ceo-review` v1.56) yield
-real but bounded wins (-42% to -59% on the carved skill) because the shared
-`{{PREAMBLE}}` (~40-50KB on every tier-3/4 skill) is the dominant always-loaded cost
-and stays inline. Move the rarely-needed preamble REFERENCE blocks (the AskUserQuestion
-split-rules and the CJK / lone-surrogate escaping reference) into an on-demand
-section-style doc the agent reads only when it hits those edge cases, leaving the hot
-path (voice, completeness principle, recommendation format) inline.
+**What:** Follow-ups deferred from the v1.70.0.0 pre-landing review, none ship-blocking:
 
-**Why:** Highest-ROI remaining token target. One preamble carve helps EVERY tier-≥2
-skill at once, not one skill per PR. The eng-review on the plan-ceo carve flagged that
-per-skill carves stay modest precisely because the preamble dominates the always-loaded
-surface.
+- **Batch the 11 `gstack-config get` forks in `bin/gstack-skill-start`** into one config
+  read (~60-250ms of preamble latency per skill invocation, worse on macOS). The
+  consolidation into one script is what makes batching trivial now.
+- **Cache the `gbrain --version` probe** (Node CLI cold start, 100-300ms per invocation
+  for gbrain users) keyed on binary path + mtime.
+- **`bin/gstack-retro-metrics`: single-pass diffs** — combine the `--numstat` and `-p`
+  passes (`git log --numstat -p`), unify the three test-file definitions (`is_test`,
+  the awk regex, the repo-wide grep), and cover the `origin/<base>` ref preference +
+  300-commit/40-coauthor truncation paths with tests.
+- **Rename `generate-upgrade-check.ts`** — it now emits only PROACTIVE/SKILL_PREFIX
+  rules; the name misleads anyone hunting for upgrade-prompt rendering.
+- **evals.yml gate matrix drift:** 9 pre-existing gate-tier files in `E2E_TIERS` are
+  absent from the static suite matrix, so they never run in PR CI. Add them (or prune
+  their tier), plus a free tripwire test diffing gate-tier `E2E_TIERS` against the
+  workflow matrix so the class can't recur.
+- **`_sanitize` case/separator variants:** the strip is exact-literal; make it
+  case-insensitive and separator-tolerant, with pinned variant cases.
+- **Telemetry unset-vs-off semantics:** `gstack-skill-start` treats an UNSET telemetry
+  key as enabled for the LOCAL analytics write (pre-consent recording, local-only);
+  `gstack-telemetry-log` maps unset to off. Decide one semantic and document it.
+- **Coverage gaps from the ship audit:** `--brain-health` block (zero tests), the
+  learnings `>5`-entries sanitize passthrough (poison test), session prune +
+  `.pending-*` finalize loop, and a shared `ONBOARDING_MARKERS` constant for the three
+  seed sites (hermetic-env, e2e-helpers, the script's gates).
 
-**Pros:** A single change reduces always-loaded cost across the whole skill pack.
-**Cons:** The preamble is load-bearing and shared; a botched carve regresses every skill.
-Needs the same union-parity + per-push freshness guards the section carves use, applied
-corpus-wide.
+**Why:** Each was found by the v1.70 review army with file:line evidence; all are quality
+or latency wins on the new runtime scripts, none change behavior contracts.
 
-**Context:** Builds on the v2 section pipeline (`scripts/resolvers/sections.ts`,
-`{{SECTION:id}}` / `{{SECTION_INDEX}}`). The preamble source is
-`scripts/resolvers/preamble.ts`. Measure which sub-blocks are cold (escaping reference,
-split-rules) vs hot (voice, recommendation format) before cutting. Validate on one skill,
-then roll corpus-wide.
+**Effort estimate:** M (human team) → S (CC+gstack)
+**Priority:** P2
+**Depends on / blocked by:** v1.70.0.0 landing.
 
-**Effort estimate:** L (human team) → M (CC+gstack)
+### P3: Output-template carve wave — REVIEW_DASHBOARD + PLAN_FILE_REVIEW_REPORT
+
+**What:** Carve the two output-format resolver blocks — the review dashboard table
+shape and the plan-file report skeleton — out of the six skills that inline them
+(`{{REVIEW_DASHBOARD}}` 5,940B ×6 + `{{PLAN_FILE_REVIEW_REPORT}}` 5,989B ×6,
+~71.6KB total) into on-demand sections or a shared reference doc.
+
+**Why:** Largest remaining duplicated block after the preamble program lands. These
+are output TEMPLATES (table shapes, markdown skeletons), not behavioral steps — the
+classic carve candidate.
+
+**Pros:** ~1.4KB×2 saved per invocation across 6 review-family skills; single source
+for the dashboard/report format.
+**Cons:** Both blocks are partially pinned (`test/skill-e2e-review-attribution.test.ts`
+slices `## Review Readiness Dashboard`; `test/skill-validation.test.ts:1566` asserts a
+specific row) — needs a pin-relocation design first, which is why it was deferred from
+the main program.
+
+**Context:** Deferred from the token-reduction program's Phase 4 (plan on branch
+`prompt-token-load-reduction`, "NOT carving" list). The carve pipeline and guard
+registry to use are the same as carve wave 4. Start by mapping every test that slices
+or asserts dashboard/report text, then decide skeleton-vs-section placement per pin.
+
+**Effort estimate:** M (human team) → S (CC+gstack)
 **Priority:** P3
-**Depends on / blocked by:** The section pipeline (shipped v1.54). No hard blocker.
+**Depends on / blocked by:** Token-reduction program Phases 1-4 landing (carve
+machinery churn would conflict).
+
+### P3: Anchor transformFrontmatter's denylist strip to the frontmatter block
+
+**What:** `transformFrontmatter` (scripts/gen-skill-docs.ts:525-530, denylist branch)
+deletes the FIRST line matching `^<field>:` anywhere in the file, not just inside
+the frontmatter block, and would orphan continuation lines of a block-style YAML
+value. Slice the frontmatter, strip within it, reassemble.
+
+**Why:** Latent mis-strip class: a skill body line beginning `interactive:` or
+`benefits-from:` (e.g. a skill documenting the frontmatter contract) would be
+silently deleted from the render. Zero live collisions today (verified across all
+tracked SKILL.md bodies during the v1.69.x token-reduction Phase 0 review), but
+each new stripFields entry widens the exposure.
+
+**Pros:** Kills the whole latent class; makes stripFields safe to grow.
+**Cons:** Touches the generator hot path — needs a full regen + the per-host
+golden fixtures re-checked; deserves its own small PR, not a rider.
+
+**Context:** Found by the Phase 0 adversarial review on branch
+`prompt-token-load-reduction` (finding ADV4). The gen-side parser reads only
+inline `[...]` array form (gen-skill-docs.ts:751), so block-form YAML for these
+keys fails silently twice — worth a validation error at the same time.
+
+**Effort estimate:** S (human team) → S (CC+gstack)
+**Priority:** P3
+**Depends on / blocked by:** none.
+
+### P3: Revisit plan-ceo-review doctrine carve after the preamble program lands
+
+**What:** Re-evaluate carving plan-ceo-review's ~13KB of always-loaded doctrine
+(`## Prerequisite Skill Offer` 7,125B + `## Cognitive Patterns` 3,336B +
+`## Philosophy` 2,535B) into its existing sections/ dir.
+
+**Why:** Deferred from the token-reduction program because the skeleton had only
+~555B of headroom under its carve-guard ceiling and the doctrine is behavior-core.
+The preamble phases shrink the skeleton by ~22KB, which changes the tradeoff: the
+ceiling gets recomputed and the doctrine becomes the dominant remaining always-loaded
+block in the skill.
+
+**Pros:** ~3.2K tokens off every /plan-ceo-review invocation if the doctrine reads
+lazily without behavior loss.
+**Cons:** The Cognitive Patterns section shapes the review voice throughout — a
+requiredReads guard + A/B eval (same design as the design-doctrine carve) is mandatory,
+and the answer may legitimately be "keep it inline."
+
+**Context:** Filed from the token-reduction program's CEO review ("NOT carving" list).
+Measure with `bin/gstack-context-bill --skill plan-ceo-review` after Phase 3 lands;
+use the carve-guards registry + a behavioral loading eval if carved.
+
+**Effort estimate:** S (human team) → S (CC+gstack)
+**Priority:** P3
+**Depends on / blocked by:** Token-reduction program Phase 3 (re-baseline + recomputed
+carve ceilings).
 
 ## gbrowser memory follow-ups (filed via /plan-eng-review + /codex on the v1.49 leak-fix PR)
 

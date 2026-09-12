@@ -47,7 +47,7 @@ import {
 } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
-import { buildGbrainEnv, NEEDS_SHELL_ON_WINDOWS } from "./gbrain-exec";
+import { buildGbrainEnv, gbrainConfigDir, NEEDS_SHELL_ON_WINDOWS } from "./gbrain-exec";
 
 export type LocalEngineStatus =
   | "ok"
@@ -124,8 +124,116 @@ export function cacheFilePath(): string {
 /** Honors GBRAIN_HOME (codex D11) — same resolution as buildGbrainEnv. */
 function gbrainConfigPath(env?: NodeJS.ProcessEnv): string {
   const e = env ?? process.env;
-  const gbrainHome = e.GBRAIN_HOME || join(userHome(e), ".gbrain");
-  return join(gbrainHome, "config.json");
+  return join(gbrainConfigDir(e), "config.json");
+}
+
+/**
+ * Bearer-token thin-client evidence (#2520). `gbrain connect <url> --token`
+ * registers a remote-HTTP MCP server with the agent host but never writes
+ * gbrain's remote_mcp marker into config.json — that marker is OAuth-only,
+ * written by `gbrain init --mcp-only`. So the config-file marker check misses
+ * bearer installs entirely: they fall through to the local probe, which fails
+ * against the dead-or-absent local engine and lands on missing-config /
+ * broken-db / broken-config / engine-locked, silently suppressing brain
+ * blocks for a fully-working remote brain.
+ *
+ * Evidence read: ~/.claude.json MCP registrations — user scope plus the
+ * cwd's NEAREST-ANCESTOR project scope only (#2499 made project scope
+ * visible; the per-project scoping fixes the machine-wide bleed where ONE
+ * project's remote registration reclassified broken local engines as
+ * thin-client for EVERY cwd). Ancestor matching mirrors the inline jq
+ * resolution in bin/gstack-skill-start (the single bash copy of the #2499
+ * resolution, moved there in token-reduction Phase 1): cwd == key or
+ * cwd startswith key + separator, longest matching key that actually
+ * carries a gbrain entry wins (a nested project WITHOUT gbrain doesn't
+ * shadow its parent's registration).
+ *
+ * Same-name conflicts resolve project-local over user scope — Claude
+ * Code's own precedence, verified empirically against claude 2.1.233 with
+ * a hermetic fake $HOME: `claude mcp get gbrain` reports "Scope: Local
+ * config" and the project-local URL when both scopes define the name.
+ *
+ * File-read only: no subprocess, no network (a classifier network probe is
+ * the #1964 pathology). Returns true only when a visible gbrain
+ * registration is remote-HTTP AND no visible gbrain registration is
+ * local-stdio — a local-stdio entry means the user runs a local engine
+ * (possibly alongside a remote one, e.g. federation), and local-engine
+ * statuses like engine-locked must keep their precise meaning there.
+ */
+export function hasRemoteOnlyGbrainMcp(
+  env?: NodeJS.ProcessEnv,
+  cwd: string = process.cwd(),
+): boolean {
+  interface McpEntry {
+    type?: string;
+    transport?: string;
+    command?: string;
+    url?: string;
+  }
+  let cj: unknown;
+  try {
+    cj = JSON.parse(readFileSync(join(userHome(env), ".claude.json"), "utf-8"));
+  } catch {
+    return false;
+  }
+  // Same classification rules as gstack-gbrain-detect's detectMcpMode tier 3,
+  // including the #2051 name generalization (gbrain, gbrain-remote, gbrain_work).
+  const classify = (entry: McpEntry): "remote" | "local" | null => {
+    const mtype = entry.type || entry.transport || "";
+    if (mtype === "url" || mtype === "http" || mtype === "sse") return "remote";
+    if (mtype === "stdio") return "local";
+    if (entry.url) return "remote";
+    if (entry.command) return "local";
+    return null;
+  };
+  /** Extract the gbrain-relevant entries from an mcpServers object. */
+  const gbrainEntries = (servers: unknown): Record<string, McpEntry> => {
+    const out: Record<string, McpEntry> = {};
+    if (!servers || typeof servers !== "object") return out;
+    for (const [name, entry] of Object.entries(servers as Record<string, McpEntry>)) {
+      if (!entry || typeof entry !== "object") continue;
+      const isGbrainName = /^gbrain([-_][\w-]*)?$/.test(name);
+      const cmdMentionsGbrain =
+        typeof entry.command === "string" && /\bgbrain\b/.test(entry.command);
+      if (!isGbrainName && !cmdMentionsGbrain) continue;
+      out[name] = entry;
+    }
+    return out;
+  };
+  const root = cj as {
+    mcpServers?: unknown;
+    projects?: Record<string, { mcpServers?: unknown }>;
+  } | null;
+  const userGbrain = gbrainEntries(root?.mcpServers);
+  // Nearest-ancestor project entry for cwd that carries a gbrain server.
+  // Path-boundary-aware (/a/repo never matches /a/repo2); both separators
+  // accepted so Windows project keys resolve.
+  let projectGbrain: Record<string, McpEntry> = {};
+  if (root?.projects && typeof root.projects === "object") {
+    let bestKey: string | null = null;
+    for (const [key, proj] of Object.entries(root.projects)) {
+      if (!proj || typeof proj !== "object") continue;
+      const entries = gbrainEntries((proj as { mcpServers?: unknown }).mcpServers);
+      if (Object.keys(entries).length === 0) continue;
+      const isAncestor =
+        cwd === key || cwd.startsWith(`${key}/`) || cwd.startsWith(`${key}\\`);
+      if (!isAncestor) continue;
+      if (bestKey === null || key.length > bestKey.length) {
+        bestKey = key;
+        projectGbrain = entries;
+      }
+    }
+  }
+  // Effective view for this cwd: project-local shadows user scope per name.
+  const effective: Record<string, McpEntry> = { ...userGbrain, ...projectGbrain };
+  let sawRemote = false;
+  let sawLocal = false;
+  for (const entry of Object.values(effective)) {
+    const c = classify(entry);
+    if (c === "remote") sawRemote = true;
+    if (c === "local") sawLocal = true;
+  }
+  return sawRemote && !sawLocal;
 }
 
 function configuredEngine(env?: NodeJS.ProcessEnv): "pglite" | "postgres" | null {
