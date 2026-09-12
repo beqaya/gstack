@@ -68,6 +68,12 @@ def active_skill(session_id):
                     row = json.loads(line)
                 except ValueError:
                     continue
+                # careful/freeze write hook_fire events to the same file with a
+                # "skill" field; a guard catching a command is not the skill
+                # the session is running, and attributing to it is how
+                # `careful` became the most-used skill in the suite.
+                if row.get("event") == "hook_fire":
+                    continue
                 if row.get("session") == session_id and row.get("skill"):
                     found = row["skill"]
     except OSError:
