@@ -3,7 +3,7 @@ name: plan-design-review
 preamble-tier: 3
 interactive: true
 version: 2.0.0
-description: Designer's eye plan review — interactive, like CEO and Eng review. (gstack)
+description: Plan review for design - how the UI and UX will feel to use. (gstack)
 allowed-tools:
   - Read
   - Edit
