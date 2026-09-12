@@ -123,7 +123,16 @@ describe('pipeline wired into the runtime', () => {
 
 describe('cyberteam engagements (sub-project C)', () => {
   const fs = require('fs');
-  const CYBER = path.join(path.dirname(ROOT), 'cyberteam', 'skills');
+  // The cyberteam suite is a sibling of the INSTALLED checkout
+  // (~/.claude/skills/cyberteam), not of whatever worktree runs this test. A
+  // worktree under Downloads/ has no such sibling, and the test then reported
+  // all 50 stages missing — a red that meant "wrong directory", not "wrong
+  // pipeline". Prefer the sibling when it exists, else the installed location.
+  const sibling = path.join(path.dirname(ROOT), 'cyberteam', 'skills');
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const CYBER = fs.existsSync(sibling)
+    ? sibling
+    : path.join(home, '.claude', 'skills', 'cyberteam', 'skills');
 
   test('every cyber stage names a real cyberteam skill', () => {
     // The single most valuable check here: a pipeline that names a skill which
