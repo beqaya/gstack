@@ -45,10 +45,10 @@ Conventions:
 - [/office-hours](office-hours/SKILL.md): YC Office Hours — two modes.
 - [/pair-agent](pair-agent/SKILL.md): Pair a remote AI agent with your browser.
 - [/parity](parity/SKILL.md): Detects gstack repo edits that never reached the live copies a user runs.
-- [/plan-ceo-review](plan-ceo-review/SKILL.md): CEO/founder-mode plan review.
-- [/plan-design-review](plan-design-review/SKILL.md): Designer's eye plan review — interactive, like CEO and Eng review.
-- [/plan-devex-review](plan-devex-review/SKILL.md): Interactive developer experience plan review.
-- [/plan-eng-review](plan-eng-review/SKILL.md): Eng manager-mode plan review.
+- [/plan-ceo-review](plan-ceo-review/SKILL.md): Plan review for scope and ambition - too big, too small, or the wrong problem.
+- [/plan-design-review](plan-design-review/SKILL.md): Plan review for design - how the UI and UX will feel to use.
+- [/plan-devex-review](plan-devex-review/SKILL.md): Plan review for developer experience - will this be painful to work in day to day.
+- [/plan-eng-review](plan-eng-review/SKILL.md): Plan review for architecture and execution - will this hold up before you build it.
 - [/plan-tune](plan-tune/SKILL.md): Self-tuning question sensitivity + developer psychographic for gstack (v1: observational).
 - [/qa](qa/SKILL.md): Systematically QA test a web application and fix bugs found.
 - [/qa-only](qa-only/SKILL.md): Report-only QA testing.

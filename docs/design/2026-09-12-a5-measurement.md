@@ -85,3 +85,24 @@ eval harness, which is item 3 and requires Claude Code 2.1.269.
 
 So item 3 is the instrument for item 2. Doing A5 first ships an unverified
 behavioural change to every skill.
+
+---
+
+## DROPPED — founder decision, 2026-09-12
+
+A5 is not being built. Two reasons, in order of weight:
+
+1. It misses both acceptance criteria it was written for (~9,703 tokens against
+   a target under 6,000; ~22,400 against 10,000 worst-case), and its largest
+   single block is protected by `test/auq-format-always-loaded.test.ts`, a guard
+   written deliberately to stop exactly this move.
+2. The catalog mode decision taken the same day makes skill loads **heavier**,
+   not lighter: full mode restores every "Use when asked to…" trigger to the
+   frontmatter, at ~7,581 token-equivalents of always-loaded discovery surface
+   against trim's ~1,218. A5 would recover roughly a third of one skill load
+   while the suite deliberately spends more, because routing accuracy was worth
+   more than the tokens.
+
+Reopen only if a session dies on context again. The measurement in this file
+stands and the baseline hashes were captured, so a future attempt starts from
+evidence rather than from the original estimate.
