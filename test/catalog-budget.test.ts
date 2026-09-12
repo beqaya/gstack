@@ -24,10 +24,29 @@ import { skillCensus } from './helpers/skill-census';
  *           line item, run parseFrontmatter() below and sum
  *           Buffer.byteLength(name) + Buffer.byteLength(description);
  *           token-equivalents = ceil(bytes / 4).
- *   result  57 authored skills incl. the root router alias = 4,872 bytes
- *           = 1,218 token-equivalents (measured 2026-08-27)
- * Ceiling is 1,270 token-equivalents (5,080 bytes), so headroom is 208 bytes
- * (~4%). Dominant skill: design-consultation at 229 bytes name+description.
+ *   result  57 authored skills incl. the root router alias = 30,322 bytes
+ *           = 7,581 token-equivalents (measured 2026-09-12)
+ * Ceiling is 7,900 token-equivalents (31,600 bytes), so headroom is ~4%.
+ * Dominant skill: delegate at 949 bytes name+description.
+ *
+ * Ratcheted 1,270 → 7,900 on 2026-09-12, and this is a policy change, not
+ * growth. Two things came out at once:
+ *
+ *   1. parseFrontmatter did not understand the literal block scalar
+ *      (`description: |`), which is what --catalog-mode=full emits. The
+ *      fallback regex captured the single character `|`, so all 56
+ *      descriptions measured 56 bytes in total. The old 1,218 figure was
+ *      measured in TRIM mode, where descriptions really are one line.
+ *   2. Founder decision, 2026-09-12: full is the committed mode. Trim saved
+ *      ~6,300 always-loaded tokens by moving every "Use when asked to…"
+ *      trigger into the body, which is read only AFTER a skill is chosen —
+ *      so it saved context by making skills unroutable. Measured with
+ *      `claude plugin eval`: two of four plan-review skills did not fire on
+ *      a user's own phrasing under trim.
+ *
+ * So the number did not grow 6x; it was never being measured. Treat 7,900 as
+ * the real always-loaded discovery surface of full mode, and ratchet it the
+ * way this protocol says if a skill is added.
  *
  * Ratcheted 1,150 → 1,270 on 2026-08-27: the authored-skill tree grew 53 → 57
  * since the 1,105 baseline (measured at commit d078622b, v1.62.0.0, 2026-08-12).
@@ -40,11 +59,13 @@ import { skillCensus } from './helpers/skill-census';
  * per-skill cap; the growth is more skills, not fatter blurbs, so the honest
  * fix is a ceiling ratchet, not trimming legitimate descriptions.
  */
-const CATALOG_BUDGET_TOKEN_EQUIVALENTS = 1_270;
+const CATALOG_BUDGET_TOKEN_EQUIVALENTS = 7_900;
 
-// Largest today: design-consultation at 229 bytes. A description that needs
-// more than 260 bytes is a body paragraph, not a catalog entry.
-const PER_SKILL_BYTE_CAP = 260;
+// Largest today: delegate at 949 bytes. In full mode a description carries its
+// trigger phrases, so the old 260-byte cap was a trim-mode number; it measured
+// the lead sentence alone. A description past 990 bytes is a body paragraph
+// that drifted into the catalog, and every host pays for it every session.
+const PER_SKILL_BYTE_CAP = 990;
 
 const RATCHET_PROTOCOL =
   'Adding a skill? Re-measure with: bun test test/catalog-budget.test.ts ' +
@@ -57,12 +78,19 @@ const ROOT = join(import.meta.dir, '..');
 
 function parseFrontmatter(body: string): { name: string; description: string } {
   const name = body.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? '';
-  // Folded block scalar (description: >-) with two-space-indented continuation
-  // lines, falling back to a single-line description.
-  const folded = body.match(/^description:\s*>-?\r?\n((?:  .*\r?\n)+)/m)?.[1];
-  const description = folded
-    ? folded.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join(' ')
-    : body.match(/^description:\s*(?!>-?\s*$)(.+)$/m)?.[1]?.trim() ?? '';
+  // Block scalar, folded (`>`/`>-`) OR literal (`|`/`|-`), with two-space
+  // indented continuation lines, falling back to a single-line description.
+  //
+  // The literal form was missing until 2026-09-12, and it is the form
+  // `--catalog-mode=full` emits — this fork's canonical resting state. Without
+  // it the fallback regex captured the single character `|`, so every
+  // description measured one byte: 56 bytes total against a real 29,433, and
+  // this budget reported green at 5.8x its own ceiling. A cap that cannot see
+  // what it caps is worse than no cap, because it is believed.
+  const block = body.match(/^description:\s*[>|]-?\r?\n((?:  .*\r?\n)+)/m)?.[1];
+  const description = block
+    ? block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join(' ')
+    : body.match(/^description:\s*(?![>|]-?\s*$)(.+)$/m)?.[1]?.trim() ?? '';
   return { name, description };
 }
 
@@ -128,5 +156,30 @@ describe('catalog discovery-surface budget', () => {
     for (const entry of catalogEntries()) {
       expect(entry.description, `${entry.skill}: empty or missing frontmatter description`).not.toBe('');
     }
+  });
+
+  // The committed mode is full (founder decision, 2026-09-12), and until now it
+  // was only a convention. Several tests invoke the generator, some in trim mode
+  // and some in full, so the mode left in the tree is whichever of them ran last
+  // — and a commit taken after a suite run silently shipped the other one. That
+  // is how two plan-review skills came to be unroutable on main. This asserts the
+  // mode instead of trusting it.
+  // plan-tune is exempt because it has no trigger phrase in EITHER mode: it is
+  // observational and is not meant to be reached by a user's phrasing. That is
+  // worth fixing on its own terms, but it is not evidence of a trim-mode tree,
+  // which is the only thing this test is asking about.
+  const NO_TRIGGER_BY_DESIGN = new Set(['plan-tune']);
+
+  test('the checked-in tree is in full catalog mode, not trim', () => {
+    const trimmed = catalogEntries()
+      .filter((e) => !NO_TRIGGER_BY_DESIGN.has(e.skill))
+      .filter((e) => !e.description.includes('Use when'));
+    expect(
+      trimmed.map((e) => e.skill),
+      `${trimmed.length} skill(s) have no trigger phrase in their frontmatter ` +
+        `description, which is what trim mode produces — it moves "Use when asked ` +
+        `to…" into the body, and the body is read only AFTER a skill is chosen. ` +
+        `Regenerate with: bun run scripts/gen-skill-docs.ts --catalog-mode=full`
+    ).toEqual([]);
   });
 });

@@ -174,22 +174,22 @@
       "voice_line": null
     },
     "plan-ceo-review": {
-      "lead": "CEO/founder-mode plan review.",
+      "lead": "Plan review for scope and ambition - too big, too small, or the wrong problem.",
       "routing": "Rethink the problem, find the 10-star product,\nchallenge premises, expand scope when it creates a better product. Four modes:\nSCOPE EXPANSION (dream big), SELECTIVE EXPANSION (hold scope + cherry-pick\nexpansions), HOLD SCOPE (maximum rigor), SCOPE REDUCTION (strip to essentials).\nUse when asked to \"think bigger\", \"expand scope\", \"strategy review\", \"rethink this\",\nor \"is this ambitious enough\".\nProactively suggest when the user is questioning scope or ambition of a plan,\nor when the plan feels like it could be thinking bigger.",
       "voice_line": null
     },
     "plan-design-review": {
-      "lead": "Designer's eye plan review — interactive, like CEO and Eng review.",
+      "lead": "Plan review for design - how the UI and UX will feel to use.",
       "routing": "Rates each design dimension 0-10, explains what would make it a 10,\nthen fixes the plan to get there. Works in plan mode. For live site\nvisual audits, use /design-review. Use when asked to \"review the design plan\"\nor \"design critique\".\nProactively suggest when the user has a plan with UI/UX components that\nshould be reviewed before implementation.",
       "voice_line": null
     },
     "plan-devex-review": {
-      "lead": "Interactive developer experience plan review.",
+      "lead": "Plan review for developer experience - will this be painful to work in day to day.",
       "routing": "Explores developer personas,\nbenchmarks against competitors, designs magical moments, and traces friction\npoints before scoring. Three modes: DX EXPANSION (competitive advantage),\nDX POLISH (bulletproof every touchpoint), DX TRIAGE (critical gaps only).\nUse when asked to \"DX review\", \"developer experience audit\", \"devex review\",\nor \"API design review\".\nProactively suggest when the user has a plan for developer-facing products\n(APIs, CLIs, SDKs, libraries, platforms, docs).",
       "voice_line": "Voice triggers (speech-to-text aliases): \"dx review\", \"developer experience review\", \"devex review\", \"devex audit\", \"API design review\", \"onboarding review\"."
     },
     "plan-eng-review": {
-      "lead": "Eng manager-mode plan review.",
+      "lead": "Plan review for architecture and execution - will this hold up before you build it.",
       "routing": "Lock in the execution plan — architecture,\ndata flow, diagrams, edge cases, test coverage, performance. Walks through\nissues interactively with opinionated recommendations. Use when asked to\n\"review the architecture\", \"engineering review\", or \"lock in the plan\".\nFor reviewing already-written code before landing, use /review instead.\nProactively suggest when the user has a plan or design doc and is about to\nstart coding — to catch architecture issues before implementation.",
       "voice_line": "Voice triggers (speech-to-text aliases): \"tech review\", \"technical review\", \"plan engineering review\"."
     },

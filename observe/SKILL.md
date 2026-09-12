@@ -1,7 +1,17 @@
 ---
 name: observe
 version: 1.0.0
-description: "Pulls production truth into the session: Cloud Logging errors, Error Reporting groups, and Monitoring latency from the project's GCP deployment, normalized into one severity-ranked \"PROD HEALTH\"... (gstack)"
+description: |
+  Pulls production truth into the session: Cloud Logging errors, Error
+  Reporting groups, and Monitoring latency from the project's GCP deployment,
+  normalized into one severity-ranked "PROD HEALTH" summary with PII redacted
+  before it enters context. Complements /canary, which watches the live app
+  from the browser side (console errors, page failures); /observe reads the
+  server side (what the platform itself recorded). Use when asked "what's
+  happening in prod", "check prod errors", "pull the logs", "why is the app
+  slow since the deploy", or "prod health". First run per repo walks through
+  `gstack-runtime configure`. (gstack)
+  Voice triggers (speech-to-text aliases): "observe prod", "check production".
 triggers:
   - prod health
   - check prod errors
@@ -15,18 +25,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-Complements /canary, which watches the live app
-from the browser side (console errors, page failures); /observe reads the
-server side (what the platform itself recorded). Use when asked "what's
-happening in prod", "check prod errors", "pull the logs", "why is the app
-slow since the deploy", or "prod health". First run per repo walks through
-`gstack-runtime configure`.
-
-Voice triggers (speech-to-text aliases): "observe prod", "check production".
 
 # /observe — Production Health From the Platform's Own Records
 
