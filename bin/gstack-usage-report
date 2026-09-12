@@ -5,11 +5,15 @@ Five recorders write skill activity and none of them sees the whole picture, so
 reading any one of them produces a confident wrong answer. Two concrete ways
 that has already happened:
 
-  * `analytics/skill-usage.jsonl` mixes two unrelated record shapes. The
-    PostToolUse observer writes {skill, ts, session}. The careful/freeze guards
-    write {event: hook_fire, skill, pattern, repo} — a guard catching a
+  * `analytics/skill-usage.jsonl` mixes four unrelated record shapes. The
+    PostToolUse observer writes {skill, ts, session, via}. The careful/freeze
+    guards write {event: hook_fire, skill, pattern, repo} — a guard catching a
     dangerous command, not a skill being invoked. Counting lines conflates them
-    and `careful` looks like the most-used skill in the suite.
+    and `careful` looks like the most-used skill in the suite. The preamble
+    runtime (`bin/gstack-skill-start`, telemetry on) writes {skill, ts, repo}
+    at skill start and `bin/gstack-skill-end` writes {skill, duration_s,
+    outcome, browse, session, ts} at skill end — one run, two lines; counting
+    both doubles every skill that reaches its Telemetry step.
 
   * The PostToolUse observer only fires on the `Skill` tool. A skill that is
     followed by reading its SKILL.md — which the routing rules in CLAUDE.md ask
@@ -68,8 +72,14 @@ def collect():
             continue
         if record.get("event") == "hook_fire":
             guards[(skill, record.get("pattern") or "?")] += 1
+        elif record.get("via"):
+            seen[skill].append((record["via"], when(record)))
+        elif "duration_s" in record or "outcome" in record:
+            # skill-end completion record: the same run's skill-start line is
+            # already counted, so this adds provenance, not a second observation.
+            continue
         else:
-            seen[skill].append((record.get("via") or "skill-tool", when(record)))
+            seen[skill].append(("skill-start", when(record)))
 
     for path in glob.glob(os.path.join(STATE, "projects", "*", "timeline.jsonl")):
         for record in rows(path):
