@@ -77,6 +77,20 @@ Every tool call passes the budget guard; if it denies, go to Step 6 with
   object. Brief it with the domain facts it needs, not just the task. A verifier
   that reads your report and agrees has verified nothing.
 
+**The tier also picks the model for any agent you dispatch.** Ask the table
+rather than deciding it fresh each time:
+
+```bash
+~/.claude/skills/gstack/bin/gstack-risk-classify --action "<what you did>" --model
+```
+
+`elevated` prints `opus`: that verifier gates an irreversible action and gets
+the frontier model. `routine` prints `sonnet`: an exploration subagent, a
+scout, or a summariser for routine work does not need frontier capacity, and
+spending it there is what makes an unattended run exhaust its budget on the
+items that mattered least. Pass the printed value as the Agent tool's
+`model`. Your own work stays on whatever model this session runs.
+
 ## Step 5: Record, then park or complete
 
 Pass the tier from Step 3 through, and for elevated work name the agent that

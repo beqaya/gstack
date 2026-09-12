@@ -11,8 +11,23 @@ dumb, readable and testable; extend the list rather than adding cleverness.
 
 Usage:
     gstack-risk-classify --action "<command or description>"
+    gstack-risk-classify --action "..." --model    # the model a dispatched
+                                                    # agent for this tier gets
+
+--model prints which model to hand a subagent dispatched for this action.
+Elevated work is verified by a DIFFERENT agent re-deriving from primary
+sources, and that verifier gates an irreversible action, so it gets the
+frontier model. Routine work's checks are typecheck and tests; a subagent
+dispatched for it (exploration, a scout, a summary) does not need frontier
+capacity. Same table, one more column — the tier already encodes the risk,
+so the model choice is not a second judgement call.
 """
 import argparse
+
+MODEL_FOR_TIER = {
+    "elevated": "opus",
+    "routine": "sonnet",
+}
 
 ELEVATED_PATTERNS = [
     "git push",
@@ -62,11 +77,18 @@ def classify(action):
     return "elevated" if any(p in low for p in ELEVATED_PATTERNS) else "routine"
 
 
+def model_for(action):
+    return MODEL_FOR_TIER[classify(action)]
+
+
 def main():
     p = argparse.ArgumentParser(prog="gstack-risk-classify")
     p.add_argument("--action", required=True)
+    p.add_argument("--model", action="store_true",
+                   help="print the model a dispatched agent for this tier gets, "
+                        "instead of the tier")
     args = p.parse_args()
-    print(classify(args.action))
+    print(model_for(args.action) if args.model else classify(args.action))
 
 
 if __name__ == "__main__":

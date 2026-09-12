@@ -122,14 +122,49 @@ Run each detected tool. For each tool:
 ```bash
 # Example for each tool — run each independently
 START=$(date +%s)
-tsc --noEmit 2>&1 | tail -50
+OUT=$(mktemp)
+tsc --noEmit > "$OUT" 2>&1
 EXIT_CODE=$?
 END=$(date +%s)
+tail -50 "$OUT"
 echo "TOOL:typecheck EXIT:$EXIT_CODE DURATION:$((END-START))s"
 ```
 
-Run tools sequentially (some may share resources or lock files). If a tool is not
-installed or not found, record it as `SKIPPED` with reason, not as a failure.
+Capture the tool's exit code BEFORE anything reads its output. The previous
+form, `tsc --noEmit 2>&1 | tail -50; EXIT_CODE=$?`, recorded `tail`'s status
+— always 0 — so a `tsc` that crashed, was not installed, or was killed scored
+10/10 CLEAN. A health check that cannot tell "passed" from "never ran" is
+worse than none, because it is believed.
+
+Run tools sequentially (some may share resources or lock files).
+
+**Three outcomes, never conflated:**
+
+- **Ran and passed** — exit 0 with the tool's own output present. Scores 10.
+- **Ran and found problems** — non-zero exit with findings in the output.
+  Score by the rubric below.
+- **Did not run** — exit 126 or 127, "command not found", an empty `$OUT`,
+  a timeout, or a shell that cannot execute at all. Record it as
+  `NOT EXECUTED` with the reason. It is NOT `CLEAN`, NOT `SKIPPED`, and it
+  contributes no score: drop the category and redistribute its weight
+  exactly as for a skipped tool, and mark the composite `partial`.
+
+`SKIPPED` is reserved for a tool that Step 1 did not detect for this stack.
+A detected tool that fails to execute is `NOT EXECUTED`, and the difference
+is the whole point: one means "not applicable", the other means "this
+dashboard is missing a measurement it promised".
+
+**If nothing can execute** — a subagent without a shell, a sandbox, an
+MCP-only host, or a Bash tool returning empty output for every command — do
+not ask the user to paste output, do not summarise what the tools would
+probably say, and do not invent a score. Emit one line, "Checks cannot be
+executed in this environment", the Step 4 dashboard with `not executed` in
+every Score and Status cell and the detected commands still listed, and the
+composite as `not executed`. Write no history entry: a fabricated 10/10 in
+`health-history.jsonl` poisons every trend line after it. (Adopted from the
+upstream execution-honesty proposal, garrytan/gstack#2761, which recorded a
+five-day stretch where a Bash tool returned exit 1 and empty output for every
+command and nothing noticed.)
 
 ---
 

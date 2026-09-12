@@ -57,3 +57,30 @@ describe('enforcement-code changes are elevated', () => {
     expect(classify('write a design doc')).toBe('routine');
   });
 });
+
+describe('--model: the tier picks the model a dispatched agent gets', () => {
+  // Same lookup table, one more column. Elevated work is verified by a
+  // different agent that gates an irreversible action, so it gets the
+  // frontier model; a subagent dispatched for routine work does not.
+  function modelFor(action: string) {
+    const o = spawnSync([PY, RC, '--action', action, '--model']);
+    return o.stdout.toString().trim();
+  }
+
+  test('elevated actions dispatch on opus', () => {
+    expect(modelFor('git push origin main')).toBe('opus');
+    expect(modelFor('edit ~/.claude/settings.json')).toBe('opus');
+  });
+
+  test('routine actions dispatch on sonnet', () => {
+    expect(modelFor('npx tsc --noEmit')).toBe('sonnet');
+    expect(modelFor('read server/app.ts')).toBe('sonnet');
+  });
+
+  test('--model never disagrees with the tier', () => {
+    for (const a of ['rm -rf build', 'bun test', 'npm publish', 'grep TODO src/']) {
+      const tier = spawnSync([PY, RC, '--action', a]).stdout.toString().trim();
+      expect(modelFor(a)).toBe(tier === 'elevated' ? 'opus' : 'sonnet');
+    }
+  });
+});
