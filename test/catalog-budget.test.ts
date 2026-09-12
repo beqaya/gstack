@@ -157,4 +157,29 @@ describe('catalog discovery-surface budget', () => {
       expect(entry.description, `${entry.skill}: empty or missing frontmatter description`).not.toBe('');
     }
   });
+
+  // The committed mode is full (founder decision, 2026-09-12), and until now it
+  // was only a convention. Several tests invoke the generator, some in trim mode
+  // and some in full, so the mode left in the tree is whichever of them ran last
+  // — and a commit taken after a suite run silently shipped the other one. That
+  // is how two plan-review skills came to be unroutable on main. This asserts the
+  // mode instead of trusting it.
+  // plan-tune is exempt because it has no trigger phrase in EITHER mode: it is
+  // observational and is not meant to be reached by a user's phrasing. That is
+  // worth fixing on its own terms, but it is not evidence of a trim-mode tree,
+  // which is the only thing this test is asking about.
+  const NO_TRIGGER_BY_DESIGN = new Set(['plan-tune']);
+
+  test('the checked-in tree is in full catalog mode, not trim', () => {
+    const trimmed = catalogEntries()
+      .filter((e) => !NO_TRIGGER_BY_DESIGN.has(e.skill))
+      .filter((e) => !e.description.includes('Use when'));
+    expect(
+      trimmed.map((e) => e.skill),
+      `${trimmed.length} skill(s) have no trigger phrase in their frontmatter ` +
+        `description, which is what trim mode produces — it moves "Use when asked ` +
+        `to…" into the body, and the body is read only AFTER a skill is chosen. ` +
+        `Regenerate with: bun run scripts/gen-skill-docs.ts --catalog-mode=full`
+    ).toEqual([]);
+  });
 });

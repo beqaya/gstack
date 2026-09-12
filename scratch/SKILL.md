@@ -1,7 +1,20 @@
 ---
 name: scratch
 version: 0.1.0
-description: Answers a side question mid-task using the full conversation context, while making "no writes happen" structurally true instead of a promise. (gstack)
+description: |
+  Answers a side question mid-task using the full conversation context,
+  while making "no writes happen" structurally true instead of a promise.
+  Arms a sentinel (~/.gstack/.scratch-mode) that the gstack-generated-guard
+  PreToolUse hook checks before every Edit and Write and denies
+  unconditionally while it is fresh — the sentinel self-expires 30 minutes
+  after it is created, so a session that dies mid-scratch can never wedge
+  editing on this machine permanently. Answers using Read, Grep, Glob, and
+  non-mutating Bash only, then deletes the sentinel on every exit path,
+  success or failure, before returning control. Use when the user asks a
+  side question while a pipeline or long task is running — "what is this
+  mode?", "what does rotating a key mean?", "quick question", "just
+  curious" — and the answer should not be able to cause a stray write.
+  (gstack)
 triggers:
   - scratch mode
   - quick question
@@ -16,20 +29,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-Arms a sentinel (~/.gstack/.scratch-mode) that the gstack-generated-guard
-PreToolUse hook checks before every Edit and Write and denies
-unconditionally while it is fresh — the sentinel self-expires 30 minutes
-after it is created, so a session that dies mid-scratch can never wedge
-editing on this machine permanently. Answers using Read, Grep, Glob, and
-non-mutating Bash only, then deletes the sentinel on every exit path,
-success or failure, before returning control. Use when the user asks a
-side question while a pipeline or long task is running — "what is this
-mode?", "what does rotating a key mean?", "quick question", "just
-curious" — and the answer should not be able to cause a stray write.
 
 # /scratch — Answer a Side Question, Structurally Read-Only
 

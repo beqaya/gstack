@@ -1,7 +1,19 @@
 ---
 name: capture-lesson
 version: 1.0.0
-description: Captures a lesson at the MOMENT it is learned, instead of waiting for the weekly batch sweep. (gstack)
+description: |
+  Captures a lesson at the MOMENT it is learned, instead of waiting for the
+  weekly batch sweep. Fires on exactly three triggers: a defect is found in
+  something already reported done, an error is recovered from after
+  non-trivial diagnosis, or the user corrects a behavior. Classifies what was
+  learned as a DURABLE FACT (written to a memory file) or a REPEATABLE
+  PROCEDURE (staged as a SKILL.md.draft, never auto-activated), then routes
+  it: PROJECT facts to the project's own memory dir, TOOLING facts to the
+  shared gstack lessons doc, USER/GLOBAL facts proposed as a CLAUDE.md
+  addition needing the user's go-ahead. Routine work produces no lesson.
+  Use when a bug is found after something was called done, right after
+  recovering from a non-trivial error, or when the user corrects your
+  behavior. (gstack)
 triggers:
   - that's wrong, I told you
   - this was already broken when you said it was done
@@ -18,21 +30,6 @@ allowed-tools:
 ---
 <!-- AUTO-GENERATED from SKILL.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-
-
-## When to invoke this skill
-
-Fires on exactly three triggers: a defect is found in
-something already reported done, an error is recovered from after
-non-trivial diagnosis, or the user corrects a behavior. Classifies what was
-learned as a DURABLE FACT (written to a memory file) or a REPEATABLE
-PROCEDURE (staged as a SKILL.md.draft, never auto-activated), then routes
-it: PROJECT facts to the project's own memory dir, TOOLING facts to the
-shared gstack lessons doc, USER/GLOBAL facts proposed as a CLAUDE.md
-addition needing the user's go-ahead. Routine work produces no lesson.
-Use when a bug is found after something was called done, right after
-recovering from a non-trivial error, or when the user corrects your
-behavior.
 
 ## Preamble (run first)
 
