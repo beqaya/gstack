@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""gstack-reflect — the Reflector: turn repeated failures into proposed bullets.
+
+`gstack-reflect-collect` records what failed. This reads that evidence, groups it
+by skill and by normalized error, and proposes a playbook bullet for anything
+that has happened more than once. Proposals go through `gstack-playbook add`, so
+they land as PENDING and the Curator gate is untouched — nothing enters a skill's
+context without a human approving it.
+
+Repetition is the filter that makes this worth reading. A one-off failure is
+usually the task, not the skill; the same failure twice is a property of how the
+skill works. Proposing on first sight would bury the real lessons, which is the
+mistake `conventions/verification.md` records about flag rates.
+
+DRY RUN by default. Pass --apply to write proposals.
+
+Exit: 0 ok (nothing to propose, or proposals printed/applied) · 1 no evidence yet
+"""
+import argparse
+import collections
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+MIN_REPEATS = 2
+NOISE = re.compile(r"\d+|0x[0-9a-f]+|[A-Za-z]:\[^\s\"']+|/[^\s\"']{4,}")
+
+
+def state_root():
+    return os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack")
+
+
+def evidence():
+    path = os.path.join(state_root(), "analytics", "reflect-evidence.jsonl")
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    try:
+                        rows.append(json.loads(line))
+                    except ValueError:
+                        continue
+    except OSError:
+        return None
+    return rows
+
+
+def signature(row):
+    """An error's identity, with the incidental parts removed.
+
+    Line numbers, hex addresses and absolute paths differ on every occurrence of
+    the same underlying problem, so they are normalized away. What remains is the
+    part that makes two failures the same failure.
+    """
+    text = (row.get("error") or "").strip()
+    first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    return "%s: %s" % (row.get("tool") or "?", NOISE.sub("*", first)[:160])
+
+
+def bullet(sig, rows):
+    targets = [r.get("target") for r in rows if r.get("target")]
+    common = collections.Counter(NOISE.sub("*", t) for t in targets).most_common(1)
+    hint = (" on `%s`" % common[0][0][:80]) if common else ""
+    return ("seen %d times%s — %s. Check this before retrying the same way."
+            % (len(rows), hint, sig))
+
+
+def bun_bin():
+    """The real bun executable, not the npm shim.
+
+    On Windows `bun` on PATH is an extensionless npm wrapper script, which
+    subprocess cannot exec (WinError 2). The same trap already forced an
+    explicit path into the AskUserQuestion hook registration.
+    """
+    override = os.environ.get("GSTACK_BUN_BIN")
+    if override:
+        return override
+    found = shutil.which("bun.exe") or shutil.which("bun")
+    if found and found.lower().endswith(".exe"):
+        return found
+    npm = os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "npm",
+                       "node_modules", "bun", "bin", "bun.exe")
+    if os.path.exists(npm):
+        return npm
+    return found or "bun"
+
+
+def propose(skill, text, apply_it):
+    if not apply_it:
+        return "would propose"
+    bun = bun_bin()
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "gstack-playbook")
+    try:
+        done = subprocess.run([bun, script, "add", skill, "--text", text,
+                               "--source", "reflect"],
+                              capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return "failed: %s" % exc
+    if done.returncode == 0:
+        return "proposed"
+    if done.returncode == 2:
+        return "already proposed"
+    return "rejected (exit %d) %s" % (done.returncode,
+                                      (done.stderr or "").strip()[:120])
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--apply", action="store_true", help="write proposals")
+    ap.add_argument("--min-repeats", type=int, default=MIN_REPEATS)
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    rows = evidence()
+    if rows is None:
+        print("no evidence file yet — the collector has not fired")
+        print("(it runs on PostToolUseFailure; nothing has failed since wiring)")
+        return 1
+
+    attributed = [r for r in rows if r.get("skill")]
+    orphans = [r for r in rows if not r.get("skill")]
+
+    groups = collections.defaultdict(list)
+    for row in attributed:
+        groups[(row["skill"], signature(row))].append(row)
+
+    proposals = []
+    for (skill, sig), hits in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        if len(hits) >= args.min_repeats:
+            text = bullet(sig, hits)
+            proposals.append({"skill": skill, "text": text,
+                              "count": len(hits),
+                              "outcome": propose(skill, text, args.apply)})
+
+    if args.json:
+        print(json.dumps({
+            "evidence": len(rows),
+            "attributed": len(attributed),
+            "unattributed": len(orphans),
+            "proposals": proposals,
+        }, indent=2))
+        return 0
+
+    print("evidence records: %d  (attributed to a skill: %d, unattributed: %d)"
+          % (len(rows), len(attributed), len(orphans)))
+    print()
+    if proposals:
+        print("Proposals (pending — a Curator still has to approve each):")
+        for p in proposals:
+            print("  /%s  [%s]" % (p["skill"], p["outcome"]))
+            print("      " + p["text"])
+    else:
+        print("Nothing repeated %d+ times for one skill yet — nothing to propose."
+              % args.min_repeats)
+
+    if orphans:
+        print()
+        print("Unattributed evidence (%d records) — a skill that was followed by"
+              % len(orphans))
+        print("reading its SKILL.md never calls the Skill tool, so it cannot be")
+        print("attributed. Top repeated failures, for a human to place:")
+        top = collections.Counter(signature(r) for r in orphans).most_common(5)
+        for sig, n in top:
+            print("  %3dx  %s" % (n, sig))
+
+    if not args.apply and proposals:
+        print()
+        print("(dry run — pass --apply to propose these)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

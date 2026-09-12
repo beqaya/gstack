@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""gstack-reflect-collect — the Reflector's collector: capture what failed.
+
+ACE (arXiv 2510.04618) gives a self-improving loop three roles. gstack has two:
+skills generate, and `gstack-playbook approve` curates. The Reflector — the role
+that distills a lesson out of what actually happened — was left to prose inside
+every generated SKILL.md, which asks a model to remember. That instruction now
+reaches all 57 skills and has produced three bullets in seven weeks. The same
+prose-trigger failure was already diagnosed and fixed once, for skill usage, by
+replacing the instruction with a hook.
+
+This is that hook for failures. It runs on PostToolUseFailure, records a bounded
+redacted record of what failed, and exits. It proposes nothing: distillation is
+`gstack-reflect`, run in batch, so no model call sits on the hot path.
+
+It is an OBSERVER and therefore fails OPEN: every error path exits 0 in silence.
+A lost record costs one data point; a collector that breaks a tool call costs the
+user's work.
+
+The payload's error field is not documented, so this records the KEYS it saw
+alongside the text it found. The first real firing tells us the schema instead of
+us guessing it.
+
+Reads a hook payload on stdin. Always exits 0.
+"""
+import datetime
+import json
+import os
+import re
+import sys
+
+ERROR_KEYS = ("error", "tool_error", "tool_response", "message", "stderr")
+MAX_TEXT = 600
+
+SECRET = re.compile(
+    r"(?i)\b(?:sk-[A-Za-z0-9_\-]{8,}|ghp_[A-Za-z0-9]{8,}|"
+    r"(?:api[_-]?key|token|password|secret|bearer)\s*[=:]\s*)\S+")
+
+
+def redact(text):
+    return SECRET.sub("[redacted]", text)
+
+
+def state_root():
+    return os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
+        os.path.expanduser("~"), ".gstack")
+
+
+def active_skill(session_id):
+    """The last skill this session invoked, or None.
+
+    Attribution is best-effort by construction. A skill that is followed by
+    reading its SKILL.md never calls the Skill tool, so it never appears here —
+    the same blind spot gstack-usage-report prints. Unattributed evidence is
+    still recorded; gstack-reflect reports it separately rather than dropping it.
+    """
+    if not session_id:
+        return None
+    path = os.path.join(state_root(), "analytics", "skill-usage.jsonl")
+    found = None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if row.get("session") == session_id and row.get("skill"):
+                    found = row["skill"]
+    except OSError:
+        return None
+    return found
+
+
+def error_text(payload):
+    for key in ERROR_KEYS:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return key, value.strip()[:MAX_TEXT]
+        if isinstance(value, dict):
+            for inner in ERROR_KEYS:
+                nested = value.get(inner)
+                if isinstance(nested, str) and nested.strip():
+                    return "%s.%s" % (key, inner), nested.strip()[:MAX_TEXT]
+    return None, ""
+
+
+def target(payload):
+    ti = payload.get("tool_input")
+    if not isinstance(ti, dict):
+        return ""
+    for key in ("command", "file_path", "url", "pattern", "skill"):
+        value = ti.get(key)
+        if isinstance(value, str) and value:
+            return value[:240]
+    return ""
+
+
+def main():
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+        if not isinstance(payload, dict):
+            return
+        key, text = error_text(payload)
+        directory = os.path.join(state_root(), "analytics")
+        os.makedirs(directory, exist_ok=True)
+        record = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "session": payload.get("session_id"),
+            "skill": active_skill(payload.get("session_id")),
+            "tool": payload.get("tool_name"),
+            "target": redact(target(payload)),
+            "error_key": key,
+            "error": redact(text),
+            "cwd": payload.get("cwd"),
+            "payload_keys": sorted(payload.keys()),
+        }
+        with open(os.path.join(directory, "reflect-evidence.jsonl"), "a",
+                  encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    main()
+    sys.exit(0)
