@@ -51,10 +51,12 @@ describe('--catalog-mode=full opt-out wiring (static)', () => {
     expect(src).toContain('applyCatalogTrim(content, skillName)');
   });
 
-  test('default CATALOG_MODE is "trim" (opt-out, not opt-in)', () => {
+  test('default CATALOG_MODE is "full" in this fork (founder decision, 2026-09-12)', () => {
     const src = fs.readFileSync(GEN_SKILL_DOCS, 'utf-8');
-    // The const initializer falls back to 'trim' when --catalog-mode is unset.
-    expect(src).toMatch(/if \(!CATALOG_MODE_ARG\) return 'trim'/);
+    // Upstream defaults to 'trim'. This fork commits the tree in full mode, and
+    // a default that disagrees with the committed state means every bare
+    // regeneration — including the ones tests perform — flips the tree.
+    expect(src).toMatch(/if \(!CATALOG_MODE_ARG\) return 'full'/);
   });
 });
 
@@ -74,8 +76,9 @@ describe('--catalog-mode=full opt-out behavior (smoke)', () => {
     const suggestionsBefore = fs.readFileSync(PROACTIVE_SUGGESTIONS, 'utf-8');
 
     try {
-      // Generate the default (trim) mode explicitly, then assert its shape.
-      const trimRun = spawnSync('bun', ['run', 'gen:skill-docs', `--out-dir=${trimDir}`], {
+      // Generate trim mode explicitly (it is upstream's default, not ours), then
+      // assert its shape.
+      const trimRun = spawnSync('bun', ['run', 'gen:skill-docs', '--catalog-mode=trim', `--out-dir=${trimDir}`], {
         cwd: REPO_ROOT,
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 60_000,
