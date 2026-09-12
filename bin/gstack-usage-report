@@ -34,7 +34,7 @@ STATE = os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
 TIME_KEYS = ("ts", "timestamp", "date")
 
 BLIND_SPOTS = [
-    "a skill followed by reading SKILL.md, with no Skill tool call",
+    "a skill followed by reading SKILL.md before 2026-09-12, when the Read path was not recorded",
     "any run before 2026-08-11, when the PostToolUse observer was wired",
     "skills used in repos with no ~/.gstack/projects/<repo> directory",
 ]
@@ -69,7 +69,7 @@ def collect():
         if record.get("event") == "hook_fire":
             guards[(skill, record.get("pattern") or "?")] += 1
         else:
-            seen[skill].append(("skill-tool", when(record)))
+            seen[skill].append((record.get("via") or "skill-tool", when(record)))
 
     for path in glob.glob(os.path.join(STATE, "projects", "*", "timeline.jsonl")):
         for record in rows(path):

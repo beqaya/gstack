@@ -6,6 +6,17 @@ only when a model happened to follow the instruction. Two skills had ever
 recorded a use, out of sixty. This runs as a PostToolUse hook, so coverage is
 every skill and cannot be forgotten.
 
+Two paths reach a skill, and this records both:
+
+  Skill tool   — the harness invoked it. tool_name == "Skill".
+  Read         — the model opened <skills>/<name>/SKILL.md and followed it,
+                 which is what the founder's routing rules ask for. This path
+                 never touches the Skill tool, so until 2026-09-12 it was
+                 invisible: browse, autoplan and every plan-* review appeared
+                 in the project timelines and in no line of this log. Every
+                 record now says which path it came from ("via"), so a count
+                 can be traced back to how it was observed.
+
 It is an OBSERVER, not a guard, and therefore fails OPEN: every error path exits
 0 in silence. A lost record costs one data point; a telemetry bug that blocks a
 skill costs the user's work. Guards on irreversible resources fail closed —
@@ -16,23 +27,51 @@ Reads a PostToolUse payload on stdin. Always exits 0.
 import datetime
 import json
 import os
+import re
 import sys
+
+# Anything under a `skills` directory that ends in <name>/SKILL.md — the live
+# tree (skills/qa/), the repo checkout (skills/gstack/qa/), a plugin cache, a
+# nested suite (skills/cyberteam/skills/phish/). The skill is always the
+# directory that holds the file, however deep it sits.
+SKILL_MD = re.compile(r"[\\/]skills[\\/](?:[^\\/]+[\\/])*([^\\/]+)[\\/]SKILL\.md$",
+                      re.IGNORECASE)
+
+
+def observed(payload):
+    """Return (skill, via) or None."""
+    tool = payload.get("tool_name")
+    ti = payload.get("tool_input") or {}
+    if not isinstance(ti, dict):
+        return None
+    if tool == "Skill":
+        skill = ti.get("skill")
+        return (skill, "skill-tool") if isinstance(skill, str) and skill else None
+    if tool == "Read":
+        path = ti.get("file_path")
+        if not isinstance(path, str):
+            return None
+        m = SKILL_MD.search(path)
+        return (m.group(1), "read") if m else None
+    return None
 
 
 def main():
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-        if not isinstance(payload, dict) or payload.get("tool_name") != "Skill":
+        if not isinstance(payload, dict):
             return
-        skill = (payload.get("tool_input") or {}).get("skill")
-        if not skill or not isinstance(skill, str):
+        hit = observed(payload)
+        if not hit:
             return
+        skill, via = hit
         root = os.environ.get("GSTACK_STATE_ROOT") or os.path.join(
             os.path.expanduser("~"), ".gstack")
         directory = os.path.join(root, "analytics")
         os.makedirs(directory, exist_ok=True)
         record = {
             "skill": skill,
+            "via": via,
             "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "session": payload.get("session_id"),
         }
