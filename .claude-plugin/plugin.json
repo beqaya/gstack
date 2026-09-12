@@ -1,0 +1,10 @@
+{
+  "name": "gstack-plan-reviews",
+  "description": "Eval-only manifest: the four plan-review skills, which are each other's nearest confusable neighbours",
+  "skills": [
+    "./plan-ceo-review/",
+    "./plan-eng-review/",
+    "./plan-design-review/",
+    "./plan-devex-review/"
+  ]
+}
