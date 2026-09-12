@@ -82,7 +82,7 @@ describe('pipeline wired into the runtime', () => {
     const item = run(['add', '--run', runId, '--title', 'fix it', '--kind', 'bug'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
 
-    run(['journal', '--run', runId, '--item', item, '--claim', 'built the change required by this stage',
+    run(['journal', '--tier', 'routine', '--run', runId, '--item', item, '--claim', 'built the change required by this stage',
          '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output', '--stage', 'build'], root);
 
     // A fresh claim (as a later session would do) must resume at qa, not build.
@@ -96,7 +96,7 @@ describe('pipeline wired into the runtime', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 'fix it', '--kind', 'bug'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'attempted the stage without proving it',
+    run(['journal', '--tier', 'routine', '--run', runId, '--item', item, '--claim', 'attempted the stage without proving it',
          '--verdict', 'UNPROVEN', '--evidence', 'no evidence gathered; the stage produced no output', '--stage', 'build'], root);
 
     fs.rmSync(path.join(root, 'runs', runId, 'locks', `${item}.lock`), { force: true });
@@ -123,7 +123,16 @@ describe('pipeline wired into the runtime', () => {
 
 describe('cyberteam engagements (sub-project C)', () => {
   const fs = require('fs');
-  const CYBER = path.join(path.dirname(ROOT), 'cyberteam', 'skills');
+  // The cyberteam suite is a sibling of the INSTALLED checkout
+  // (~/.claude/skills/cyberteam), not of whatever worktree runs this test. A
+  // worktree under Downloads/ has no such sibling, and the test then reported
+  // all 50 stages missing — a red that meant "wrong directory", not "wrong
+  // pipeline". Prefer the sibling when it exists, else the installed location.
+  const sibling = path.join(path.dirname(ROOT), 'cyberteam', 'skills');
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const CYBER = fs.existsSync(sibling)
+    ? sibling
+    : path.join(home, '.claude', 'skills', 'cyberteam', 'skills');
 
   test('every cyber stage names a real cyberteam skill', () => {
     // The single most valuable check here: a pipeline that names a skill which

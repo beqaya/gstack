@@ -21,7 +21,7 @@ function setup(root: string) {
   const rid = run(root, ['init', '--goal', 'accept', '--budget', '1000']).out;
   const iid = run(root, ['add', '--run', rid, '--title', 'feat']).out;
   run(root, ['claim', '--run', rid, '--worker', 'w1']);
-  run(root, ['journal', '--run', rid, '--item', iid,
+  run(root, ['journal', '--tier', 'routine', '--run', rid, '--item', iid,
     '--claim', 'implemented the feature end to end', '--verdict', 'PROVEN',
     '--evidence', 'tests green, output shown']);
   return { rid, iid };

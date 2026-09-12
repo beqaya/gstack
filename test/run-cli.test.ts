@@ -66,7 +66,7 @@ describe('gstack-run stop/report', () => {
     const a = run(['add', '--run', runId, '--title', 'done job'], root).stdout;
     run(['add', '--run', runId, '--title', 'unfinished job'], root);
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', a, '--claim', 'the item behaves as specified after the change', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
+    run(['journal', '--tier', 'routine', '--run', runId, '--item', a, '--claim', 'the item behaves as specified after the change', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     run(['done', '--run', runId, '--item', a], root);
 
     const s = run(['stop', '--run', runId, '--why', 'budget-exhausted'], root);
@@ -88,7 +88,7 @@ describe('gstack-run stop/report', () => {
     run(['add', '--run', runId, '--title', 'never started'], root);
 
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', a, '--claim', 'the item behaves as specified after the change', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
+    run(['journal', '--tier', 'routine', '--run', runId, '--item', a, '--claim', 'the item behaves as specified after the change', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     run(['done', '--run', runId, '--item', a], root);
     run(['claim', '--run', runId, '--worker', 'w2'], root);
     run(['park', '--run', runId, '--item', b, '--action', 'deploy the release to production', '--reason', 'production deploys need founder approval'], root);
@@ -181,7 +181,7 @@ describe('gstack-run done --touched', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const item = run(['add', '--run', runId, '--title', 't'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
+    run(['journal', '--tier', 'routine', '--run', runId, '--item', item, '--claim', 'the item behaves as specified after the change',
          '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     return { runId, item };
   }
@@ -231,5 +231,47 @@ describe('exit codes are distinguishable from argparse', () => {
     // --nonsense is not a flag; argparse owns this failure.
     const bad = run(['status', '--run', runId, '--nonsense'], root);
     expect(bad.code).toBe(2);
+  });
+});
+
+describe('gstack-run done requires a stated verification tier', () => {
+  // run-supervisor Step 5 says to pass the tier from Step 3 through, but
+  // --tier was declared default=None, so omitting it was silent: all four
+  // journal entries of a real run (9a5f7d592b1d) carried tier None. An
+  // instruction nobody enforces is prose. The gate sits on `done`, not
+  // `journal`, so an honest mid-item UNPROVEN can still be recorded without a
+  // tier; what cannot happen is CLOSING an item whose tier was never stated.
+  function readyItem(root: string): { runId: string; item: string } {
+    const runId = run(['init', '--goal', 'tier gate probe', '--budget', '1000'], root).stdout;
+    const item = run(['add', '--run', runId, '--title', 'probe item for the tier gate'], root).stdout;
+    run(['claim', '--run', runId, '--worker', 'w1'], root);
+    return { runId, item };
+  }
+
+  test('a PROVEN entry with no tier cannot be closed (exit 23)', () => {
+    const root = tmpRoot();
+    const { runId, item } = readyItem(root);
+    run(['journal', '--run', runId, '--item', item,
+      '--claim', 'the item behaves as specified after the change',
+      '--verdict', 'PROVEN',
+      '--evidence', 'ran the command and observed the documented exit code and output'], root);
+    const done = run(['done', '--run', runId, '--item', item], root);
+    expect(done.code).toBe(23);
+    expect(done.stderr).toContain('no tier');
+  });
+
+  test('re-journaling with a tier unblocks done', () => {
+    const root = tmpRoot();
+    const { runId, item } = readyItem(root);
+    run(['journal', '--run', runId, '--item', item,
+      '--claim', 'the item behaves as specified after the change',
+      '--verdict', 'PROVEN',
+      '--evidence', 'ran the command and observed the documented exit code and output'], root);
+    expect(run(['done', '--run', runId, '--item', item], root).code).toBe(23);
+    run(['journal', '--run', runId, '--item', item, '--tier', 'routine',
+      '--claim', 'the item behaves as specified after the change',
+      '--verdict', 'PROVEN',
+      '--evidence', 'ran the command and observed the documented exit code and output'], root);
+    expect(run(['done', '--run', runId, '--item', item], root).code).toBe(0);
   });
 });

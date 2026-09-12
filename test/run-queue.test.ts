@@ -55,7 +55,7 @@ describe('gstack-run queue', () => {
     const runId = run(['init', '--goal', 'g', '--budget', '100'], root).stdout;
     const itemId = run(['add', '--run', runId, '--title', 'job'], root).stdout;
     run(['claim', '--run', runId, '--worker', 'w1'], root);
-    run(['journal', '--run', runId, '--item', itemId, '--claim', 'the change under test behaves as specified', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
+    run(['journal', '--tier', 'routine', '--run', runId, '--item', itemId, '--claim', 'the change under test behaves as specified', '--verdict', 'PROVEN', '--evidence', 'ran the command and observed the documented exit code and output'], root);
     expect(run(['done', '--run', runId, '--item', itemId], root).code).toBe(0);
 
     // Even with the lock gone, a completed item is never handed out again.

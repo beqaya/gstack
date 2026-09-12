@@ -19,7 +19,7 @@ function run(root: string, args: string[]) {
 function completeItem(root: string, rid: string, title: string): string {
   const iid = run(root, ['add', '--run', rid, '--title', title]).out;
   run(root, ['claim', '--run', rid, '--worker', 'w1']);
-  run(root, ['journal', '--run', rid, '--item', iid,
+  run(root, ['journal', '--tier', 'routine', '--run', rid, '--item', iid,
     '--claim', `implemented ${title} completely`, '--verdict', 'PROVEN',
     '--evidence', 'verified against primary sources, output shown']);
   run(root, ['done', '--run', rid, '--item', iid]);

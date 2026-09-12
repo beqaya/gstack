@@ -111,18 +111,28 @@ const MODEL_ARG_VAL: Model = (() => {
 })();
 
 // ─── Catalog Mode (v1.45.0.0 T4) ────────────────────────────
-// 'trim' (default): shorten frontmatter description to lead sentence,
-// move routing/voice prose into a "## When to invoke" body section, and
-// emit scripts/proactive-suggestions.json (single file across all skills).
-// 'full': legacy v1.44 behavior — full description stays in frontmatter.
+// 'full' (THIS FORK'S DEFAULT): the whole description, trigger phrases
+// included, stays in frontmatter — the only layer skill discovery reads.
+// 'trim' (upstream's default): shorten frontmatter to the lead sentence, move
+// routing/voice prose into a "## When to invoke" body section, and emit
+// scripts/proactive-suggestions.json. The body is read only AFTER a skill is
+// chosen, so trim buys ~6,300 always-loaded tokens by making skills harder to
+// reach: measured 2026-09-12 with `claude plugin eval`, two of four plan-review
+// skills did not fire on a user's own phrasing under trim.
+//
+// The default is flipped here, at the source, rather than passed as a flag,
+// because every bare invocation — tests, `bun run gen:skill-docs`, upstream's
+// docs — otherwise regenerates the tree in the mode the founder did not choose.
+// Three test suites did exactly that and left 55 files flipped after a green
+// run. `--catalog-mode=trim` remains for upstream parity work.
 const CATALOG_MODE_ARG = process.argv.find(a => a.startsWith('--catalog-mode'));
 const CATALOG_MODE: 'trim' | 'full' = (() => {
-  if (!CATALOG_MODE_ARG) return 'trim';
+  if (!CATALOG_MODE_ARG) return 'full';
   const val = CATALOG_MODE_ARG.includes('=')
     ? CATALOG_MODE_ARG.split('=')[1]
     : process.argv[process.argv.indexOf(CATALOG_MODE_ARG) + 1];
   if (val !== 'trim' && val !== 'full') {
-    throw new Error(`Unknown catalog mode: ${val}. Use 'trim' (default) or 'full'.`);
+    throw new Error(`Unknown catalog mode: ${val}. Use 'full' (default) or 'trim'.`);
   }
   return val;
 })();
