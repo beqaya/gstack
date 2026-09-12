@@ -487,6 +487,23 @@ def cmd_done(args):
             "verification refuted it.\n" % (args.item, verdicts[-1])
         )
         sys.exit(13)
+    # run-supervisor Step 5 says "pass the tier from Step 3 through", and
+    # --tier was declared default=None, so omitting it was silent: all four
+    # entries of run 9a5f7d592b1d carry tier None. An instruction nobody
+    # enforces is prose, and prose is what this runtime exists to replace. The
+    # gate sits here rather than on `journal` so a worker can still record an
+    # honest UNPROVEN mid-item without a tier; what it cannot do is CLOSE an
+    # item whose verification tier was never stated.
+    latest = [e for e in entries if e.get("item_id") == args.item][-1]
+    if latest.get("tier") not in ("routine", "elevated"):
+        sys.stderr.write(
+            "refusing to mark %s done — its latest journal entry has no tier. "
+            "Classify the work (gstack-risk-classify --action \"...\") and "
+            "re-journal with --tier routine or --tier elevated; elevated also "
+            "needs --verifier. A closed item with no stated tier cannot be "
+            "audited for whether it was verified at all.\n" % args.item
+        )
+        sys.exit(23)
     # Immutable acceptance ledger: an item that declared acceptance criteria
     # cannot be closed until EVERY criterion is verified pass. A PROVEN verdict
     # is the worker's own claim; the criteria are the checklist it may not
