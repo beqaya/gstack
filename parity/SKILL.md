@@ -64,132 +64,18 @@ periodically as an audit across all 57+ gstack skills.
 
 ## Step 1: Run the check (no `--sync`)
 
-This machine has Python 3.13 at `C:/Program Files/Python313/python.exe`.
-PowerShell is the primary shell; the script below works from either
-PowerShell or Git Bash since it's plain Python.
-
-Write the checker to a scratch path (never inside the repo -- this script is
-a reusable tool, not a repo artifact) and run it:
-
-```powershell
-$ParityScript = Join-Path $env:TEMP "gstack-parity-check.py"
-@'
-import hashlib, json, os, subprocess, sys
-from pathlib import Path
-
-REPO = Path(os.path.expanduser("~/.claude/skills/gstack"))
-LIVE = Path(os.path.expanduser("~/.claude/skills"))
-SYNC = "--sync" in sys.argv
-
-def sha256(p: Path) -> str:
-    return hashlib.sha256(p.read_bytes()).hexdigest()
-
-# Repo skills: any direct subdirectory of REPO containing a SKILL.md.
-# This naturally excludes non-skill dirs (bin/, scripts/, docs/, .git/, ...)
-# because they don't have a top-level SKILL.md -- no hardcoded exclude list
-# needed, which is important because that list would silently rot as the
-# repo grows.
-repo_skills = {}
-for d in sorted(REPO.iterdir()):
-    if not d.is_dir() or d.name.startswith('.'):
-        continue
-    f = d / "SKILL.md"
-    if f.is_file():
-        repo_skills[d.name] = f
-
-# Live skills: any direct subdirectory of LIVE containing a SKILL.md, EXCEPT
-# "gstack" itself. LIVE == "~/.claude/skills" and REPO == "~/.claude/skills/gstack"
-# -- the repo is physically nested inside the live skills folder. Comparing
-# "gstack" against itself is meaningless (it would always read IDENTICAL by
-# definition, or crash on self-copy during --sync) and the router skill's own
-# top-level SKILL.md (name: gstack, at the REPO ROOT, not REPO/gstack/) has no
-# separate live location to compare against -- its repo file IS where a user's
-# skill loader reads it from. That router skill is intentionally out of scope
-# for this checker.
-live_skills = {}
-for d in sorted(LIVE.iterdir()):
-    if not d.is_dir() or d.name.startswith('.') or d.name == "gstack":
-        continue
-    f = d / "SKILL.md"
-    if f.is_file():
-        live_skills[d.name] = f
-
-identical, drifted, repo_only, live_only = [], [], [], []
-
-for name, rp in repo_skills.items():
-    lp = live_skills.get(name)
-    if lp is None:
-        repo_only.append(name)
-        continue
-    if sha256(rp) == sha256(lp):
-        identical.append(name)
-    else:
-        newer = "repo" if rp.stat().st_mtime > lp.stat().st_mtime else "live"
-        drifted.append((name, newer))
-
-for name in live_skills:
-    if name not in repo_skills:
-        live_only.append(name)
-
-def report(ident_n, drift, repo_o, live_o, header=""):
-    if header:
-        print(header)
-    print(f"IDENTICAL: {ident_n}")
-    print(f"DRIFTED: {len(drift)}")
-    for n, newer in drift:
-        print(f"  {n} -- {newer} is newer")
-    print(f"REPO-ONLY: {len(repo_o)}  (invisible to the user until synced)")
-    for n in repo_o:
-        print(f"  {n} -- invisible to the user")
-    print(f"LIVE-ONLY: {len(live_o)}  (informational -- not necessarily an error)")
-    for n in live_o:
-        print(f"  {n}")
-
-report(len(identical), drifted, repo_only, live_only)
-
-if not SYNC:
-    sys.exit(0)
-
-to_copy = [n for n, _ in drifted] + repo_only
-if not to_copy:
-    print("\nSYNC: nothing to do, already IDENTICAL/none REPO-ONLY.")
-    sys.exit(0)
-
-rel_paths = [f"{n}/SKILL.md" for n in to_copy]
-dirty = subprocess.run(
-    ["git", "-C", str(REPO), "status", "--porcelain", "--"] + rel_paths,
-    capture_output=True, text=True,
-).stdout.strip()
-if dirty:
-    print("\nSYNC REFUSED: repo working tree is dirty for files it would copy:")
-    print(dirty)
-    print("Commit or stash the repo changes first, then re-run --sync.")
-    sys.exit(1)
-
-print(f"\nSYNCING {len(to_copy)} file(s), repo -> live only:")
-for name in to_copy:
-    rp = repo_skills[name]
-    ld = LIVE / name
-    ld.mkdir(parents=True, exist_ok=True)
-    (ld / "SKILL.md").write_bytes(rp.read_bytes())
-    print(f"  copied {name}")
-
-still_drifted = [n for n in to_copy if sha256(repo_skills[n]) != sha256(LIVE / n / "SKILL.md")]
-new_identical = len(identical) + (len(to_copy) - len(still_drifted))
-print("\n--- post-sync ---")
-print(f"IDENTICAL: {new_identical}")
-print(f"DRIFTED: {len(still_drifted)}")
-for n in still_drifted:
-    print(f"  {n} -- STILL DRIFTED, copy did not take (investigate: permissions? locked file?)")
-'@ | Set-Content -Encoding utf8 $ParityScript
-& "C:/Program Files/Python313/python.exe" $ParityScript
-```
-
-Git Bash equivalent for the last line (same script, same path):
+The checker is `bin/gstack-parity-check` -- plain-stdlib Python, so it runs
+the same from PowerShell or Git Bash. It used to be a heredoc this skill
+wrote to `$TEMP` on every run; it is a real script now so that the skill and
+the session-start hook run the identical code and cannot drift apart.
 
 ```bash
-"C:/Program Files/Python313/python.exe" "$TEMP/gstack-parity-check.py"
+"C:/Program Files/Python313/python.exe" ~/.claude/skills/gstack/bin/gstack-parity-check
 ```
+
+`--hook` is the session-start form: it prints only when something has
+drifted and always exits 0, so a stale copy is announced before the first
+tool call instead of discovered after a change "didn't take".
 
 ## Step 2: Read the buckets
 
@@ -215,7 +101,7 @@ Git Bash equivalent for the last line (same script, same path):
 Add `--sync` to the same script invocation:
 
 ```powershell
-& "C:/Program Files/Python313/python.exe" $ParityScript --sync
+"C:/Program Files/Python313/python.exe" ~/.claude/skills/gstack/bin/gstack-parity-check --sync
 ```
 
 This copies **repo -> live only**, for DRIFTED and REPO-ONLY skills. It never

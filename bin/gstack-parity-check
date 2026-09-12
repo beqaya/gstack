@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""gstack-parity-check — did the repo edit actually reach the copy a user runs?
+
+The live skills at ~/.claude/skills/<name>/SKILL.md are COPIES of the repo's
+<repo>/<name>/SKILL.md. A correct repo edit changes nothing until someone
+copies it. On 2026-09-12 that happened three times in one session: skill
+edits before install, a hook before registration, and a routing fix merged to
+main while all 54 live copies still carried the old text.
+
+This is the /parity skill's checker, promoted from a heredoc the skill wrote
+to $TEMP into a real script, so it can run as a SessionStart hook and so the
+skill and the hook cannot drift apart.
+
+Usage:
+    gstack-parity-check            # full report, exits 0
+    gstack-parity-check --hook     # prints ONLY when something drifted; exits 0
+    gstack-parity-check --sync     # copy repo -> live for DRIFTED and REPO-ONLY
+
+Sync is one-directional and never copies live back to the repo: a live-side
+hand-edit landing in version control would be committed as if it were
+reviewed source. It refuses when the repo working tree is dirty for a file it
+would copy.
+
+The router skill (repo-root SKILL.md, name: gstack) is out of scope: its repo
+file IS where the loader reads it, so there is no separate live copy.
+"""
+import hashlib
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(os.environ.get("GSTACK_REPO") or Path(__file__).resolve().parent.parent)
+LIVE = Path(os.environ.get("GSTACK_LIVE_SKILLS") or os.path.expanduser("~/.claude/skills"))
+
+
+def sha256(p):
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def skills_under(root, exclude=()):
+    found = {}
+    if not root.is_dir():
+        return found
+    for d in sorted(root.iterdir()):
+        if not d.is_dir() or d.name.startswith(".") or d.name in exclude:
+            continue
+        f = d / "SKILL.md"
+        if f.is_file():
+            found[d.name] = f
+    return found
+
+
+def compare():
+    repo = skills_under(REPO)
+    live = skills_under(LIVE, exclude=(REPO.name,))
+    identical, drifted, repo_only = [], [], []
+    for name, rp in repo.items():
+        lp = live.get(name)
+        if lp is None:
+            repo_only.append(name)
+        elif sha256(rp) == sha256(lp):
+            identical.append(name)
+        else:
+            newer = "repo" if rp.stat().st_mtime > lp.stat().st_mtime else "live"
+            drifted.append((name, newer))
+    live_only = [n for n in live if n not in repo]
+    return repo, identical, drifted, repo_only, live_only
+
+
+def report(identical, drifted, repo_only, live_only):
+    print("IDENTICAL: %d" % len(identical))
+    print("DRIFTED: %d" % len(drifted))
+    for n, newer in drifted:
+        print("  %s -- %s is newer" % (n, newer))
+    print("REPO-ONLY: %d  (invisible to the user until synced)" % len(repo_only))
+    for n in repo_only:
+        print("  %s -- invisible to the user" % n)
+    print("LIVE-ONLY: %d  (informational -- not necessarily an error)" % len(live_only))
+    for n in live_only:
+        print("  %s" % n)
+
+
+def hook(drifted, repo_only):
+    """Session-start form: silent when clean, one block when not, always exit 0.
+
+    A hook that fails the session over a stale copy would block the user from
+    the very session they might use to fix it. Observers fail open.
+    """
+    if not drifted and not repo_only:
+        return 0
+    print("gstack parity: %d skill(s) differ between repo and live copy"
+          % (len(drifted) + len(repo_only)))
+    for n, newer in drifted[:8]:
+        print("  %s (%s is newer)" % (n, newer))
+    for n in repo_only[:8]:
+        print("  %s (repo only)" % n)
+    rest = len(drifted) + len(repo_only) - min(8, len(drifted)) - min(8, len(repo_only))
+    if rest > 0:
+        print("  ... and %d more" % rest)
+    print("  run: gstack-parity-check --sync")
+    return 0
+
+
+def sync(repo, identical, drifted, repo_only):
+    to_copy = [n for n, _ in drifted] + repo_only
+    if not to_copy:
+        print("\nSYNC: nothing to do, already IDENTICAL/none REPO-ONLY.")
+        return 0
+    rel = ["%s/SKILL.md" % n for n in to_copy]
+    dirty = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "--"] + rel,
+                           capture_output=True, text=True).stdout.strip()
+    if dirty:
+        print("\nSYNC REFUSED: repo working tree is dirty for files it would copy:")
+        print(dirty)
+        print("Commit or stash the repo changes first, then re-run --sync.")
+        return 1
+    print("\nSYNCING %d file(s), repo -> live only:" % len(to_copy))
+    for name in to_copy:
+        (LIVE / name).mkdir(parents=True, exist_ok=True)
+        (LIVE / name / "SKILL.md").write_bytes(repo[name].read_bytes())
+        print("  copied %s" % name)
+    still = [n for n in to_copy if sha256(repo[n]) != sha256(LIVE / n / "SKILL.md")]
+    print("\n--- post-sync ---")
+    print("IDENTICAL: %d" % (len(identical) + len(to_copy) - len(still)))
+    print("DRIFTED: %d" % len(still))
+    for n in still:
+        print("  %s -- STILL DRIFTED, copy did not take (permissions? locked file?)" % n)
+    return 1 if still else 0
+
+
+def main(argv):
+    repo, identical, drifted, repo_only, live_only = compare()
+    if "--hook" in argv:
+        return hook(drifted, repo_only)
+    report(identical, drifted, repo_only, live_only)
+    if "--sync" in argv:
+        return sync(repo, identical, drifted, repo_only)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as exc:  # a checker must never take the session down
+        if "--hook" in sys.argv:
+            sys.exit(0)
+        sys.stderr.write("gstack-parity-check: %s\n" % exc)
+        sys.exit(2)
