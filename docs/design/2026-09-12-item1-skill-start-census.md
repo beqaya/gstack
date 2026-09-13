@@ -94,3 +94,22 @@ The old inline "Telemetry (run last)" fence already wrote the same line, so
 now labels start lines as `skill-start` and no longer counts the end line as a
 second observation.
 
+## Behavioral verification (2026-09-13, item 3)
+
+Run on the logged-in CLI (`EVALS_HERMETIC=0`, detached via `bin/gstack-detach`
+with the real `bun.exe`; the npm shim is not resolvable from the detached
+relaunch on Windows):
+
+| Test | Result |
+|---|---|
+| skill-e2e-preamble-script-ab (script arm) | 7/7 STATUS keys read |
+| skill-e2e-preamble-script-ab (inline arm) | 7/7 STATUS keys read |
+| plan-ceo / plan-devex plan-mode (gate) | 3 pass |
+| plan-eng plan-mode (periodic) | pass |
+| plan-design plan-mode (periodic) | 1 fail of 3 attempts, then 2 pass on rerun |
+
+The plan-design failure was two 300 s timeouts and one run that finished
+without the auto-select announcement; its scope-gate prose is byte-identical
+before and after the absorb, and the isolated rerun passed both cases. Logs
+under `~/.gstack-dev/eval-runs/preamble-*` and `plan-design-rerun-*`.
+
