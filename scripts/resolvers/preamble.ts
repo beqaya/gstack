@@ -28,16 +28,6 @@ import {
   generatePlanModeInfo,
 } from './preamble/generate-completion-status';
 
-// One-time onboarding prompts
-import { generateLakeIntro } from './preamble/generate-lake-intro';
-import { generateTelemetryPrompt } from './preamble/generate-telemetry-prompt';
-import { generateProactivePrompt } from './preamble/generate-proactive-prompt';
-import { generateFirstRunGuidance } from './preamble/generate-first-run-guidance';
-import { generateRoutingInjection } from './preamble/generate-routing-injection';
-import { generateVendoringDeprecation } from './preamble/generate-vendoring-deprecation';
-import { generateSpawnedSessionCheck } from './preamble/generate-spawned-session-check';
-import { generateWritingStyleMigration } from './preamble/generate-writing-style-migration';
-
 // Host-specific instructions
 import { generateBrainHealthInstruction } from './preamble/generate-brain-health-instruction';
 
@@ -79,7 +69,13 @@ export { generateTestFailureTriage } from './preamble/generate-test-failure-tria
 //   T3: autoplan, codex, design-consult, office-hours, ceo/design/eng-review
 //   T4: ship, review, qa, qa-only, design-review, land-deploy
 export function generatePreamble(ctx: TemplateContext): string {
-  const tier = ctx.preambleTier ?? 4;
+  const tier = ctx.preambleTier;
+  if (tier === undefined) {
+    throw new Error(
+      `Missing preamble-tier frontmatter in ${ctx.tmplPath}: every template that ` +
+      `resolves {{PREAMBLE}} must declare 'preamble-tier: N' (1-4).`
+    );
+  }
   if (tier < 1 || tier > 4) {
     throw new Error(`Invalid preamble-tier: ${tier} in ${ctx.tmplPath}. Must be 1-4.`);
   }
@@ -93,14 +89,11 @@ export function generatePreamble(ctx: TemplateContext): string {
     // (not interactive-gated); the text applies universally.
     generatePlanModeInfo(ctx),
     generateUpgradeCheck(ctx),
-    generateWritingStyleMigration(ctx),
-    generateLakeIntro(),
-    generateTelemetryPrompt(ctx),
-    generateProactivePrompt(ctx),
-    generateFirstRunGuidance(ctx),
-    generateRoutingInjection(ctx),
-    generateVendoringDeprecation(ctx),
-    generateSpawnedSessionCheck(),
+    // Phase 2: the 8 one-time onboarding generators (lake-intro, telemetry-
+    // prompt, proactive-prompt, first-run-guidance, routing-injection,
+    // vendoring-deprecation, spawned-session-check, writing-style-migration)
+    // moved into bin/gstack-skill-start's instruction-emission layer — their
+    // text appears at runtime only when its gate fires (plan Q2/OV6/F5).
     generateBrainHealthInstruction(ctx),
     // AskUserQuestion Format renders BEFORE the model overlay so the pacing rule
     // is the ambient default; the overlay's behavioral nudges land as subordinate

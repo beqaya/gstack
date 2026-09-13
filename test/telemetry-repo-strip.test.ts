@@ -31,7 +31,8 @@ import path from 'path';
 
 const ROOT = path.resolve(__dirname, '..');
 const SYNC = path.join(ROOT, 'bin', 'gstack-telemetry-sync');
-const PREAMBLE = path.join(ROOT, 'scripts', 'resolvers', 'preamble', 'generate-preamble-bash.ts');
+const SKILL_START = path.join(ROOT, 'bin', 'gstack-skill-start');
+const SKILL_END = path.join(ROOT, 'bin', 'gstack-skill-end');
 const TEL_LOG = path.join(ROOT, 'bin', 'gstack-telemetry-log');
 
 // Fields that identify the user's repo/branch. The promise is that NONE of
@@ -82,21 +83,29 @@ describe('telemetry no-repo-identity-egress invariant', () => {
 
   test('coverage: every repo/branch field the producers emit into skill-usage.jsonl is stripped', () => {
     // Only emission lines that target the synced file (skill-usage.jsonl). The
-    // preamble appends directly; gstack-telemetry-log builds the synced event
+    // skill-start/skill-end scripts append directly; gstack-telemetry-log builds the synced event
     // with a `printf '{"v":1,...` line into $JSONL_FILE (= skill-usage.jsonl).
-    const preambleSynced = fs
-      .readFileSync(PREAMBLE, 'utf-8')
-      .split('\n')
+    const skillStartSynced = fs
+      .readFileSync(SKILL_START, 'utf-8')
+      .split('
+')
+      .filter((l) => l.includes('skill-usage.jsonl'));
+    const skillEndSynced = fs
+      .readFileSync(SKILL_END, 'utf-8')
+      .split('
+')
       .filter((l) => l.includes('skill-usage.jsonl'));
     const telLogSynced = fs
       .readFileSync(TEL_LOG, 'utf-8')
-      .split('\n')
+      .split('
+')
       .filter((l) => l.includes('"v":1') || l.includes('skill-usage'));
     const emitted = new Set<string>([
-      ...emittedRepoFields(preambleSynced),
+      ...emittedRepoFields(skillStartSynced),
+      ...emittedRepoFields(skillEndSynced),
       ...emittedRepoFields(telLogSynced),
     ]);
-    // The preamble must emit "repo" — guards against the test silently passing
+    // gstack-skill-start must emit "repo" — guards against the test silently passing
     // because a regex stopped matching the producer.
     expect(emitted.has('repo')).toBe(true);
     for (const field of emitted) {

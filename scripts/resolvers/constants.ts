@@ -114,3 +114,23 @@ Branch on the echoed \`CODEX_MODE\`:
 - **\`not_authed\`** — installed but no credentials. Print: "Codex installed but not authenticated — using Claude subagent. Run \`codex login\` or set \`$CODEX_API_KEY\`." Fall back to the Claude subagent path.
 - **\`ready\`** — run the Codex pass below.`;
 }
+
+/**
+ * Web-search flag for every codex invocation (#2525).
+ *
+ * codex >=0.144 deprecated the legacy `--enable`-based web_search_cached
+ * spelling (web search is on by default; the deprecation notice says to set
+ * `web_search` to "live", "indexed", "cached", or "disabled" at the top
+ * level), and `--enable <FEATURE>` now means `-c features.<name>=true`
+ * (verified on 0.147.0), so the legacy spelling is headed for hard
+ * rejection. This is the ONE source of truth: resolvers interpolate it
+ * directly and templates reference it via the {{CODEX_WEB_SEARCH_FLAG}}
+ * token — never write the flag inline.
+ *
+ * Semantics note: unlike the legacy flag (which yielded to an existing
+ * top-level `web_search` in config.toml), the -c form explicitly overrides
+ * it. Deliberate: gstack wants deterministic cached search for review
+ * invocations. Native `codex review` disables web search regardless of
+ * configuration, so on that path the flag is a harmless no-op.
+ */
+export const CODEX_WEB_SEARCH_FLAG = `-c 'web_search="cached"'`;
