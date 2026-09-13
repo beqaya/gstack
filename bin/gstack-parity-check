@@ -7,6 +7,13 @@ copies it. On 2026-09-12 that happened three times in one session: skill
 edits before install, a hook before registration, and a routing fix merged to
 main while all 54 live copies still carried the old text.
 
+A carved skill is more than its SKILL.md: the skeleton tells the model to
+"Read sections/<name>.md", and those files are copied next to the live
+SKILL.md by ./setup. So the unit of parity is SKILL.md plus the sections/
+directory when the repo skill has one. On 2026-09-13 the skill-start absorb
+carved 20 skills, /parity reported 56 IDENTICAL, and every one of the 20 live
+copies pointed at a sections/ directory that did not exist yet.
+
 This is the /parity skill's checker, promoted from a heredoc the skill wrote
 to $TEMP into a real script, so it can run as a SessionStart hook and so the
 skill and the hook cannot drift apart.
@@ -26,6 +33,7 @@ file IS where the loader reads it, so there is no separate live copy.
 """
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -38,6 +46,31 @@ def sha256(p):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def unit_files(skill_dir):
+    """Every file that makes up one skill's live unit: SKILL.md plus sections/**.
+
+    Returned as {relative posix path: Path}; a skill without a sections/
+    directory is just its SKILL.md.
+    """
+    files = {"SKILL.md": skill_dir / "SKILL.md"}
+    sections = skill_dir / "sections"
+    if sections.is_dir():
+        for p in sorted(sections.rglob("*")):
+            if p.is_file():
+                files[p.relative_to(skill_dir).as_posix()] = p
+    return files
+
+
+def unit_hash(files):
+    h = hashlib.sha256()
+    for rel in sorted(files):
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(sha256(files[rel]).encode("ascii"))
+        h.update(b"\n")
+    return h.hexdigest()
+
+
 def skills_under(root, exclude=()):
     found = {}
     if not root.is_dir():
@@ -45,25 +78,40 @@ def skills_under(root, exclude=()):
     for d in sorted(root.iterdir()):
         if not d.is_dir() or d.name.startswith(".") or d.name in exclude:
             continue
-        f = d / "SKILL.md"
-        if f.is_file():
-            found[d.name] = f
+        if (d / "SKILL.md").is_file():
+            found[d.name] = d
     return found
+
+
+def drift_parts(repo_files, live_files):
+    """Which part of the unit differs: 'SKILL.md', 'sections', or both."""
+    parts = []
+    if sha256(repo_files["SKILL.md"]) != sha256(live_files["SKILL.md"]):
+        parts.append("SKILL.md")
+    rs = {k: v for k, v in repo_files.items() if k != "SKILL.md"}
+    ls = {k: v for k, v in live_files.items() if k != "SKILL.md"}
+    if set(rs) != set(ls) or any(sha256(rs[k]) != sha256(ls[k]) for k in rs):
+        parts.append("sections")
+    return "+".join(parts)
 
 
 def compare():
     repo = skills_under(REPO)
     live = skills_under(LIVE, exclude=(REPO.name,))
     identical, drifted, repo_only = [], [], []
-    for name, rp in repo.items():
-        lp = live.get(name)
-        if lp is None:
+    for name, rd in repo.items():
+        ld = live.get(name)
+        if ld is None:
             repo_only.append(name)
-        elif sha256(rp) == sha256(lp):
+            continue
+        rf, lf = unit_files(rd), unit_files(ld)
+        if unit_hash(rf) == unit_hash(lf):
             identical.append(name)
         else:
-            newer = "repo" if rp.stat().st_mtime > lp.stat().st_mtime else "live"
-            drifted.append((name, newer))
+            r_mtime = max(p.stat().st_mtime for p in rf.values())
+            l_mtime = max(p.stat().st_mtime for p in lf.values())
+            newer = "repo" if r_mtime > l_mtime else "live"
+            drifted.append((name, newer, drift_parts(rf, lf)))
     live_only = [n for n in live if n not in repo]
     return repo, identical, drifted, repo_only, live_only
 
@@ -71,8 +119,8 @@ def compare():
 def report(identical, drifted, repo_only, live_only):
     print("IDENTICAL: %d" % len(identical))
     print("DRIFTED: %d" % len(drifted))
-    for n, newer in drifted:
-        print("  %s -- %s is newer" % (n, newer))
+    for n, newer, part in drifted:
+        print("  %s -- %s is newer (%s)" % (n, newer, part))
     print("REPO-ONLY: %d  (invisible to the user until synced)" % len(repo_only))
     for n in repo_only:
         print("  %s -- invisible to the user" % n)
@@ -91,8 +139,8 @@ def hook(drifted, repo_only):
         return 0
     print("gstack parity: %d skill(s) differ between repo and live copy"
           % (len(drifted) + len(repo_only)))
-    for n, newer in drifted[:8]:
-        print("  %s (%s is newer)" % (n, newer))
+    for n, newer, part in drifted[:8]:
+        print("  %s (%s is newer, %s)" % (n, newer, part))
     for n in repo_only[:8]:
         print("  %s (repo only)" % n)
     rest = len(drifted) + len(repo_only) - min(8, len(drifted)) - min(8, len(repo_only))
@@ -102,12 +150,27 @@ def hook(drifted, repo_only):
     return 0
 
 
+def copy_unit(repo_dir, live_dir):
+    """Mirror repo -> live: SKILL.md, and sections/ replaced wholesale (what ./setup does)."""
+    live_dir.mkdir(parents=True, exist_ok=True)
+    (live_dir / "SKILL.md").write_bytes((repo_dir / "SKILL.md").read_bytes())
+    live_sections = live_dir / "sections"
+    if live_sections.is_dir() or live_sections.is_symlink():
+        shutil.rmtree(live_sections)
+    if (repo_dir / "sections").is_dir():
+        shutil.copytree(repo_dir / "sections", live_sections)
+
+
 def sync(repo, identical, drifted, repo_only):
-    to_copy = [n for n, _ in drifted] + repo_only
+    to_copy = [n for n, _, _ in drifted] + repo_only
     if not to_copy:
         print("\nSYNC: nothing to do, already IDENTICAL/none REPO-ONLY.")
         return 0
-    rel = ["%s/SKILL.md" % n for n in to_copy]
+    rel = []
+    for n in to_copy:
+        rel.append("%s/SKILL.md" % n)
+        if (repo[n] / "sections").is_dir():
+            rel.append("%s/sections" % n)
     dirty = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "--"] + rel,
                            capture_output=True, text=True).stdout.strip()
     if dirty:
@@ -115,12 +178,12 @@ def sync(repo, identical, drifted, repo_only):
         print(dirty)
         print("Commit or stash the repo changes first, then re-run --sync.")
         return 1
-    print("\nSYNCING %d file(s), repo -> live only:" % len(to_copy))
+    print("\nSYNCING %d skill(s), repo -> live only:" % len(to_copy))
     for name in to_copy:
-        (LIVE / name).mkdir(parents=True, exist_ok=True)
-        (LIVE / name / "SKILL.md").write_bytes(repo[name].read_bytes())
-        print("  copied %s" % name)
-    still = [n for n in to_copy if sha256(repo[n]) != sha256(LIVE / n / "SKILL.md")]
+        copy_unit(repo[name], LIVE / name)
+        print("  copied %s%s" % (name, " (+sections)" if (repo[name] / "sections").is_dir() else ""))
+    still = [n for n in to_copy
+             if unit_hash(unit_files(repo[n])) != unit_hash(unit_files(LIVE / n))]
     print("\n--- post-sync ---")
     print("IDENTICAL: %d" % (len(identical) + len(to_copy) - len(still)))
     print("DRIFTED: %d" % len(still))
