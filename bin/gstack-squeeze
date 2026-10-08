@@ -43,8 +43,8 @@ SIGNAL = re.compile(
     r"error|fail|exception|traceback|panic|fatal|assert|denied|not found|cannot|"
     r"unable|refused|timed? ?out|warn|\bE\s{2,}|^\s*at\s|^\s*File \"", re.I)
 READS = re.compile(
-    r"^\s*(cat|head|tail|less|more|type|get-content|gc)\b|\bsed\s+-n\b|"
-    r"\bgit\s+(-C\s+\S+\s+)?(diff|show)\b|nosqueeze|\.gstack[/\\]squeeze", re.I)
+    r"(^|[;&|(]\s*)(cat|head|tail|less|more|type|get-content|gc)\b|\bsed\s+-n\b|"
+    r"\bgit\b[^;&|]*?\s(diff|show)\b|nosqueeze|\.gstack[/\\]squeeze", re.I)
 
 
 def clean(text):
@@ -82,29 +82,24 @@ def pick(lines):
     for i in sorted(k for k in keep if k < len(lines)):
         if i > last + 1:
             out.append("... [%d lines omitted] ..." % (i - last - 1))
-        out.append(lines[i][:2000])
+        line = lines[i]
+        out.append(line if len(line) <= 2000 else "%s ...[line cut, %d chars total]" % (line[:2000], len(line)))
         last = i
     return out
 
 
 def squeeze(text):
-    """Return the squeezed text, or None when the text is small enough already."""
     lines = collapse(clean(text))
-    if not too_big(lines):
-        short = "\n".join(lines)
-        return short if len(short) < len(text) * 0.7 else None
-    return "\n".join(pick(lines))
+    return "\n".join(pick(lines) if too_big(lines) else lines)
 
 
-def save(text, tag):
+def save(data, path):
     DIR.mkdir(parents=True, exist_ok=True)
     cutoff = time.time() - KEEP_DAYS * 86400
     for old in DIR.glob("*.log"):
         if old.stat().st_mtime < cutoff:
             old.unlink(missing_ok=True)
-    path = DIR / ("%s-%s.%s.log" % (time.strftime("%Y%m%d-%H%M%S"), uuid.uuid4().hex[:6], tag))
-    path.write_text(text, encoding="utf-8", newline="")
-    return path
+    path.write_bytes(data)
 
 
 def record(before, after):
@@ -115,14 +110,14 @@ def record(before, after):
 
 def squeeze_stream(text, tag):
     short = squeeze(text)
-    if short is None:
-        return None
-    path = save(text, tag).as_posix()
-    total = text.count("\n") + 1
+    path = DIR / ("%s-%s.%s.log" % (time.strftime("%Y%m%d-%H%M%S"), uuid.uuid4().hex[:6], tag))
     header = ("[gstack-squeeze] %s: %d lines / %d chars cut to %d chars. Full output: %s "
               "(read a slice with sed -n 'A,Bp'; add 'nosqueeze' to a command to skip)"
-              % (tag, total, len(text), len(short), path))
+              % (tag, text.count("\n") + 1, len(text), len(short), path.as_posix()))
     out = header + "\n" + short
+    if len(out) > len(text) * 0.7:
+        return None
+    save(text.encode("utf-8"), path)
     record(len(text), len(out))
     return out
 
@@ -133,7 +128,7 @@ def hook():
         return 0
     command = str((payload.get("tool_input") or {}).get("command", ""))
     resp = payload.get("tool_response")
-    if READS.search(command) or not isinstance(resp, dict):
+    if READS.search(command) or not isinstance(resp, dict) or resp.get("isImage"):
         return 0
     updated, changed = dict(resp), False
     for tag in ("stdout", "stderr"):

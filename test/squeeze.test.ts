@@ -79,6 +79,34 @@ describe('gstack-squeeze', () => {
     expect(hook(root, log(600)).out).toBeNull();
   });
 
+  test('skips reads inside compound commands', () => {
+    const root = tmpRoot();
+    for (const command of ['cd foo && cat big.txt', 'cd foo; Get-Content x', 'pnpm build | tail -n 600',
+      'git --no-pager diff', 'git -C x diff']) {
+      expect(hook(root, log(600), { command }).out).toBeNull();
+    }
+    expect(hook(root, log(600), { command: 'pnpm test src/concat.test.ts' }).out).not.toBeNull();
+  });
+
+  test('never returns something no shorter than the original, and writes no log then', () => {
+    const root = tmpRoot();
+    expect(hook(root, Array.from({ length: 200 }, (_, i) => `error ${i}`).join('\n')).out).toBeNull();
+    expect(hook(root, Array(30).fill('dup').join('\n')).out).toBeNull();
+    expect(fs.existsSync(path.join(root, 'squeeze'))).toBe(false);
+  });
+
+  test('marks cut long lines and passes images through', () => {
+    const root = tmpRoot();
+    const r = hook(root, 'x'.repeat(20000));
+    expect(r.out.updatedToolOutput.stdout).toContain('[line cut, 20000 chars total]');
+    const o = spawnSync([PY, SQUEEZE, '--hook'], {
+      env: { ...process.env, GSTACK_STATE_ROOT: root },
+      stdin: Buffer.from(JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'x' },
+        tool_response: { stdout: 'data:image/png;base64,' + 'A'.repeat(20000), stderr: '', interrupted: false, isImage: true } })),
+    });
+    expect(o.stdout.toString().trim()).toBe('');
+  });
+
   test('records savings for --stats', () => {
     const root = tmpRoot();
     hook(root, log(600));
