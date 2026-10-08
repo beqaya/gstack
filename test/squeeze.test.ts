@@ -107,6 +107,37 @@ describe('gstack-squeeze', () => {
     expect(o.stdout.toString().trim()).toBe('');
   });
 
+  function readHook(root: string, filePath: string, content: string, extra: Record<string, unknown> = {}) {
+    const resp = { type: 'text', file: { filePath, content, numLines: 600, startLine: 1, totalLines: 600 } };
+    const o = spawnSync([PY, SQUEEZE, '--hook'], {
+      env: { ...process.env, GSTACK_STATE_ROOT: root },
+      stdin: Buffer.from(JSON.stringify({ tool_name: 'Read', tool_input: { file_path: filePath, ...extra }, tool_response: resp })),
+    });
+    const text = o.stdout.toString().trim();
+    return text ? JSON.parse(text).hookSpecificOutput.updatedToolOutput : null;
+  }
+
+  test('squeezes whole-file reads of logs and data, keeping the response shape', () => {
+    const root = tmpRoot();
+    const out = readHook(root, 'C:/x/run.log', log(600, ['FATAL: disk full']));
+    expect(out.type).toBe('text');
+    expect(out.file.filePath).toBe('C:/x/run.log');
+    expect(out.file.totalLines).toBe(600);
+    expect(out.file.content).toContain('FATAL: disk full');
+    expect(out.file.content).toContain('do NOT match the file');
+    expect(readHook(root, 'C:/x/rows.csv', log(600))).not.toBeNull();
+    expect(fs.existsSync(path.join(root, 'squeeze')) && fs.readdirSync(path.join(root, 'squeeze')).some(f => f.endsWith('.log'))).toBe(false);
+  });
+
+  test('never squeezes code, config, sliced reads or saved squeeze logs', () => {
+    const root = tmpRoot();
+    for (const p of ['C:/x/app.ts', 'C:/x/settings.json', 'C:/x/README.md', 'C:/x/conf.yaml', 'C:/x/tail.py']) {
+      expect(readHook(root, p, log(600))).toBeNull();
+    }
+    expect(readHook(root, 'C:/x/run.log', log(600), { offset: 100, limit: 50 })).toBeNull();
+    expect(readHook(root, 'C:/Users/u/.gstack/squeeze/a.stdout.log', log(600))).toBeNull();
+  });
+
   test('records savings for --stats', () => {
     const root = tmpRoot();
     hook(root, log(600));

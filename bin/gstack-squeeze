@@ -20,6 +20,12 @@ Skipped (output passes through untouched):
     - deliberate reads: cat, head, tail, sed -n, Get-Content, git diff/show
     - commands touching ~/.gstack/squeeze (re-reading a saved log must not loop)
     - commands containing "nosqueeze", or when ~/.gstack/squeeze.off exists
+
+Read (PostToolUse on Read): squeezes whole-file reads of data/log files only
+(SQUEEZE_READ_EXTS, default .log .out .csv .tsv .jsonl .ndjson). Code, config,
+.json and .md are never touched because Claude edits them against exact text.
+A Read with offset/limit is a deliberate slice and passes through. The file
+itself is the full copy, so nothing is saved.
 """
 import json
 import os
@@ -37,6 +43,7 @@ MAX_CHARS = int(os.environ.get("SQUEEZE_MAX_CHARS", "8000"))
 HEAD, TAIL, SIGNAL_CAP = 20, 40, 80
 KEEP_DAYS = 3
 NATIVE_CAP = int(os.environ.get("BASH_MAX_OUTPUT_LENGTH", "30000"))
+READ_EXTS = set(os.environ.get("SQUEEZE_READ_EXTS", ".log .out .csv .tsv .jsonl .ndjson").split())
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 SIGNAL = re.compile(
@@ -122,21 +129,51 @@ def squeeze_stream(text, tag):
     return out
 
 
-def hook():
-    payload = json.loads(sys.stdin.buffer.read() or b"{}")
-    if OFF.exists() or payload.get("tool_name") not in ("Bash", "PowerShell"):
-        return 0
+def squeeze_read(text, path):
+    short = squeeze(text)
+    header = ("[gstack-squeeze] %d lines / %d chars cut to %d chars. Line numbers below do NOT "
+              "match the file. Full file: %s (Read it with offset/limit for exact lines)"
+              % (text.count("\n") + 1, len(text), len(short), path))
+    out = header + "\n" + short
+    if len(out) > len(text) * 0.7:
+        return None
+    record(len(text), len(out))
+    return out
+
+
+def shell(payload, resp):
     command = str((payload.get("tool_input") or {}).get("command", ""))
-    resp = payload.get("tool_response")
-    if READS.search(command) or not isinstance(resp, dict) or resp.get("isImage"):
-        return 0
+    if READS.search(command) or resp.get("isImage"):
+        return None
     updated, changed = dict(resp), False
     for tag in ("stdout", "stderr"):
         if isinstance(resp.get(tag), str) and 0 < len(resp[tag]) < NATIVE_CAP:
             short = squeeze_stream(resp[tag], tag)
             if short is not None:
                 updated[tag], changed = short, True
-    if changed:
+    return updated if changed else None
+
+
+def read(payload, resp):
+    args = payload.get("tool_input") or {}
+    path = str(args.get("file_path", ""))
+    file = resp.get("file")
+    if (args.get("offset") or args.get("limit") or resp.get("type") != "text"
+            or Path(path).suffix.lower() not in READ_EXTS or ".gstack/squeeze" in Path(path).as_posix()
+            or not isinstance(file, dict) or not isinstance(file.get("content"), str)):
+        return None
+    short = squeeze_read(file["content"], Path(path).as_posix())
+    return None if short is None else dict(resp, file=dict(file, content=short))
+
+
+def hook():
+    payload = json.loads(sys.stdin.buffer.read() or b"{}")
+    handler = {"Bash": shell, "PowerShell": shell, "Read": read}.get(payload.get("tool_name"))
+    resp = payload.get("tool_response")
+    if OFF.exists() or handler is None or not isinstance(resp, dict):
+        return 0
+    updated = handler(payload, resp)
+    if updated is not None:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PostToolUse", "updatedToolOutput": updated}}))
     return 0
