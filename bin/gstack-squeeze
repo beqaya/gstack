@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""gstack-squeeze — shrink bulky shell output before it enters the context.
+
+Every request re-sends the whole context, so a 3,000-line test log read once is
+paid for on every later turn. As a PostToolUse hook on Bash|PowerShell this
+keeps the head, the tail and every error-looking line, writes the full stream
+to ~/.gstack/squeeze/, and hands Claude the short version plus the file path
+(updatedToolOutput). Nothing is lost: verifiers re-read the saved file.
+
+Usage:
+    gstack-squeeze --hook          # PostToolUse hook: stdin is the hook JSON
+    gstack-squeeze <file>          # print the squeezed form of a file
+    gstack-squeeze --stats         # chars saved so far
+
+Skipped (output passes through untouched):
+    - output under SQUEEZE_MAX_LINES lines and SQUEEZE_MAX_CHARS chars
+    - output at Claude Code's own cap (BASH_MAX_OUTPUT_LENGTH, 30000): the hook
+      only receives the truncated head, while Claude Code already persists the
+      full text to a file and shows a 2KB preview
+    - deliberate reads: cat, head, tail, sed -n, Get-Content, git diff/show
+    - commands touching ~/.gstack/squeeze (re-reading a saved log must not loop)
+    - commands containing "nosqueeze", or when ~/.gstack/squeeze.off exists
+"""
+import json
+import os
+import re
+import sys
+import time
+import uuid
+from pathlib import Path
+
+STATE = Path(os.environ.get("GSTACK_STATE_ROOT") or Path.home() / ".gstack")
+DIR = STATE / "squeeze"
+OFF = STATE / "squeeze.off"
+MAX_LINES = int(os.environ.get("SQUEEZE_MAX_LINES", "120"))
+MAX_CHARS = int(os.environ.get("SQUEEZE_MAX_CHARS", "8000"))
+HEAD, TAIL, SIGNAL_CAP = 20, 40, 80
+KEEP_DAYS = 3
+NATIVE_CAP = int(os.environ.get("BASH_MAX_OUTPUT_LENGTH", "30000"))
+
+ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+SIGNAL = re.compile(
+    r"error|fail|exception|traceback|panic|fatal|assert|denied|not found|cannot|"
+    r"unable|refused|timed? ?out|warn|\bE\s{2,}|^\s*at\s|^\s*File \"", re.I)
+READS = re.compile(
+    r"^\s*(cat|head|tail|less|more|type|get-content|gc)\b|\bsed\s+-n\b|"
+    r"\bgit\s+(-C\s+\S+\s+)?(diff|show)\b|nosqueeze|\.gstack[/\\]squeeze", re.I)
+
+
+def clean(text):
+    return [line.rstrip("\r").rsplit("\r", 1)[-1] for line in ANSI.sub("", text).split("\n")]
+
+
+def collapse(lines):
+    out, i = [], 0
+    while i < len(lines):
+        j = i
+        while j + 1 < len(lines) and lines[j + 1] == lines[i]:
+            j += 1
+        n = j - i + 1
+        out.append(lines[i] if n < 3 else "%s  [repeated x%d]" % (lines[i], n))
+        if n == 2:
+            out.append(lines[i])
+        i = j + 1
+    return out
+
+
+def too_big(lines):
+    return len(lines) > MAX_LINES or sum(len(x) + 1 for x in lines) > MAX_CHARS
+
+
+def pick(lines):
+    keep = set(range(min(HEAD, len(lines)))) | set(range(max(0, len(lines) - TAIL), len(lines)))
+    hits = 0
+    for i, line in enumerate(lines):
+        if hits >= SIGNAL_CAP:
+            break
+        if i not in keep and SIGNAL.search(line):
+            keep.update((i, i + 1))
+            hits += 1
+    out, last = [], -1
+    for i in sorted(k for k in keep if k < len(lines)):
+        if i > last + 1:
+            out.append("... [%d lines omitted] ..." % (i - last - 1))
+        out.append(lines[i][:2000])
+        last = i
+    return out
+
+
+def squeeze(text):
+    """Return the squeezed text, or None when the text is small enough already."""
+    lines = collapse(clean(text))
+    if not too_big(lines):
+        short = "\n".join(lines)
+        return short if len(short) < len(text) * 0.7 else None
+    return "\n".join(pick(lines))
+
+
+def save(text, tag):
+    DIR.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - KEEP_DAYS * 86400
+    for old in DIR.glob("*.log"):
+        if old.stat().st_mtime < cutoff:
+            old.unlink(missing_ok=True)
+    path = DIR / ("%s-%s.%s.log" % (time.strftime("%Y%m%d-%H%M%S"), uuid.uuid4().hex[:6], tag))
+    path.write_text(text, encoding="utf-8", newline="")
+    return path
+
+
+def record(before, after):
+    DIR.mkdir(parents=True, exist_ok=True)
+    with open(DIR / "stats.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"ts": int(time.time()), "before": before, "after": after}) + "\n")
+
+
+def squeeze_stream(text, tag):
+    short = squeeze(text)
+    if short is None:
+        return None
+    path = save(text, tag).as_posix()
+    total = text.count("\n") + 1
+    header = ("[gstack-squeeze] %s: %d lines / %d chars cut to %d chars. Full output: %s "
+              "(read a slice with sed -n 'A,Bp'; add 'nosqueeze' to a command to skip)"
+              % (tag, total, len(text), len(short), path))
+    out = header + "\n" + short
+    record(len(text), len(out))
+    return out
+
+
+def hook():
+    payload = json.loads(sys.stdin.buffer.read() or b"{}")
+    if OFF.exists() or payload.get("tool_name") not in ("Bash", "PowerShell"):
+        return 0
+    command = str((payload.get("tool_input") or {}).get("command", ""))
+    resp = payload.get("tool_response")
+    if READS.search(command) or not isinstance(resp, dict):
+        return 0
+    updated, changed = dict(resp), False
+    for tag in ("stdout", "stderr"):
+        if isinstance(resp.get(tag), str) and 0 < len(resp[tag]) < NATIVE_CAP:
+            short = squeeze_stream(resp[tag], tag)
+            if short is not None:
+                updated[tag], changed = short, True
+    if changed:
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "PostToolUse", "updatedToolOutput": updated}}))
+    return 0
+
+
+def stats():
+    rows = []
+    if (DIR / "stats.jsonl").exists():
+        rows = [json.loads(x) for x in (DIR / "stats.jsonl").read_text(encoding="utf-8").splitlines() if x]
+    before = sum(r["before"] for r in rows)
+    after = sum(r["after"] for r in rows)
+    print("squeezed outputs: %d" % len(rows))
+    print("chars before:     {:,}".format(before))
+    print("chars after:      {:,}".format(after))
+    print("saved (~tokens):  {:,}".format((before - after) // 4))
+    return 0
+
+
+def main(argv):
+    if argv[:1] == ["--hook"]:
+        try:
+            return hook()
+        except Exception:
+            return 0
+    if argv[:1] == ["--stats"]:
+        return stats()
+    if len(argv) == 1 and Path(argv[0]).is_file():
+        text = Path(argv[0]).read_text(encoding="utf-8", errors="replace")
+        print(squeeze(text) or text)
+        return 0
+    print(__doc__.strip(), file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
