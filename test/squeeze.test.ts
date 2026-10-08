@@ -135,7 +135,21 @@ describe('gstack-squeeze', () => {
       expect(readHook(root, p, log(600))).toBeNull();
     }
     expect(readHook(root, 'C:/x/run.log', log(600), { offset: 100, limit: 50 })).toBeNull();
-    expect(readHook(root, 'C:/Users/u/.gstack/squeeze/a.stdout.log', log(600))).toBeNull();
+    expect(readHook(root, path.join(root, 'squeeze', 'a.stdout.log'), log(600))).toBeNull();
+    expect(readHook(root, path.join(root, 'squeeze', 'A.LOG').toUpperCase(), log(600))).toBeNull();
+    expect(readHook(root, 'C:/x/small.csv', Array(150).fill('same,row').join('\n'))).toBeNull();
+  });
+
+  test('accepts extension overrides without a dot or in upper case, and fixes numLines', () => {
+    const root = tmpRoot();
+    const o = spawnSync([PY, SQUEEZE, '--hook'], {
+      env: { ...process.env, GSTACK_STATE_ROOT: root, SQUEEZE_READ_EXTS: 'TXT' },
+      stdin: Buffer.from(JSON.stringify({ tool_name: 'Read', tool_input: { file_path: 'C:/x/a.txt' },
+        tool_response: { type: 'text', file: { filePath: 'C:/x/a.txt', content: log(600), numLines: 600, startLine: 1, totalLines: 600 } } })),
+    });
+    const file = JSON.parse(o.stdout.toString()).hookSpecificOutput.updatedToolOutput.file;
+    expect(file.numLines).toBe(file.content.split('\n').length);
+    expect(file.totalLines).toBe(600);
   });
 
   test('records savings for --stats', () => {

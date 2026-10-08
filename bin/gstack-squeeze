@@ -43,7 +43,8 @@ MAX_CHARS = int(os.environ.get("SQUEEZE_MAX_CHARS", "8000"))
 HEAD, TAIL, SIGNAL_CAP = 20, 40, 80
 KEEP_DAYS = 3
 NATIVE_CAP = int(os.environ.get("BASH_MAX_OUTPUT_LENGTH", "30000"))
-READ_EXTS = set(os.environ.get("SQUEEZE_READ_EXTS", ".log .out .csv .tsv .jsonl .ndjson").split())
+READ_EXTS = {"." + e.lower().lstrip(".") for e in
+             os.environ.get("SQUEEZE_READ_EXTS", ".log .out .csv .tsv .jsonl .ndjson").split()}
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 SIGNAL = re.compile(
@@ -130,10 +131,13 @@ def squeeze_stream(text, tag):
 
 
 def squeeze_read(text, path):
-    short = squeeze(text)
+    lines = collapse(clean(text))
+    if not too_big(lines):
+        return None
+    short = "\n".join(pick(lines))
     header = ("[gstack-squeeze] %d lines / %d chars cut to %d chars. Line numbers below do NOT "
               "match the file. Full file: %s (Read it with offset/limit for exact lines)"
-              % (text.count("\n") + 1, len(text), len(short), path))
+              % (len(text.splitlines()), len(text), len(short), path))
     out = header + "\n" + short
     if len(out) > len(text) * 0.7:
         return None
@@ -159,11 +163,14 @@ def read(payload, resp):
     path = str(args.get("file_path", ""))
     file = resp.get("file")
     if (args.get("offset") or args.get("limit") or resp.get("type") != "text"
-            or Path(path).suffix.lower() not in READ_EXTS or ".gstack/squeeze" in Path(path).as_posix()
+            or Path(path).suffix.lower() not in READ_EXTS
+            or Path(path).as_posix().lower().startswith(DIR.as_posix().lower())
             or not isinstance(file, dict) or not isinstance(file.get("content"), str)):
         return None
     short = squeeze_read(file["content"], Path(path).as_posix())
-    return None if short is None else dict(resp, file=dict(file, content=short))
+    if short is None:
+        return None
+    return dict(resp, file=dict(file, content=short, numLines=short.count("\n") + 1))
 
 
 def hook():
